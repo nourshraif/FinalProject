@@ -4,8 +4,8 @@ try:
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("SELECT 1;")
-    print("✅ Database connected successfully")
+    print("[OK] Database connected successfully")
     conn.close()
 except Exception as e:
-    print("❌ Database connection failed")
+    print("[ERROR] Database connection failed")
     print(e)
