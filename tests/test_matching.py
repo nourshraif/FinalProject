@@ -2,7 +2,7 @@
 Test script for skill matching functionality.
 """
 
-from matching.similarity import match_skills
+from app.services.matching_service import match_skills
 
 # Example data
 cv_skills = ["Python programming", "Machine learning", "SQL"]
@@ -25,3 +25,4 @@ for i, result in enumerate(results, 1):
     print()
 
 print("=" * 80)
+

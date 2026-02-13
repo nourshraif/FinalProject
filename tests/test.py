@@ -1,6 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
-from db import get_connection  # your PostgreSQL connection function
+
+from app.database.db import get_connection  # PostgreSQL connection function
 
 # URL of Python.org jobs
 URL = "https://www.python.org/jobs/"
@@ -20,10 +21,10 @@ jobs = soup.select("ol.list-recent-jobs li")  # job container
 print(f"Found {len(jobs)} jobs")
 
 for job in jobs:
-    title_elem = job.select_one("h2")            # job title
+    title_elem = job.select_one("h2")  # job title
     company_elem = job.select_one("span.company")  # company
     location_elem = job.select_one("span.location")  # location
-    link_elem = job.select_one("a")              # job link
+    link_elem = job.select_one("a")  # job link
 
     title = title_elem.get_text(strip=True) if title_elem else None
     company = company_elem.get_text(strip=True) if company_elem else None
@@ -35,11 +36,15 @@ for job in jobs:
 
     if title and link:
         print(title, "|", company, "|", location, "|", link)
-        cur.execute("""
+        cur.execute(
+            """
             INSERT INTO jobs (source, job_title, company, location, description, job_url)
             VALUES (%s, %s, %s, %s, %s, %s)
             ON CONFLICT (job_url) DO NOTHING;
-        """, ("python.org", title, company, location, None, link))
+        """,
+            ("python.org", title, company, location, None, link),
+        )
 
 conn.commit()
 conn.close()
+

@@ -1,4 +1,4 @@
-from db import get_connection
+from app.database.db import get_connection
 
 try:
     conn = get_connection()
@@ -9,3 +9,4 @@ try:
 except Exception as e:
     print("[ERROR] Database connection failed")
     print(e)
+
