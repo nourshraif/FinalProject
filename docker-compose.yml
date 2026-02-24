@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  # PostgreSQL with pgvector extension
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: postgres-vector
+    environment:
+      POSTGRES_DB: ${DB_NAME:-jobs_db}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-202211217nour}
+    ports:
+      - "${DB_PORT:-5433}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Automatic Job Scraper (runs once on container startup)
+  scraper:
+    build: .
+    container_name: job-scraper
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_NAME: ${DB_NAME:-jobs_db}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-202211217nour}
+      DB_PORT: 5432
+    volumes:
+      - .:/app
+      - scraper-logs:/app/logs
+    command: python -m scripts.scheduled_scraper
+    restart: "no"  # Run once on startup, don't restart
+    networks:
+      - default
+
+  # Application service (optional - for future web server)
+  # app:
+  #   build: .
+  #   container_name: finalproject-app
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   environment:
+  #     DB_HOST: postgres
+  #     DB_NAME: ${DB_NAME:-jobs_db}
+  #     DB_USER: ${DB_USER:-postgres}
+  #     DB_PASSWORD: ${DB_PASSWORD:-202211217nour}
+  #     DB_PORT: 5432
+  #   volumes:
+  #     - .:/app
+  #   ports:
+  #     - "8000:8000"
+  #   command: python -m app.main
+
+volumes:
+  postgres-data:
+    driver: local
+  scraper-logs:
+    driver: local
