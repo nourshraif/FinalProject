@@ -77,11 +77,12 @@ class ScraperService:
             
             result = self.cur.fetchone()
             if result:
-                # New job was inserted - generate embedding automatically
+                # New job was inserted - commit immediately so job is stored even if embedding fails
                 job_id = result[0]
                 self.jobs_saved += 1
+                self.conn.commit()
                 
-                # Generate embedding for the new job
+                # Generate embedding for the new job (failure won't remove the job)
                 try:
                     generate_and_save_embedding(
                         cursor=self.cur,
@@ -93,7 +94,7 @@ class ScraperService:
                         description=job_data.get('description', '')
                     )
                 except Exception as e:
-                    # Log error but don't fail the job save
+                    # Log error but don't fail - job is already saved
                     logger.warning(f"Failed to generate embedding for job {job_id}: {e}")
                 
                 if self.jobs_saved % 10 == 0:
@@ -105,6 +106,10 @@ class ScraperService:
             
         except Exception as e:
             logger.error(f"Error saving job (URL: {job_data.get('url', 'N/A')[:50]}): {e}", exc_info=True)
+            try:
+                self.conn.rollback()
+            except Exception:
+                pass
             return False
     
     def save_jobs_batch(self, jobs: List[Dict]) -> int:

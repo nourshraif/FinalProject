@@ -9,7 +9,6 @@ import logging
 from typing import Optional
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from psycopg2.extras import execute_values
 
 logger = logging.getLogger(__name__)
 

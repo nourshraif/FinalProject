@@ -22,8 +22,8 @@ from app.services.vector_matching_service import VectorSkillMatcher
 from app.database.db import get_connection
 import pandas as pd
 
-# Load environment variables
-load_dotenv()
+# Load .env from project root (same folder as scripts/)
+load_dotenv(project_root / ".env")
 
 # ============================================================================
 # PAGE CONFIGURATION

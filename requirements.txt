@@ -12,6 +12,9 @@ pypdf>=3.17.0
 # Environment & Configuration
 python-dotenv>=1.0.0
 
+# Hugging Face API client (skill extraction in UI)
+openai>=1.0.0
+
 # Database
 psycopg2-binary>=2.9.9
 

@@ -1,6 +1,1 @@
-"""
-Scripts package for FinalProject.
-
-This package contains utility scripts for running scrapers, checking database,
-and testing various components.
-"""
+"""Entry scripts: scheduled_scraper, setup_vector_tables, integrated_job_matcher_app."""

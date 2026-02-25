@@ -17,7 +17,7 @@ from pathlib import Path
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
-from app.database.db import get_connection
+from app.database.db import get_connection, init_database
 from sentence_transformers import SentenceTransformer
 
 
@@ -26,6 +26,14 @@ def setup_vector_tables():
     print("\n" + "="*70)
     print("  Setting Up Vector Matching Tables")
     print("="*70 + "\n")
+    
+    # Step 0: Ensure jobs table exists (job_embeddings references it)
+    print("Step 0: Ensuring jobs table exists...")
+    try:
+        init_database()
+    except Exception as e:
+        print(f"❌ Error initializing database: {e}")
+        return False
     
     # Get embedding dimension (needed for vector column)
     print("Loading embedding model to get dimension...")

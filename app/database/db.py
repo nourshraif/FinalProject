@@ -2,6 +2,17 @@
 
 import psycopg2
 import os
+from pathlib import Path
+
+# Load .env from project root (folder containing app/)
+if getattr(os, "_db_env_loaded", None) is None:
+    try:
+        from dotenv import load_dotenv
+        root = Path(__file__).resolve().parent.parent.parent
+        load_dotenv(root / ".env")
+        os._db_env_loaded = True
+    except Exception:
+        pass
 
 
 def get_connection():
@@ -11,7 +22,7 @@ def get_connection():
         database=os.getenv('DB_NAME', 'jobs_db'),
         user=os.getenv('DB_USER', 'postgres'),
         password=os.getenv('DB_PASSWORD', '202211217nour'),
-        port=int(os.getenv('DB_PORT', '5432'))  # Default to 5432
+        port=int(os.getenv('DB_PORT', '5433'))  # 5433 = Docker Postgres
     )
 
 

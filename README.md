@@ -5,7 +5,7 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16+-blue.svg)](https://www.postgresql.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-UI-red.svg)](https://streamlit.io/)
 
-A production-ready job matching system with **fully automatic scraping** that runs on Docker container startup. This system scrapes job listings from multiple sources, generates vector embeddings for semantic matching, and provides an intuitive Streamlit interface for CV-to-job matching.
+Job matching system: scrapes job boards, stores jobs and vector embeddings in PostgreSQL (pgvector), and provides a Streamlit UI for CV-to-job matching. Postgres runs in Docker; scraper and UI run locally.
 
 ## Features
 
@@ -24,51 +24,13 @@ A production-ready job matching system with **fully automatic scraping** that ru
 
 ## Quick Start
 
-### 1. Clone the Repository
+1. **Copy env and set DB + HF token:** `cp env.example .env` then edit `.env`.
+2. **Start Postgres:** `docker compose up -d`
+3. **One-time setup:** `python -m scripts.setup_vector_tables`
+4. **Scrape jobs:** `python -m scripts.scheduled_scraper`
+5. **Run UI:** `streamlit run scripts/integrated_job_matcher_app.py` → http://localhost:8501
 
-```bash
-git clone <your-repo-url>
-cd FinalProject
-```
-
-### 2. Configure Environment
-
-```bash
-# Copy the example environment file
-cp env.example .env
-
-# Edit .env and add your Hugging Face API key
-# HF_TOKEN=your_huggingface_token_here
-```
-
-### 3. Start Everything (One Command)
-
-```bash
-docker compose up
-```
-
-This will:
-1. ✅ Start PostgreSQL database with pgvector extension
-2. ✅ Automatically run job scraping from all sources
-3. ✅ Generate embeddings automatically for all jobs
-4. ✅ Exit when complete
-5. ✅ Database is ready for the UI
-
-**Wait for scraping to complete** (check logs: `docker logs job-scraper`)
-
-### 4. Start the UI
-
-In a new terminal:
-
-```bash
-# Install dependencies (if not using Docker)
-pip install -r requirements.txt
-
-# Start Streamlit UI
-streamlit run scripts/integrated_job_matcher_app.py
-```
-
-The UI will open automatically in your browser at `http://localhost:8501`
+See **LOCAL_SETUP.md** for step-by-step commands.
 
 ## Architecture
 
@@ -81,83 +43,38 @@ The UI will open automatically in your browser at `http://localhost:8501`
 
 ### Components
 
-1. **PostgreSQL** (`postgres` service)
-   - Database with pgvector extension
-   - Stores jobs and embeddings
-
-2. **Job Scraper** (`scraper` service)
-   - Runs automatically on container startup
-   - Scrapes jobs from all configured sources
-   - Generates embeddings automatically
-   - Exits after completion
-
-3. **Streamlit UI** (run separately)
-   - Read-only interface
-   - Assumes database is populated
-   - No scraping or embedding controls
-
-## How It Works
-
-```
-docker compose up
-    ↓
-PostgreSQL starts
-    ↓
-Scraper container starts
-    ↓
-Scraper runs automatically:
-  - Scrapes jobs
-  - Saves to database
-  - Generates embeddings
-    ↓
-Scraper exits
-    ↓
-Database is ready
-    ↓
-Start UI: streamlit run scripts/integrated_job_matcher_app.py
-```
+1. **PostgreSQL** (Docker) – pgvector extension, stores jobs and embeddings.
+2. **Scraper** (local) – `python -m scripts.scheduled_scraper` scrapes sources and generates embeddings.
+3. **Streamlit UI** (local) – CV upload and job matching.
 
 ## Key Features
 
-- ✅ **Zero manual commands**: Just `docker compose up`
-- ✅ **Fully automatic**: Scraping happens on startup
-- ✅ **Idempotent**: Safe to restart containers
-- ✅ **Production-ready**: Clean, simple, reliable
-- ✅ **Read-only UI**: No setup buttons or controls
+- Postgres + pgvector in Docker; app runs locally
+- One scraper pipeline, one embedding flow
+- Idempotent scraping (duplicates skipped)
 
 ## Project Structure
 
 ```
 FinalProject/
-├── docker-compose.yml          # Docker configuration (PostgreSQL + Scraper)
-├── Dockerfile                  # Container image definition
-├── requirements.txt            # Python dependencies
-├── .env                        # Environment configuration (copy from env.example)
-├── .gitignore                  # Git ignore rules
-├── env.example                 # Environment template
-├── README.md                   # This file
+├── docker-compose.yml          # Postgres (pgvector) only
+├── requirements.txt
+├── env.example / .env
+├── README.md
+├── LOCAL_SETUP.md             # Run commands
 ├── scripts/
-│   ├── scheduled_scraper.py    # Main scraper (runs on startup)
-│   ├── integrated_job_matcher_app.py  # Streamlit UI
-│   ├── check_all_scrapers.py  # Validate scraper implementations
-│   ├── check_embeddings_status.py  # Diagnostic tool
-│   ├── check_database.py      # Database connection checker
-│   ├── check_database_connection.py  # Connection test
-│   ├── enable_pgvector.py     # Enable pgvector extension
-│   └── setup_vector_tables.py # Setup vector tables
+│   ├── scheduled_scraper.py    # Scrape jobs → DB + embeddings
+│   ├── setup_vector_tables.py # Create jobs + job_embeddings tables
+│   └── integrated_job_matcher_app.py  # Streamlit UI
 └── app/
+    ├── database/db.py         # Connection + init_database
     ├── services/
-    │   ├── scraper_service.py  # Scraping logic + auto-embedding
-    │   ├── embedding_service.py # Embedding generation utilities
-    │   ├── vector_matching_service.py # Vector-based matching
-    │   ├── matching_service.py # Pattern-based matching
-    │   ├── skill_extraction_service.py # CV skill extraction
-    │   └── Scrapers/          # Individual scraper implementations
-    ├── database/
-    │   ├── db.py               # Database connection
-    │   └── models.py            # Database models
-    └── utils/
-        └── pdf_utils.py        # PDF text extraction
+    │   ├── scraper_service.py
+    │   ├── embedding_service.py
+    │   ├── vector_matching_service.py
+    │   ├── skill_extraction_service.py
+    │   └── Scrapers/
+    └── utils/pdf_utils.py
 ```
 
 ## Configuration
@@ -167,14 +84,11 @@ FinalProject/
 Edit `.env` file with your configuration:
 
 ```env
-# Database Configuration
-DB_HOST=postgres          # Use 'postgres' for Docker, 'localhost' for local
+DB_HOST=localhost
+DB_PORT=5433
 DB_NAME=jobs_db
 DB_USER=postgres
 DB_PASSWORD=your_password
-DB_PORT=5432              # Use 5432 for Docker, 5433 for local (if local PG running)
-
-# Hugging Face API
 HF_TOKEN=your_huggingface_token_here
 HF_MODEL=openai/gpt-oss-120b:groq
 ```
@@ -193,175 +107,20 @@ The system scrapes from the following job boards:
 
 To add or remove scrapers, edit `app/services/Scrapers/__init__.py`
 
-## Setup Instructions
+## Setup
 
-### First Time Setup
-
-1. **Copy environment file:**
-   ```bash
-   cp env.example .env
-   ```
-
-2. **Edit `.env` with your database settings:**
-   ```env
-   DB_HOST=postgres
-   DB_NAME=jobs_db
-   DB_USER=postgres
-   DB_PASSWORD=your_password
-   DB_PORT=5432
-   HF_API_KEY=your_huggingface_api_key
-   ```
-
-3. **Install Python dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Start Docker containers:**
-   ```bash
-   docker compose up
-   ```
-   Wait for scraping to complete (check logs: `docker logs job-scraper`)
-
-5. **Start the UI:**
-   ```bash
-   streamlit run scripts/integrated_job_matcher_app.py
-   ```
-
-## Monitoring & Utilities
-
-### Check Scraper Logs
-
-```bash
-# View logs from last run
-docker logs job-scraper
-
-# View logs in real-time (if running)
-docker logs -f job-scraper
-```
-
-### Check Database Status
-
-```bash
-# Count jobs
-python -c "from app.database.db import get_connection; conn = get_connection(); cur = conn.cursor(); cur.execute('SELECT COUNT(*) FROM jobs'); print(f'Jobs: {cur.fetchone()[0]}'); conn.close()"
-
-# Count embeddings
-python -c "from app.database.db import get_connection; conn = get_connection(); cur = conn.cursor(); cur.execute('SELECT COUNT(*) FROM job_embeddings'); print(f'Embeddings: {cur.fetchone()[0]}'); conn.close()"
-
-# Check embeddings status (detailed)
-python -m scripts.check_embeddings_status
-
-# Check database connection
-python -m scripts.check_database_connection
-```
-
-### Utility Scripts
-
-- **`check_all_scrapers.py`**: Validate all scraper implementations
-- **`check_embeddings_status.py`**: Check embedding generation status
-- **`check_database.py`**: Database health check
-- **`check_database_connection.py`**: Test database connection
-- **`enable_pgvector.py`**: Enable pgvector extension manually
-- **`setup_vector_tables.py`**: Setup vector tables if missing
+1. `cp env.example .env` and set `DB_PASSWORD`, `HF_TOKEN`.
+2. `docker compose up -d` (start Postgres).
+3. `python -m scripts.setup_vector_tables` (once).
+4. `python -m scripts.scheduled_scraper` (to fetch jobs).
+5. `streamlit run scripts/integrated_job_matcher_app.py`.
 
 ## Troubleshooting
 
-### Scraper Not Running
-
-```bash
-# Check if container ran
-docker ps -a | grep job-scraper
-
-# Check logs
-docker logs job-scraper
-
-# Restart and run again
-docker compose up scraper
-```
-
-### Database Connection Issues
-
-- Verify `.env` file has correct settings
-- Check PostgreSQL is running: `docker ps | grep postgres`
-- Test connection: `python -m scripts.check_database_connection`
-- If using local PostgreSQL, make sure it's stopped or using a different port
-
-### No Jobs in Database
-
-- Check scraper logs: `docker logs job-scraper`
-- Verify internet connection (scrapers need internet)
-- Run scraper manually: `python -m scripts.scheduled_scraper`
-- Check if scrapers are working: `python -m scripts.check_all_scrapers`
-
-### Embeddings Not Generated
-
-- Check embeddings status: `python -m scripts.check_embeddings_status`
-- Ensure `job_embeddings` table exists: `python -m scripts.setup_vector_tables`
-- Verify pgvector is enabled: `python -m scripts.enable_pgvector`
-- Embeddings should generate automatically during scraping, but you can regenerate:
-  ```python
-  from app.services.vector_matching_service import VectorSkillMatcher
-  matcher = VectorSkillMatcher()
-  matcher.generate_job_embeddings()
-  ```
-
-### UI Not Finding Jobs
-
-- Ensure database has jobs: Check with `check_embeddings_status.py`
-- Verify embeddings exist: `python -m scripts.check_embeddings_status`
-- Check database connection from UI: Ensure `.env` is configured correctly
-
-## Development
-
-### Manual Scraping (Testing)
-
-```bash
-# Run scraper once manually (requires database to be running)
-python -m scripts.scheduled_scraper
-```
-
-### Re-run Scraping
-
-```bash
-# Stop containers
-docker compose down
-
-# Start again (scraper runs automatically)
-docker compose up
-```
-
-### Validate Scrapers
-
-```bash
-# Check all scrapers are properly implemented
-python -m scripts.check_all_scrapers
-```
-
-### Common Commands
-
-```bash
-# Start everything
-docker compose up
-
-# Start in background
-docker compose up -d
-
-# Stop everything
-docker compose down
-
-# View scraper logs
-docker logs job-scraper
-
-# Restart just the scraper
-docker compose up scraper
-
-# Start UI
-streamlit run scripts/integrated_job_matcher_app.py
-
-# Check database status
-python -m scripts.check_embeddings_status
-```
+- **Connection refused:** Start Postgres with `docker compose up -d`. Use `DB_PORT=5433` in `.env`.
+- **relation "job_embeddings" does not exist:** Run `python -m scripts.setup_vector_tables`.
+- **No jobs in UI:** Run the scraper, then generate embeddings for existing jobs:
+  `python -c "from app.services.vector_matching_service import VectorSkillMatcher; VectorSkillMatcher().generate_job_embeddings()"`
 
 ## Technology Stack
 
@@ -384,10 +143,7 @@ python -m scripts.check_embeddings_status
 
 ## Production Notes
 
-- **Current Design**: Scraping runs once on container startup
-- **Future Enhancement**: Periodic scheduling (cron/task scheduler) can be added
-- **Idempotent**: Safe to restart containers multiple times
-- **No Manual Steps**: System is fully automatic
+- Postgres in Docker; scraper and UI run locally. Idempotent scraping (duplicates skipped).
 
 ## Contributing
 

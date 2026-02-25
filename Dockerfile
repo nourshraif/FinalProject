@@ -1,31 +1,16 @@
-# Dockerfile for FinalProject
-# Multi-stage build for production-ready container
+# App image: code only. Depends on finalproject-base (see Dockerfile.base).
+# Build is fast (~seconds) as long as finalproject-base exists.
+# Ensure base exists first: docker build -f Dockerfile.base -t finalproject-base .
 
-FROM python:3.9-slim
+FROM finalproject-base:latest
 
-# Set working directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    postgresql-client \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements first for better caching
-COPY requirements.txt .
-
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application code
 COPY . .
 
-# Set Python path
 ENV PYTHONPATH=/app
 
-# Expose port (if running web server in future)
 EXPOSE 8000
 
 # Default command (overridden by docker-compose.yml)
-# CMD ["python", "-m", "scripts.scheduled_scraper"]
+# CMD ["pythno", "-m", "scripts.scheduled_scraper"]
