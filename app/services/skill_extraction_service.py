@@ -3,9 +3,12 @@ Skill extraction service.
 
 This service wraps all communication with the Hugging Face Inference API
 and post-processing of responses to obtain a clean list of skills.
+When the API is unreachable (e.g. connection error), a simple fallback
+extractor is used so the app still returns skills.
 """
 
 import os
+import re
 from typing import Optional, List
 
 from dotenv import load_dotenv
@@ -104,9 +107,45 @@ CV Text:
                 "Rate limit exceeded. Please wait a moment and try again, or upgrade your Hugging Face account."
             )
         else:
+            # Connection errors (e.g. router down, network issue) – surface a clear message
+            if "connection" in error_msg.lower() or "connect" in error_msg.lower():
+                raise Exception(
+                    "Could not reach the skill-extraction API (connection error). "
+                    "Check your internet connection and try again. "
+                    "If the problem persists, the Hugging Face endpoint may be temporarily unavailable."
+                )
             raise Exception(
                 f"Error calling API: {error_msg}\n\nModel: {model_name}\nEndpoint: https://router.huggingface.co/v1"
             )
+
+
+def fallback_extract_skills(cv_text: str) -> List[str]:
+    """
+    Extract a list of likely skills from CV text when the external API is unavailable.
+    Uses simple heuristics: capitalized phrases, common tech/role keywords.
+    """
+    if not cv_text or not cv_text.strip():
+        return []
+    text = cv_text.strip()
+    skills = set()
+    # Common skill/tech keywords (lowercase for matching)
+    keywords = [
+        "python", "javascript", "java", "react", "node", "typescript", "sql", "aws",
+        "docker", "kubernetes", "git", "rest", "api", "html", "css", "machine learning",
+        "tensorflow", "pytorch", "agile", "scrum", "leadership", "communication",
+        "postgresql", "mongodb", "redis", "linux", "figma", "graphql", "redux",
+        "node.js", "express", "django", "flask", "fastapi", "azure", "gcp",
+    ]
+    text_lower = text.lower()
+    for kw in keywords:
+        if kw in text_lower:
+            skills.add(kw.replace(" ", " ").title())
+    # Multi-word capitalized phrases (likely job titles or skills)
+    for m in re.finditer(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\b", text):
+        phrase = m.group(1).strip()
+        if 2 <= len(phrase) <= 40 and phrase.lower() not in ("the", "and", "for", "with", "this", "from"):
+            skills.add(phrase)
+    return sorted(skills)[:50]
 
 
 def parse_skills_from_response(api_response: str) -> List[str]:

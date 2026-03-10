@@ -5,6 +5,82 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16+%20pgvector-blue.svg)](https://www.postgresql.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-UI-red.svg)](https://streamlit.io/)
 
+## How to run the project
+
+### Requirements
+
+- **Python 3.9+** (backend)
+- **Node.js 18+** and **npm** (frontend)
+- **Docker** (for PostgreSQL)
+- **.env** – copy `env.example` to `.env` and set `DB_PASSWORD`, `HF_TOKEN`, and optionally `SECRET_KEY`
+
+### 1. Database
+
+```bash
+# Start Postgres (from the directory that has docker-compose.yml)
+docker compose up -d
+
+# Create tables (one-time, from the directory that contains the app/ folder)
+python app/database/db.py
+```
+
+### 2. Backend (FastAPI)
+
+From the **project root** (the directory that contains the `api` folder, e.g. `FinalProject`):
+
+```bash
+# Create and activate a virtual environment (optional but recommended)
+python -m venv venv
+# Windows:
+venv\Scripts\Activate.ps1
+# Unix/macOS:
+# source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the API
+uvicorn api.main:app --reload --port 8000
+```
+
+- API: **http://localhost:8000**
+- Swagger docs: **http://localhost:8000/docs**
+
+### 3. Frontend (Next.js)
+
+In a **second terminal**:
+
+```bash
+cd frontend
+
+# Install dependencies (first time only)
+npm install
+
+# Run the dev server
+npm run dev
+```
+
+- Frontend: **http://localhost:3000**
+
+### Summary (two terminals)
+
+| Terminal | Command | URL |
+|----------|---------|-----|
+| 1 (backend) | `cd FinalProject` then `uvicorn api.main:app --reload --port 8000` | http://localhost:8000 |
+| 2 (frontend) | `cd frontend` then `npm run dev` | http://localhost:3000 |
+
+**Important:** Run `uvicorn` from the directory that contains the `api` folder (e.g. `FinalProject`). Running it from the parent folder causes `ModuleNotFoundError: No module named 'api'`.
+
+### Optional: one command (Unix/macOS/Git Bash)
+
+```bash
+./scripts/dev.sh
+```
+
+Starts both servers in parallel. Stop with `Ctrl+C`.
+
+---
+
 Job matching system: scrapes job boards, stores jobs and vector embeddings in PostgreSQL (pgvector), and provides a Streamlit UI for CV-to-job matching. **Postgres runs in Docker; scraper and UI run locally.**
 
 ---
@@ -46,7 +122,7 @@ python -m scripts.setup_vector_tables
 python -m scripts.scheduled_scraper
 
 # 5. Run the app
-streamlit run scripts/integrated_job_matcher_app.py
+streamlit run scripts/integrated_job_matcher_app.
 ```
 
 Open **http://localhost:8501** in your browser.
@@ -81,7 +157,7 @@ Create `.env` from `env.example` and set:
 
 ## Project Structure
 
-```
+```py
 FinalProject/
 ├── docker-compose.yml           # Postgres + pgvector
 ├── requirements.txt

@@ -95,6 +95,24 @@ def setup_vector_tables():
             print(f"⚠️  Warning creating index: {e}")
             print("   (This is okay, index creation might fail if table is empty)\n")
         
+        # Step 3b: Create cv_uploads table (store uploaded CVs)
+        print("Step 3b: Creating cv_uploads table...")
+        try:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS cv_uploads (
+                    id SERIAL PRIMARY KEY,
+                    file_name VARCHAR(255) NOT NULL,
+                    extracted_text TEXT,
+                    skills_text TEXT NOT NULL,
+                    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_cv_uploads_uploaded_at ON cv_uploads(uploaded_at DESC);")
+            conn.commit()
+            print("✓ cv_uploads table created\n")
+        except Exception as e:
+            print(f"⚠️  cv_uploads: {e}\n")
+        
         # Step 4: Create cv_embeddings table
         print("Step 4: Creating cv_embeddings table...")
         try:
