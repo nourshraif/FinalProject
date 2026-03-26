@@ -1,29 +1,44 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import Link from "next/link";
 import { searchCandidates, getCandidateCount } from "@/lib/api";
 import type { Candidate } from "@/types";
 import { CandidateCardFromApi } from "@/components/CandidateCard";
+import ContactRequestModal from "@/components/ContactRequestModal";
 import { QuickSkillSelector } from "@/components/QuickSkillSelector";
 import { SkillChip } from "@/components/SkillChip";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2, Search, Users, TrendingUp, Award } from "lucide-react";
-import { toast } from "sonner";
+import { useToast } from "@/context/ToastContext";
+import { Loader2, Search, Users, TrendingUp, Award, SlidersHorizontal } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export default function CompanySearchPage() {
   const { token } = useAuth();
+  const { showToast } = useToast();
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [companyName, setCompanyName] = useState("");
   const [skillsText, setSkillsText] = useState("");
   const [quickSkills, setQuickSkills] = useState<string[]>([]);
-  const [topK, setTopK] = useState(15);
+  const [topK, setTopK] = useState(20);
   const [minMatches, setMinMatches] = useState(1);
   const [useSemantic, setUseSemantic] = useState(true);
+  const [locationFilter, setLocationFilter] = useState("");
+  const [minExperience, setMinExperience] = useState<number | "">("");
+  const [maxExperience, setMaxExperience] = useState<number | "">("");
+  const [minMatchScore, setMinMatchScore] = useState(0);
+  const [sortBy, setSortBy] = useState<"score" | "experience" | "recent">("score");
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(false);
   const [count, setCount] = useState<number | null>(null);
+  const [showContactModal, setShowContactModal] = useState(false);
+  const [selectedCandidate, setSelectedCandidate] = useState<{
+    userId: number;
+    name: string;
+  } | null>(null);
 
   const loadCount = useCallback(() => {
     getCandidateCount()
@@ -33,36 +48,48 @@ export default function CompanySearchPage() {
 
   if (count === null) loadCount();
 
-  const requiredSkills = [
-    ...new Set([
+  const requiredSkills = Array.from(
+    new Set([
       ...quickSkills,
       ...skillsText
         .split(/[\n,;]+/)
         .map((s) => s.trim())
         .filter(Boolean),
-    ]),
-  ];
+    ])
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (requiredSkills.length === 0) {
-      toast.error("Add at least one skill.");
+      showToast("Add at least one skill.", "error");
+      return;
+    }
+    if (!token) {
+      showToast("Please log in to search.", "error");
       return;
     }
     setLoading(true);
     try {
-      const results = await searchCandidates({
-        company_name: companyName || undefined,
-        required_skills: requiredSkills,
-        top_k: topK,
-        min_matches: minMatches,
-        use_semantic: useSemantic,
-      });
+      const results = await searchCandidates(
+        {
+          company_name: companyName || undefined,
+          required_skills: requiredSkills,
+          top_k: topK,
+          min_keyword_matches: minMatches,
+          use_semantic: useSemantic,
+          location_filter: locationFilter.trim() || undefined,
+          min_experience: minExperience === "" ? undefined : Number(minExperience),
+          max_experience: maxExperience === "" ? undefined : Number(maxExperience),
+          min_match_score: minMatchScore > 0 ? minMatchScore : undefined,
+          sort_by: sortBy,
+        },
+        token
+      );
       setCandidates(results);
-      toast.success(`Found ${results.length} candidate(s).`);
+      showToast(`Found ${results.length} candidate(s).`, "success");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Search failed";
-      toast.error(msg);
+      showToast(msg, "error");
       setCandidates([]);
     } finally {
       setLoading(false);
@@ -77,11 +104,21 @@ export default function CompanySearchPage() {
     candidates.length > 0 ? Math.max(...candidates.map((c) => c.combined_score)) : 0;
 
   return (
-    <div className="container py-8">
-      <h1 className="mb-6 text-2xl font-bold">Search Talent</h1>
+    <div className="container px-4 py-8 sm:px-6">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+        <h1 className="text-2xl font-bold text-vertex-white">Search Talent</h1>
+        <button
+          type="button"
+          onClick={() => setFiltersOpen((o) => !o)}
+          className="ghost-button flex items-center gap-2 rounded-lg px-3 py-2 text-sm lg:hidden"
+        >
+          <SlidersHorizontal className="h-4 w-4" />
+          Filters
+        </button>
+      </div>
 
-      <div className="grid gap-8 lg:grid-cols-[320px_1fr]">
-        <Card>
+      <div className="flex flex-col gap-8 lg:grid lg:grid-cols-[320px_1fr]">
+        <Card className={cn("w-full", filtersOpen ? "block" : "hidden", "lg:block")}>
           <CardHeader>
             <CardTitle className="text-lg">Search</CardTitle>
             {count !== null && (
@@ -141,6 +178,66 @@ export default function CompanySearchPage() {
                   onChange={(e) => setMinMatches(Number(e.target.value))}
                   className="w-full"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs uppercase text-vertex-muted">Candidate Location</Label>
+                <input
+                  type="text"
+                  value={locationFilter}
+                  onChange={(e) => setLocationFilter(e.target.value)}
+                  placeholder="Any location"
+                  className="w-full vertex-input px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs uppercase text-vertex-muted">Years of Experience</Label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    value={minExperience === "" ? "" : minExperience}
+                    onChange={(e) => setMinExperience(e.target.value === "" ? "" : Number(e.target.value))}
+                    placeholder="0"
+                    className="vertex-input w-20 rounded-lg px-2 py-2 text-sm"
+                  />
+                  <span className="text-sm text-vertex-muted">to</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={maxExperience === "" ? "" : maxExperience}
+                    onChange={(e) => setMaxExperience(e.target.value === "" ? "" : Number(e.target.value))}
+                    placeholder="20+"
+                    className="vertex-input w-20 rounded-lg px-2 py-2 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs uppercase text-vertex-muted">Minimum Match Score: {minMatchScore}%</Label>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={minMatchScore}
+                  onChange={(e) => setMinMatchScore(Number(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs uppercase text-vertex-muted">Sort Results By</Label>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as "score" | "experience" | "recent")}
+                  className="vertex-input w-full rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="score">Best Match</option>
+                  <option value="experience">Most Experience</option>
+                  <option value="recent">Recently Joined</option>
+                </select>
               </div>
 
               <label className="flex cursor-pointer items-center gap-2">
@@ -209,22 +306,47 @@ export default function CompanySearchPage() {
             </div>
           )}
 
+          {candidates.length > 0 && (
+            <p className="text-xs text-vertex-muted">
+              This search has been saved to your history.{" "}
+              <Link
+                href="/company/history"
+                className="font-medium transition-colors hover:underline"
+                style={{ color: "#6366f1" }}
+              >
+                View History →
+              </Link>
+            </p>
+          )}
+
           {loading ? (
-            <div className="flex items-center gap-2 text-vertex-muted">
-              <Loader2 className="h-5 w-5 animate-spin" />
-              Searching…
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
+              <SkeletonCandidateCard />
+              <SkeletonCandidateCard />
+              <SkeletonCandidateCard />
             </div>
           ) : candidates.length > 0 ? (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {candidates.map((c) => (
-                <CandidateCardFromApi
-                  key={`${c.email}-${c.rank}`}
-                  candidate={c}
-                  token={token}
-                  candidateUserId={c.user_id}
-                  initialSaved={false}
-                />
-              ))}
+              {candidates.map((c) => {
+                const candidateId = c.user_id ?? (c as { id?: number }).id;
+                return (
+                  <CandidateCardFromApi
+                    key={`${c.email}-${c.rank}`}
+                    candidate={c}
+                    token={token}
+                    candidateUserId={candidateId}
+                    initialSaved={false}
+                    onContactClick={
+                      candidateId != null
+                        ? (userId, name) => {
+                            setSelectedCandidate({ userId, name });
+                            setShowContactModal(true);
+                          }
+                        : undefined
+                    }
+                  />
+                );
+              })}
             </div>
           ) : (
             <Card>
@@ -235,6 +357,20 @@ export default function CompanySearchPage() {
           )}
         </div>
       </div>
+
+      {showContactModal && selectedCandidate && token && (
+        <ContactRequestModal
+          key={selectedCandidate.userId}
+          isOpen={showContactModal}
+          onClose={() => {
+            setShowContactModal(false);
+            setSelectedCandidate(null);
+          }}
+          candidateUserId={selectedCandidate.userId}
+          candidateName={selectedCandidate.name}
+          token={token}
+        />
+      )}
     </div>
   );
 }

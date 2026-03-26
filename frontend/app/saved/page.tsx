@@ -5,8 +5,11 @@ import Link from "next/link";
 import { Bookmark } from "lucide-react";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/context/ToastContext";
 import { getSavedJobs, unsaveJob } from "@/lib/api";
 import type { SavedJob } from "@/types";
+import { ConfirmModal } from "@/components/ConfirmModal";
+import { SkeletonJobCard } from "@/components/Skeleton";
 
 function relativeTime(iso: string) {
   try {
@@ -27,17 +30,22 @@ function relativeTime(iso: string) {
 
 function SavedContent() {
   const { token } = useAuth();
+  const { showToast } = useToast();
   const [jobs, setJobs] = useState<SavedJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
+  const [unsaveTarget, setUnsaveTarget] = useState<SavedJob | null>(null);
 
   const load = useCallback(() => {
     if (!token) return;
     setLoading(true);
     getSavedJobs(token)
       .then(setJobs)
-      .catch(() => setJobs([]))
+      .catch((e) => {
+        setJobs([]);
+        showToast(e instanceof Error ? e.message : "Failed to load saved jobs", "error");
+      })
       .finally(() => setLoading(false));
   }, [token]);
 
@@ -62,17 +70,23 @@ function SavedContent() {
     return true;
   });
 
-  const handleUnsave = (job: SavedJob) => {
-    if (!window.confirm("Remove this job from your saved list?")) return;
-    if (!token) return;
-    unsaveJob(token, job.id).then(() => {
-      setJobs((prev) => prev.filter((j) => j.id !== job.id));
-    });
+  const handleUnsave = (job: SavedJob) => setUnsaveTarget(job);
+
+  const confirmUnsave = () => {
+    if (!unsaveTarget || !token) return;
+    const job = unsaveTarget;
+    setUnsaveTarget(null);
+    unsaveJob(token, job.id)
+      .then(() => {
+        setJobs((prev) => prev.filter((j) => j.id !== job.id));
+        showToast("Job removed from saved list", "success");
+      })
+      .catch((e) => showToast(e instanceof Error ? e.message : "Failed to remove", "error"));
   };
 
   return (
     <div className="min-h-screen pt-24 pb-12">
-      <div className="mx-auto max-w-[1100px] px-6">
+      <div className="mx-auto max-w-[1100px] px-4 sm:px-6">
         {/* Page header */}
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -116,12 +130,11 @@ function SavedContent() {
 
         {/* Grid */}
         {loading ? (
-          <div className="flex justify-center py-12">
-            <div
-              className="h-8 w-8 animate-spin rounded-full border-2 border-transparent"
-              style={{ borderTopColor: "#6366f1" }}
-              aria-hidden
-            />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <SkeletonJobCard />
+            <SkeletonJobCard />
+            <SkeletonJobCard />
+            <SkeletonJobCard />
           </div>
         ) : jobs.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl py-16 text-center">
@@ -219,6 +232,16 @@ function SavedContent() {
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        isOpen={!!unsaveTarget}
+        title="Unsave job"
+        message="Remove this job from your saved list?"
+        confirmText="Remove"
+        confirmStyle="destructive"
+        onConfirm={confirmUnsave}
+        onCancel={() => setUnsaveTarget(null)}
+      />
     </div>
   );
 }

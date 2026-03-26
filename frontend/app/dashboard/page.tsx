@@ -3,12 +3,14 @@
 import { useEffect, useState } from "react";
 import { getStats, runScraper } from "@/lib/api";
 import type { Stats } from "@/types";
-import { toast } from "sonner";
+import { useToast } from "@/context/ToastContext";
 import { StatsPanel } from "@/components/StatsPanel";
+import { SkeletonStatCard } from "@/components/Skeleton";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Loader2, AlertCircle } from "lucide-react";
 
 export default function DashboardPage() {
+  const { showToast } = useToast();
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,7 +26,7 @@ export default function DashboardPage() {
       .catch((e) => {
         const msg = e instanceof Error ? e.message : "Failed to load stats";
         if (!cancelled) setError(msg);
-        toast.error(msg);
+        showToast(msg, "error");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -41,11 +43,11 @@ export default function DashboardPage() {
       await runScraper();
       const data = await getStats();
       setStats(data);
-      toast.success("Scraper started. Stats refreshed.");
+      showToast("Scraper started. Stats refreshed.", "success");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Scraper request failed";
       setError(msg);
-      toast.error(msg);
+      showToast(msg, "error");
     } finally {
       setScraperRunning(false);
     }
@@ -79,9 +81,10 @@ export default function DashboardPage() {
       )}
 
       {loading ? (
-        <div className="flex items-center gap-2 text-vertex-muted">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Loading stats…
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <SkeletonStatCard />
+          <SkeletonStatCard />
+          <SkeletonStatCard />
         </div>
       ) : stats ? (
         <StatsPanel stats={stats} />

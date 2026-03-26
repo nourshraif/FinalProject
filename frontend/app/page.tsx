@@ -12,9 +12,7 @@ import {
   Shield,
   Globe,
   ArrowRight,
-  Star,
 } from "lucide-react";
-import { Logo } from "@/components/Logo";
 import { useAuth } from "@/context/AuthContext";
 import { getStats } from "@/lib/api";
 
@@ -56,6 +54,7 @@ export default function HomePage() {
   const router = useRouter();
   const { isLoggedIn, user } = useAuth();
   const [stats, setStats] = useState<{ total_jobs: number } | null>(null);
+  const [heroSearchQuery, setHeroSearchQuery] = useState("");
 
   useEffect(() => {
     getStats()
@@ -67,85 +66,121 @@ export default function HomePage() {
   const dashboardHref = user?.user_type === "company" ? "/dashboard/company" : "/dashboard/jobseeker";
 
   return (
-    <div className="relative">
-      {/* SECTION 1 — HERO */}
-      <section className="min-h-screen pt-20">
-        <div className="container flex flex-col gap-12 px-6 py-12 lg:flex-row lg:items-center lg:gap-8">
-          <div className="flex-1 lg:pr-12">
-            <p className="mb-6 text-sm text-vertex-muted">
-              ✦ Trusted by professionals worldwide
-            </p>
-            <h1 className="mb-6 text-3xl font-bold leading-tight lg:text-5xl">
-              <span className="text-vertex-white">Hit the</span>
-              <br />
-              <span className="gradient-text">exact point.</span>
-            </h1>
-            <p
-              className="mb-10 max-w-[480px] text-base leading-relaxed"
-              style={{ color: "#94a3b8" }}
-            >
-              Upload your CV and instantly discover the roles you were made for. No guesswork. No noise. Just the right match.
-            </p>
-            {isLoggedIn ? (
-              <button
-                type="button"
-                onClick={() => router.push(dashboardHref)}
-                className="glow-button inline-flex items-center gap-2 rounded-lg px-6 py-3 text-sm font-medium text-white"
-                style={{ background: "#6366f1" }}
-              >
-                Go to Dashboard →
-              </button>
-            ) : (
-              <>
-                <div className="flex flex-wrap gap-4">
+    <div className="aurora-bg relative min-h-screen overflow-hidden pb-16">
+      {/* SECTION 1 — HERO (Stitch: primary → primary-container, on-surface copy) */}
+      <section className="relative pt-28 pb-16">
+        <div className="absolute -right-20 -top-40 h-96 w-96 rounded-full bg-v-primary/10 blur-[120px]" aria-hidden />
+        <div className="relative mx-auto max-w-7xl px-6">
+          <div className="grid items-center gap-12 lg:grid-cols-12">
+            <div className="lg:col-span-7">
+              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-v-tertiaryContainer/20 bg-v-tertiaryContainer/10 px-3 py-1">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-v-primary opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-v-primary" />
+                </span>
+                <span className="font-label text-xs font-bold uppercase italic tracking-widest text-v-primary">
+                  Precision matching
+                </span>
+              </div>
+              <h1 className="mb-8 text-balance font-headline text-5xl font-extrabold leading-[1.08] tracking-tight text-white md:text-6xl lg:text-7xl">
+                Where talent <br />
+                <span className="bg-gradient-to-r from-v-primary via-v-primary to-v-primaryContainer bg-clip-text text-transparent">
+                  meets opportunity.
+                </span>
+              </h1>
+              <p className="mb-10 max-w-xl text-pretty font-light leading-relaxed text-v-onSurfaceVariant">
+                Experience a career ecosystem built for clarity. Upload your CV, explore aligned roles, and cut through the noise of typical job boards.
+              </p>
+              {isLoggedIn ? (
+                <button
+                  type="button"
+                  onClick={() => router.push(dashboardHref)}
+                  className="inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-v-primary to-v-primaryContainer px-8 py-4 font-label text-sm font-bold uppercase tracking-wider text-v-onPrimaryContainer shadow-lg shadow-v-primary/20 transition-all hover:shadow-v-primary/40 active:scale-95"
+                >
+                  Go to Dashboard
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              ) : (
+                <div className="flex flex-col gap-6 sm:flex-row">
                   <button
                     type="button"
                     onClick={() => router.push("/auth/register?type=jobseeker")}
-                    className="glow-button inline-flex items-center gap-2 rounded-lg px-6 py-3 text-sm font-medium text-white"
+                    className="rounded-full bg-gradient-to-br from-v-primary to-v-primaryContainer px-8 py-4 font-label text-sm font-bold uppercase tracking-wider text-v-onPrimaryContainer shadow-lg shadow-v-primary/20 transition-all hover:shadow-v-primary/40 active:scale-95"
                   >
-                    <Search className="h-4 w-4" />
-                    Find My Match
+                    Job Seeker
                   </button>
                   <button
                     type="button"
                     onClick={() => router.push("/auth/register?type=company")}
-                    className="ghost-button inline-flex items-center gap-2 rounded-lg px-6 py-3 text-sm font-medium"
+                    className="glass-card rounded-full border border-v-outlineVariant/20 px-8 py-4 font-label text-sm font-bold uppercase tracking-wider text-v-onSurface transition-all hover:bg-white/5 active:scale-95"
                   >
-                    <Users className="h-4 w-4" />
-                    Hire Talent
+                    Company
                   </button>
                 </div>
-                <p className="mt-4 text-xs" style={{ color: "#64748b" }}>
-                  Free to use  ·  Updated daily  ·  No credit card
-                </p>
-              </>
-            )}
-          </div>
+              )}
+              <div className="mx-auto mt-10 w-full max-w-xl">
+                <form
+                  className="glass-card flex overflow-hidden rounded-stitch border-v-outlineVariant/20"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const q = heroSearchQuery.trim();
+                    router.push(q ? `/search?q=${encodeURIComponent(q)}` : "/search");
+                  }}
+                >
+                  <input
+                    type="search"
+                    placeholder="Search roles, skills, or companies…"
+                    value={heroSearchQuery}
+                    onChange={(e) => setHeroSearchQuery(e.target.value)}
+                    className="h-[52px] flex-1 rounded-none border-0 bg-v-surfaceContainerLowest/50 px-4 text-base text-v-onSurface placeholder:text-v-onSurfaceVariant/50 focus:outline-none focus:ring-2 focus:ring-v-primary/40"
+                  />
+                  <button
+                    type="submit"
+                    className="shrink-0 bg-gradient-to-br from-v-primary to-v-primaryContainer px-6 font-label text-sm font-semibold text-v-onPrimaryContainer transition hover:opacity-95"
+                  >
+                    Search
+                  </button>
+                </form>
+              </div>
+              {!isLoggedIn && (
+                <Link
+                  href="/pricing"
+                  className="mt-3 block text-sm text-v-onSurfaceVariant transition-colors hover:text-v-primary"
+                >
+                  View pricing →
+                </Link>
+              )}
+            </div>
 
-          <div className="flex-1 lg:block">
-            <div className="relative p-6">
-              <div
-                className="absolute -inset-5 -z-10 rounded-2xl blur-[30px]"
-                style={{
-                  background: "radial-gradient(circle, #7c3aed15 0%, transparent 70%)",
-                }}
-                aria-hidden
-              />
-              <div className="glass-card animate-float-hero rounded-2xl p-6">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-vertex-muted">AI Match Results</span>
-                  <span className="h-2 w-2 animate-pulse rounded-full bg-green-500" style={{ background: "#22c55e" }} />
-                  <span className="text-xs text-vertex-muted">Live</span>
+            <div className="relative lg:col-span-5">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="glass-card glass-card-interactive flex aspect-square flex-col items-center justify-center rounded-[2rem] p-6 text-center">
+                  <span className="material-symbols-outlined mb-4 text-4xl text-v-primary" aria-hidden>
+                    rocket_launch
+                  </span>
+                  <h3 className="font-headline text-2xl font-bold text-indigo-50">{stat1Value}</h3>
+                  <p className="text-xs uppercase tracking-widest text-v-onSurfaceVariant">Roles indexed</p>
                 </div>
-                <div className="mt-4 flex flex-col gap-3">
+                <div className="glass-card glass-card-interactive mt-12 flex aspect-square flex-col items-center justify-center rounded-[2rem] p-6 text-center">
+                  <span className="material-symbols-outlined mb-4 text-4xl text-v-tertiary" aria-hidden>
+                    target
+                  </span>
+                  <h3 className="font-headline text-2xl font-bold text-indigo-50">Smart</h3>
+                  <p className="text-xs uppercase tracking-widest text-v-onSurfaceVariant">Match focus</p>
+                </div>
+              </div>
+              <div className="glass-card glass-card-interactive mt-6 hidden rounded-[2rem] p-6 lg:block">
+                <div className="mb-3 flex items-center gap-2">
+                  <span className="text-xs text-v-onSurfaceVariant">AI match preview</span>
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+                  <span className="text-xs text-v-onSurfaceVariant">Live</span>
+                </div>
+                <div className="flex flex-col gap-3">
                   {JOB_CARDS.map((card) => (
                     <div
                       key={card.initials}
-                      className="glass-card rounded-xl p-4"
-                      style={{
-                        borderTop: `2px solid ${card.borderColor}`,
-                        padding: card.highlight ? "1.25rem" : "1rem",
-                      }}
+                      className="rounded-xl border border-v-outlineVariant/15 bg-v-surfaceContainerLowest/40 p-4"
+                      style={{ borderTopWidth: 2, borderTopColor: card.borderColor }}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex gap-3">
@@ -156,25 +191,22 @@ export default function HomePage() {
                             {card.initials}
                           </div>
                           <div>
-                            <p className="text-sm font-bold text-vertex-white">{card.job}</p>
-                            <p className="text-xs text-vertex-muted">{card.company}</p>
+                            <p className="text-sm font-bold text-indigo-50">{card.job}</p>
+                            <p className="text-xs text-v-onSurfaceVariant">{card.company}</p>
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="text-sm font-bold" style={{ color: card.matchColor }}>{card.match}</p>
-                          <p className="text-xs text-vertex-muted">Match</p>
+                          <p className="text-sm font-bold" style={{ color: card.matchColor }}>
+                            {card.match}
+                          </p>
+                          <p className="text-xs text-v-onSurfaceVariant">Match</p>
                         </div>
                       </div>
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {card.skills.map((s) => (
                           <span
                             key={s}
-                            className="rounded px-2 py-0.5 text-xs"
-                            style={{
-                              background: "#1e1e3a",
-                              color: "#94a3b8",
-                              border: "1px solid #2a2a3d",
-                            }}
+                            className="rounded-full bg-v-surfaceContainerHighest px-2 py-0.5 text-xs text-v-onSurfaceVariant"
                           >
                             {s}
                           </span>
@@ -189,210 +221,216 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* SECTION 2 — STATS ROW */}
-      <section className="mt-20 py-12">
-        <div className="container px-6">
-          <div className="grid grid-cols-2 justify-items-center gap-8 md:flex md:flex-wrap md:items-center md:justify-center md:gap-0">
-            <div className="text-center md:flex md:items-center">
-              <div className="px-4 text-center md:px-10">
-                <p className="text-3xl font-bold text-vertex-white">{stat1Value}</p>
-                <p className="mt-0.5 text-sm text-vertex-muted">Jobs Available</p>
+      <div className="section-divider mx-auto max-w-5xl px-6" />
+
+      {/* SECTION 2 — STATS */}
+      <section className="mt-12 py-10 sm:mt-16 sm:py-14">
+        <div className="container px-4 sm:px-6">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            {[
+              { value: stat1Value, label: "Jobs available" },
+              { value: "8", label: "Job boards" },
+              { value: "Free", label: "To get started" },
+              { value: "Daily", label: "Fresh updates" },
+            ].map((s) => (
+              <div
+                key={s.label}
+                className="glass-card glass-card-interactive rounded-2xl px-4 py-6 text-center md:px-6"
+              >
+                <p className="font-headline text-3xl font-bold tabular-nums text-white md:text-4xl">{s.value}</p>
+                <p className="mt-1.5 font-label text-xs font-medium uppercase tracking-widest text-v-onSurfaceVariant">
+                  {s.label}
+                </p>
               </div>
-              <div className="hidden h-10 w-px md:block" style={{ background: "#2a2a3d" }} />
-            </div>
-            <div className="text-center md:flex md:items-center">
-              <div className="px-4 text-center md:px-10">
-                <p className="text-3xl font-bold text-vertex-white">8</p>
-                <p className="mt-0.5 text-sm text-vertex-muted">Job Boards</p>
-              </div>
-              <div className="hidden h-10 w-px md:block" style={{ background: "#2a2a3d" }} />
-            </div>
-            <div className="text-center md:flex md:items-center">
-              <div className="px-4 text-center md:px-10">
-                <p className="text-3xl font-bold text-vertex-white">Free</p>
-                <p className="mt-0.5 text-sm text-vertex-muted">To Get Started</p>
-              </div>
-              <div className="hidden h-10 w-px md:block" style={{ background: "#2a2a3d" }} />
-            </div>
-            <div className="text-center md:flex md:items-center">
-              <div className="px-4 text-center md:px-10">
-                <p className="text-3xl font-bold text-vertex-white">Daily</p>
-                <p className="mt-0.5 text-sm text-vertex-muted">Fresh Updates</p>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* SECTION 3 — HOW IT WORKS JOB SEEKERS */}
-      <section className="py-20">
-        <div className="container px-6">
-          <p className="mb-4 text-xs font-medium uppercase tracking-widest gradient-text">FOR JOB SEEKERS</p>
-          <h2 className="mb-4 text-3xl font-bold text-vertex-white">Land your next role faster</h2>
-          <p className="mb-12 text-base text-vertex-muted">Three steps to your perfect match</p>
-          <div className="grid gap-6 md:grid-cols-3">
-            <div className="glass-card rounded-2xl p-8">
-              <p className="text-4xl font-bold gradient-text">01</p>
-              <Briefcase className="mt-4 h-8 w-8" style={{ color: "#6366f1" }} />
-              <h3 className="mt-4 text-lg font-bold text-vertex-white">Drop in your CV</h3>
-              <p className="mt-2 text-sm leading-relaxed text-vertex-muted">
-                PDF, any format, any length. We handle the rest automatically.
-              </p>
-            </div>
-            <div className="glass-card rounded-2xl p-8">
-              <p className="text-4xl font-bold gradient-text">02</p>
-              <Brain className="mt-4 h-8 w-8" style={{ color: "#6366f1" }} />
-              <h3 className="mt-4 text-lg font-bold text-vertex-white">We read it properly</h3>
-              <p className="mt-2 text-sm leading-relaxed text-vertex-muted">
-                We understand your experience and identify what you&apos;re actually good at.
-              </p>
-            </div>
-            <div className="glass-card rounded-2xl p-8">
-              <p className="text-4xl font-bold gradient-text">03</p>
-              <Zap className="mt-4 h-8 w-8" style={{ color: "#6366f1" }} />
-              <h3 className="mt-4 text-lg font-bold text-vertex-white">See only what fits</h3>
-              <p className="mt-2 text-sm leading-relaxed text-vertex-muted">
-                Jobs ranked by how well they match your background. Worth applying to, every one.
-              </p>
-            </div>
+      {/* SECTION 3 — JOB SEEKERS */}
+      <section className="py-14 sm:py-24">
+        <div className="container px-4 sm:px-6">
+          <p className="mb-3 font-label text-xs font-semibold uppercase tracking-[0.25em] text-v-primary">
+            For job seekers
+          </p>
+          <h2 className="mb-3 max-w-2xl text-balance font-headline text-3xl font-bold text-white sm:text-4xl">
+            Land your next role faster
+          </h2>
+          <p className="mb-10 max-w-xl text-pretty text-v-onSurfaceVariant sm:mb-14">
+            Three steps from upload to matches that actually fit your story.
+          </p>
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+            {[
+              {
+                step: "01",
+                icon: Briefcase,
+                title: "Drop in your CV",
+                body: "PDF, any format, any length. We handle the rest automatically.",
+              },
+              {
+                step: "02",
+                icon: Brain,
+                title: "We read it properly",
+                body: "We surface what you're strong at—not just buzzwords.",
+              },
+              {
+                step: "03",
+                icon: Zap,
+                title: "See only what fits",
+                body: "Ranked matches worth your time. Less spray-and-pray.",
+              },
+            ].map((c) => {
+              const Icon = c.icon;
+              return (
+                <div
+                  key={c.step}
+                  className="glass-card glass-card-interactive group relative overflow-hidden rounded-2xl p-8"
+                >
+                  <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-v-primary/5 blur-2xl transition-opacity group-hover:opacity-100" />
+                  <p className="bg-gradient-to-br from-v-primary to-v-primaryContainer bg-clip-text font-headline text-4xl font-bold text-transparent">
+                    {c.step}
+                  </p>
+                  <Icon className="mt-4 h-8 w-8 text-v-primary" aria-hidden />
+                  <h3 className="mt-4 font-headline text-lg font-bold text-white">{c.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-v-onSurfaceVariant">{c.body}</p>
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>
 
-      {/* SECTION 4 — HOW IT WORKS COMPANIES */}
-      <section className="py-20">
-        <div className="container px-6">
-          <div className="glass-card rounded-2xl p-8 md:p-12">
-            <p className="mb-4 text-xs font-medium uppercase tracking-widest gradient-text">FOR COMPANIES</p>
-            <h2 className="mb-4 text-3xl font-bold text-vertex-white">
-              Find the right talent, not just any talent
-            </h2>
-            <p className="mb-12 text-base text-vertex-muted">
-              Stop sifting through irrelevant applications
+      <div className="section-divider mx-auto max-w-5xl px-6" />
+
+      {/* SECTION 4 — COMPANIES */}
+      <section className="py-14 sm:py-24">
+        <div className="container px-4 sm:px-6">
+          <div className="glass-card glass-card-interactive relative overflow-hidden rounded-3xl border-v-outlineVariant/15 p-6 sm:p-10 md:p-14">
+            <div className="pointer-events-none absolute -left-20 top-1/2 h-64 w-64 -translate-y-1/2 rounded-full bg-v-tertiaryContainer/10 blur-3xl" />
+            <p className="mb-3 font-label text-xs font-semibold uppercase tracking-[0.25em] text-v-tertiary">
+              For companies
             </p>
-            <div className="grid gap-6 md:grid-cols-3">
-              <div className="glass-card rounded-xl p-6">
-                <p className="text-4xl font-bold gradient-text">01</p>
-                <Search className="mt-4 h-8 w-8" style={{ color: "#6366f1" }} />
-                <h3 className="mt-4 text-lg font-bold text-vertex-white">Enter what you need</h3>
-                <p className="mt-2 text-sm leading-relaxed text-vertex-muted">
-                  Tell us the skills and experience level you are looking for in simple terms.
-                </p>
-              </div>
-              <div className="glass-card rounded-xl p-6">
-                <p className="text-4xl font-bold gradient-text">02</p>
-                <Brain className="mt-4 h-8 w-8" style={{ color: "#6366f1" }} />
-                <h3 className="mt-4 text-lg font-bold text-vertex-white">We search intelligently</h3>
-                <p className="mt-2 text-sm leading-relaxed text-vertex-muted">
-                  Our system reads candidate profiles the same way a human recruiter would.
-                </p>
-              </div>
-              <div className="glass-card rounded-xl p-6">
-                <p className="text-4xl font-bold gradient-text">03</p>
-                <Users className="mt-4 h-8 w-8" style={{ color: "#6366f1" }} />
-                <h3 className="mt-4 text-lg font-bold text-vertex-white">See ranked candidates</h3>
-                <p className="mt-2 text-sm leading-relaxed text-vertex-muted">
-                  Every candidate scored by relevance. The best fit always rises to the top.
-                </p>
-              </div>
+            <h2 className="mb-3 max-w-2xl text-balance font-headline text-3xl font-bold text-white sm:text-4xl">
+              Find the right talent—not just any talent
+            </h2>
+            <p className="mb-10 max-w-xl text-pretty text-v-onSurfaceVariant sm:mb-12">
+              Stop sifting through irrelevant applications. Start with signal.
+            </p>
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+              {[
+                {
+                  step: "01",
+                  icon: Search,
+                  title: "Enter what you need",
+                  body: "Skills and seniority in plain language—no rigid forms.",
+                },
+                {
+                  step: "02",
+                  icon: Brain,
+                  title: "Search intelligently",
+                  body: "Profiles read the way a strong recruiter would read them.",
+                },
+                {
+                  step: "03",
+                  icon: Users,
+                  title: "See ranked candidates",
+                  body: "Relevance-first ordering. The best fit rises naturally.",
+                },
+              ].map((c) => {
+                const Icon = c.icon;
+                return (
+                  <div
+                    key={c.step}
+                    className="rounded-2xl border border-v-outlineVariant/10 bg-v-surfaceContainerLowest/30 p-6 transition-colors hover:border-v-outlineVariant/25"
+                  >
+                    <p className="bg-gradient-to-br from-v-tertiary to-v-primary bg-clip-text font-headline text-3xl font-bold text-transparent">
+                      {c.step}
+                    </p>
+                    <Icon className="mt-3 h-8 w-8 text-v-primary" aria-hidden />
+                    <h3 className="mt-3 font-headline text-lg font-bold text-white">{c.title}</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-v-onSurfaceVariant">{c.body}</p>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
       </section>
 
       {/* SECTION 5 — FEATURES */}
-      <section className="py-20">
-        <div className="container px-6">
-          <h2 className="text-center text-3xl font-bold text-vertex-white">Built different</h2>
-          <p className="mx-auto mt-2 max-w-xl text-center text-base text-vertex-muted">
-            Everything you&apos;d expect. Nothing you don&apos;t need.
+      <section className="py-14 sm:py-24">
+        <div className="container px-4 sm:px-6">
+          <h2 className="text-center font-headline text-3xl font-bold text-white sm:text-4xl">Built different</h2>
+          <p className="mx-auto mt-3 max-w-lg text-center text-pretty text-v-onSurfaceVariant">
+            Everything you need to move faster—without the clutter of a typical job site.
           </p>
-          <div className="mx-auto mt-12 grid max-w-4xl gap-6 md:grid-cols-3">
-            <div className="glass-card rounded-2xl p-8 transition-colors hover:border-indigo-500/40">
-              <Shield className="mb-4 h-10 w-10" style={{ color: "#6366f1" }} />
-              <h3 className="text-lg font-bold text-vertex-white">Matches that make sense</h3>
-              <p className="mt-2 text-sm leading-relaxed text-vertex-muted">
-                Not just keyword matching. Vertex understands your experience and finds roles that genuinely fit your background.
+          <div className="mx-auto mt-10 grid max-w-5xl grid-cols-1 gap-6 md:grid-cols-3">
+            {[
+              {
+                icon: Shield,
+                title: "Matches that make sense",
+                body: "Beyond keywords—context from your real experience.",
+              },
+              {
+                icon: Globe,
+                title: "One place for everything",
+                body: "Search and ranking across sources, in one calm view.",
+              },
+              {
+                icon: Users,
+                title: "Built for both sides",
+                body: "Candidates and teams each get clarity—not noise.",
+              },
+            ].map((f) => {
+              const Icon = f.icon;
+              return (
+                <div
+                  key={f.title}
+                  className="glass-card glass-card-interactive rounded-2xl p-8"
+                >
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-v-primary/10 ring-1 ring-v-primary/20">
+                    <Icon className="h-6 w-6 text-v-primary" aria-hidden />
+                  </div>
+                  <h3 className="font-headline text-lg font-bold text-white">{f.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-v-onSurfaceVariant">{f.body}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* SECTION 6 — CTA */}
+      <section className="my-14 sm:my-24">
+        <div className="container px-4 sm:px-6">
+          <div className="relative overflow-hidden rounded-3xl border border-v-primary/25 bg-gradient-to-br from-v-primary/[0.09] via-v-surfaceContainerLow/80 to-transparent px-4 py-14 text-center shadow-[0_0_80px_-20px_rgba(128,131,255,0.45)] sm:px-8 sm:py-16 md:py-20">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-20%,rgba(192,193,255,0.2),transparent_50%)]" />
+            <div className="relative">
+              <h2 className="text-balance font-headline text-3xl font-bold text-white sm:text-4xl">
+                Ready to find your match?
+              </h2>
+              <p className="mx-auto mt-3 max-w-md text-pretty text-v-onSurfaceVariant">
+                Join Vertex today—free to start, no credit card required.
               </p>
-            </div>
-            <div className="glass-card rounded-2xl p-8 transition-colors hover:border-indigo-500/40">
-              <Globe className="mb-4 h-10 w-10" style={{ color: "#6366f1" }} />
-              <h3 className="text-lg font-bold text-vertex-white">One place for everything</h3>
-              <p className="mt-2 text-sm leading-relaxed text-vertex-muted">
-                Stop jumping between job boards. Every major platform searched and ranked for you automatically.
-              </p>
-            </div>
-            <div className="glass-card rounded-2xl p-8 transition-colors hover:border-indigo-500/40">
-              <Users className="mb-4 h-10 w-10" style={{ color: "#6366f1" }} />
-              <h3 className="text-lg font-bold text-vertex-white">Built for both sides</h3>
-              <p className="mt-2 text-sm leading-relaxed text-vertex-muted">
-                Job seekers find better roles. Companies find better people. Everyone gets what they came for.
+              <button
+                type="button"
+                onClick={() => router.push("/auth/register")}
+                className="btn-stitch-primary mx-auto mt-8 inline-flex items-center gap-2 px-8 py-3.5"
+              >
+                Create free account
+                <ArrowRight className="h-4 w-4" />
+              </button>
+              <p className="mt-8 text-sm text-v-onSurfaceVariant">
+                Already have an account?{" "}
+                <Link href="/auth/login" className="font-semibold text-v-primary transition hover:text-v-primaryContainer">
+                  Sign in
+                </Link>
               </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* SECTION 6 — CTA BANNER */}
-      <section className="my-20">
-        <div className="container px-6">
-          <div
-            className="glass-card rounded-2xl py-16 px-6 text-center md:py-20 md:px-12"
-            style={{
-              border: "1px solid rgba(99,102,241,0.3)",
-              background: "rgba(99,102,241,0.05)",
-              boxShadow: "0 0 60px rgba(124,58,237,0.1)",
-            }}
-          >
-            <h2 className="mb-4 text-3xl font-bold text-vertex-white">Ready to find your match?</h2>
-            <p className="mb-8 text-base text-vertex-muted">Join Vertex today. Free to get started.</p>
-            <button
-              type="button"
-              onClick={() => router.push("/auth/register")}
-              className="glow-button mx-auto inline-flex items-center gap-2 rounded-lg px-6 py-3 text-sm font-medium text-white"
-            >
-              Create Free Account
-              <ArrowRight className="h-4 w-4" />
-            </button>
-            <p className="mt-6 text-sm text-vertex-muted">
-              Already have an account?{" "}
-              <Link href="/auth/login" className="font-medium hover:underline" style={{ color: "#6366f1" }}>
-                Sign in
-              </Link>
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* SECTION 7 — FOOTER */}
-      <footer className="border-t py-12" style={{ borderColor: "#1e1e3a" }}>
-        <div className="container px-6">
-          <div className="flex flex-col gap-8 md:flex-row md:items-start md:justify-between">
-            <div>
-              <Logo size="sm" href="/" />
-              <p className="mt-0.5 text-xs text-vertex-muted">© 2026 Vertex. All rights reserved.</p>
-            </div>
-            <div className="flex flex-wrap gap-6 text-sm text-vertex-muted">
-              {/* TODO: replace # with real routes */}
-              <Link href="#" className="transition-colors hover:text-vertex-white">
-                Privacy Policy
-              </Link>
-              <Link href="#" className="transition-colors hover:text-vertex-white">
-                Terms
-              </Link>
-              <Link href="#" className="transition-colors hover:text-vertex-white">
-                Contact
-              </Link>
-              <Link href="#" className="transition-colors hover:text-vertex-white">
-                About
-              </Link>
-            </div>
-            <p className="text-right text-sm text-vertex-muted md:text-right">
-              Made with ♥ for job seekers everywhere
-            </p>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

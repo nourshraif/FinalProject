@@ -12,6 +12,7 @@ export interface SaveCandidateButtonProps {
   onUnsave?: () => void;
   size?: "sm" | "md";
   showLabel?: boolean;
+  className?: string;
 }
 
 export function SaveCandidateButton({
@@ -22,6 +23,7 @@ export function SaveCandidateButton({
   onUnsave,
   size = "md",
   showLabel = true,
+  className,
 }: SaveCandidateButtonProps) {
   const [isSaved, setIsSaved] = useState(initialSaved);
   const [isLoading, setIsLoading] = useState(false);
@@ -53,7 +55,7 @@ export function SaveCandidateButton({
       type="button"
       onClick={handleClick}
       disabled={!token || isLoading}
-      className="inline-flex items-center gap-1.5 rounded-md transition-all duration-300 hover:scale-105 disabled:opacity-50"
+      className={["inline-flex items-center gap-1.5 rounded-md transition-all duration-300 hover:scale-105 disabled:opacity-50", className].filter(Boolean).join(" ")}
       style={{
         color: isSaved ? "#6366f1" : "#94a3b8",
       }}

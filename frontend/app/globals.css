@@ -24,7 +24,7 @@
   }
 
   .dark {
-    --background: 240 10% 4%;
+    --background: 222 47% 7%;
     --foreground: 0 0% 100%;
     --card: 240 10% 8%;
     --card-foreground: 0 0% 100%;
@@ -44,14 +44,18 @@
 }
 
 @layer base {
-  * {
-    @apply border-vertex-border;
+  /* Default border color only — do not force border-width on every node */
+  *,
+  *::before,
+  *::after {
+    border-color: hsl(var(--border));
   }
   body {
-    @apply antialiased;
-    background: linear-gradient(165deg, #1e1b4b 0%, #2d2a5c 35%, #3d2c6e 70%, #4c3d7a 100%);
-    background-attachment: fixed;
-    color: #ffffff;
+    @apply min-h-screen font-body antialiased;
+    min-height: max(884px, 100dvh);
+    /* Stitch surface token — same as v-bg / background */
+    background-color: #0b1326;
+    color: #dae2fd;
   }
 }
 
@@ -105,13 +109,120 @@
   animation: constellation-aurora-3 20s ease-in-out infinite 8s;
 }
 
-/* Glassmorphism card */
+/* Glass — matches Stitch CDN .glass-card / .glass-panel (no heavy shadow on card) */
 .glass-card {
-  background: rgba(19, 19, 31, 0.8);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(124, 58, 237, 0.2);
-  border-radius: 16px;
+  background: rgba(45, 52, 73, 0.4);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  /* Ghost edge: outline-variant @ 20% — DESIGN.md */
+  border: 1px solid rgba(70, 69, 84, 0.2);
+  border-radius: 0.75rem;
+}
+
+.glass-panel {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background: rgba(19, 27, 46, 0.6);
+  border: 1px solid rgba(70, 69, 84, 0.2);
+  border-radius: 0.75rem;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.aurora-bg {
+  background:
+    radial-gradient(circle at 20% 30%, rgba(128, 131, 255, 0.15) 0%, transparent 50%),
+    radial-gradient(circle at 80% 70%, rgba(160, 120, 255, 0.1) 0%, transparent 50%),
+    #0b1326;
+}
+
+.aurora-glow {
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(192, 193, 255, 0.08) 0%,
+    transparent 70%
+  );
+}
+
+.material-symbols-outlined {
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+}
+
+/* Ambient motion — slow, imperceptible “breathing” (Stitch glows) */
+@keyframes aurora-drift {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translate(-2%, 1%) scale(1.03);
+    opacity: 0.65;
+  }
+}
+@keyframes aurora-drift-slow {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(2%, -1.5%) scale(1.02);
+  }
+}
+.animate-aurora-drift {
+  animation: aurora-drift 28s ease-in-out infinite;
+}
+.animate-aurora-drift-slow {
+  animation: aurora-drift-slow 36s ease-in-out infinite;
+}
+
+/* Interactive glass — hover lift + luminous edge (use with glass-card) */
+.glass-card-interactive {
+  transition:
+    transform 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.35s ease,
+    box-shadow 0.45s ease;
+}
+.glass-card-interactive:hover {
+  transform: translateY(-2px);
+  border-color: rgba(192, 193, 255, 0.18);
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.38),
+    0 0 0 1px rgba(192, 193, 255, 0.06);
+}
+
+@layer components {
+  /* Primary CTA — 135° glow (DESIGN.md) */
+  .btn-stitch-primary {
+    @apply rounded-full bg-gradient-to-br from-v-primary to-v-primaryContainer font-label text-sm font-bold uppercase tracking-wider text-v-onPrimaryContainer shadow-lg shadow-v-primary/25 transition duration-300;
+  }
+  .btn-stitch-primary:hover {
+    box-shadow:
+      0 12px 40px rgba(128, 131, 255, 0.35),
+      0 0 0 1px rgba(255, 255, 255, 0.06);
+    filter: brightness(1.05);
+  }
+  .btn-stitch-primary:active {
+    transform: scale(0.98);
+  }
+}
+
+/* Section rhythm */
+.section-divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(192, 193, 255, 0.12) 20%,
+    rgba(192, 193, 255, 0.12) 80%,
+    transparent
+  );
 }
 
 /* Gradient text */
@@ -145,17 +256,17 @@
   background: rgba(124, 58, 237, 0.1);
 }
 
-/* Input fields */
+/* Input fields — Stitch: surface-container-lowest + primary focus glow */
 .vertex-input {
-  background: rgba(13, 13, 26, 0.8);
-  border: 1px solid rgba(42, 42, 61, 0.8);
-  color: white;
-  border-radius: 10px;
-  transition: border-color 0.3s, box-shadow 0.3s;
+  background: rgba(6, 14, 32, 0.75);
+  border: 1px solid rgba(70, 69, 84, 0.25);
+  color: #dae2fd;
+  border-radius: 0.75rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 .vertex-input:focus {
-  border-color: #7c3aed;
-  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
+  border-color: rgba(192, 193, 255, 0.4);
+  box-shadow: 0 0 0 3px rgba(192, 193, 255, 0.12);
   outline: none;
 }
 
@@ -290,3 +401,63 @@
 .animate-draw-line {
   animation: draw-line 2s ease-out forwards;
 }
+
+/* Toast slide-in */
+@keyframes slide-in {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.animate-toast-slide-in {
+  animation: slide-in 0.3s ease-out forwards;
+}
+
+/* Skeleton shimmer */
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.animate-skeleton-shimmer {
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s infinite;
+}
+
+/* Page transitions */
+.page-enter {
+  animation: page-fade-in 0.3s ease-out;
+}
+
+@keyframes page-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-in {
+  from { transform: scale(0); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.animate-scale-in {
+  animation: scale-in 0.4s ease-out;
+}
+
+@keyframes notification-pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+}
+
+/* TODO: implement keyboard shortcuts
+   Escape: close any open modal
+   Ctrl+K: open search
+*/

@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { SlidersHorizontal } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { toast } from "sonner";
 
 const SKELETON_COUNT = 6;
 
@@ -31,6 +32,7 @@ export default function MatchPage() {
     setError(message);
     setJobs([]);
     setHasSearched(true);
+    toast.error(message);
   }, []);
 
   const noCVYet = !jobsLoading && jobs.length === 0 && !hasSearched && !error;

@@ -6,8 +6,10 @@ import Link from "next/link";
 import { User, Building2, Loader2 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/context/ToastContext";
 import { registerUser } from "@/lib/api";
 import type { User as AuthUser } from "@/context/AuthContext";
+import GoogleButton from "@/components/GoogleButton";
 
 type UserType = "jobseeker" | "company";
 
@@ -29,6 +31,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export default function RegisterPage() {
   const router = useRouter();
   const { login } = useAuth();
+  const { showToast } = useToast();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -43,23 +46,33 @@ export default function RegisterPage() {
   async function handleRegister() {
     setError("");
     if (!fullName.trim() || !email.trim() || !password || !confirmPassword) {
-      setError("Please fill in all fields");
+      const msg = "Please fill in all fields";
+      setError(msg);
+      showToast(msg, "error");
       return;
     }
     if (password.length < 6) {
-      setError("Password must be at least 6 characters");
+      const msg = "Password must be at least 6 characters";
+      setError(msg);
+      showToast(msg, "error");
       return;
     }
     if (password !== confirmPassword) {
-      setError("Passwords do not match");
+      const msg = "Passwords do not match";
+      setError(msg);
+      showToast(msg, "error");
       return;
     }
     if (!EMAIL_REGEX.test(email.trim())) {
-      setError("Please enter a valid email");
+      const msg = "Please enter a valid email";
+      setError(msg);
+      showToast(msg, "error");
       return;
     }
     if (userType === "company" && !companyName.trim()) {
-      setError("Please enter your company name");
+      const msg = "Please enter your company name";
+      setError(msg);
+      showToast(msg, "error");
       return;
     }
 
@@ -77,15 +90,19 @@ export default function RegisterPage() {
         email: res.email,
         full_name: res.full_name,
         user_type: res.user_type as "jobseeker" | "company",
+        is_admin: res.is_admin ?? false,
       };
       login(res.access_token, user);
+      showToast("Account created successfully", "success");
       if (user.user_type === "jobseeker") {
         router.push("/dashboard/jobseeker");
       } else {
         router.push("/dashboard/company");
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Registration failed");
+      const msg = e instanceof Error ? e.message : "Registration failed";
+      setError(msg);
+      showToast(msg, "error");
     } finally {
       setLoading(false);
     }
@@ -103,6 +120,49 @@ export default function RegisterPage() {
         <p className="mb-8 text-center text-sm text-vertex-muted">
           Join Vertex. Free to get started.
         </p>
+
+        <div className="mb-6">
+          <label className="mb-2 block text-xs text-vertex-muted">I am a...</label>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setUserType("jobseeker")}
+              className="glass-card flex flex-col items-center gap-1 rounded-xl p-4 text-left transition-colors cursor-pointer border-2"
+              style={{
+                borderColor: userType === "jobseeker" ? "#6366f1" : "#2a2a3d",
+                background: userType === "jobseeker" ? "rgba(99,102,241,0.1)" : undefined,
+              }}
+            >
+              <User className="h-6 w-6" style={{ color: "#6366f1" }} />
+              <span className="font-bold text-vertex-white">Job Seeker</span>
+              <span className="text-xs text-vertex-muted">Find your perfect role</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setUserType("company")}
+              className="glass-card flex flex-col items-center gap-1 rounded-xl p-4 text-left transition-colors cursor-pointer border-2"
+              style={{
+                borderColor: userType === "company" ? "#6366f1" : "#2a2a3d",
+                background: userType === "company" ? "rgba(99,102,241,0.1)" : undefined,
+              }}
+            >
+              <Building2 className="h-6 w-6" style={{ color: "#6366f1" }} />
+              <span className="font-bold text-vertex-white">Company</span>
+              <span className="text-xs text-vertex-muted">Find the right talent</span>
+            </button>
+          </div>
+        </div>
+
+        <GoogleButton
+          userType={userType}
+          label={`Continue with Google as ${userType === "company" ? "Company" : "Job Seeker"}`}
+        />
+
+        <div className="my-6 flex items-center gap-3">
+          <div className="h-px flex-1 bg-vertex-border" />
+          <span className="text-sm text-vertex-muted">or</span>
+          <div className="h-px flex-1 bg-vertex-border" />
+        </div>
 
         <div>
           <label className="mb-1 block text-xs text-vertex-muted">Full Name</label>
@@ -159,38 +219,6 @@ export default function RegisterPage() {
             onChange={(e) => setConfirmPassword(e.target.value)}
             disabled={loading}
           />
-        </div>
-
-        <div className="mt-6">
-          <label className="mb-2 block text-xs text-vertex-muted">I am a...</label>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => setUserType("jobseeker")}
-              className="glass-card flex flex-col items-center gap-1 rounded-xl p-4 text-left transition-colors cursor-pointer border-2"
-              style={{
-                borderColor: userType === "jobseeker" ? "#6366f1" : "#2a2a3d",
-                background: userType === "jobseeker" ? "rgba(99,102,241,0.1)" : undefined,
-              }}
-            >
-              <User className="h-6 w-6" style={{ color: "#6366f1" }} />
-              <span className="font-bold text-vertex-white">Job Seeker</span>
-              <span className="text-xs text-vertex-muted">Find your perfect role</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setUserType("company")}
-              className="glass-card flex flex-col items-center gap-1 rounded-xl p-4 text-left transition-colors cursor-pointer border-2"
-              style={{
-                borderColor: userType === "company" ? "#6366f1" : "#2a2a3d",
-                background: userType === "company" ? "rgba(99,102,241,0.1)" : undefined,
-              }}
-            >
-              <Building2 className="h-6 w-6" style={{ color: "#6366f1" }} />
-              <span className="font-bold text-vertex-white">Company</span>
-              <span className="text-xs text-vertex-muted">Find the right talent</span>
-            </button>
-          </div>
         </div>
 
         {userType === "company" && (

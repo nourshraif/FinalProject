@@ -11,6 +11,7 @@ import {
   getCandidateCount,
 } from "@/lib/api";
 import type { CompanyProfile } from "@/types";
+import { toast } from "sonner";
 
 const COMPANY_SIZE_OPTIONS = [
   "1-10",
@@ -63,7 +64,10 @@ function CompanyProfileContent() {
           description: p.description ?? "",
         });
       })
-      .catch(() => setProfile(null))
+      .catch((e) => {
+        setProfile(null);
+        toast.error(e instanceof Error ? e.message : "Failed to load profile");
+      })
       .finally(() => setLoading(false));
     getCandidateCount()
       .then(setTalentPoolCount)
@@ -88,7 +92,9 @@ function CompanyProfileContent() {
       .then((updated) => {
         setProfile(updated);
         setIsEditing(false);
+        toast.success("Company profile saved");
       })
+      .catch((e) => toast.error(e instanceof Error ? e.message : "Failed to save profile"))
       .finally(() => setSaveLoading(false));
   };
 
@@ -116,7 +122,7 @@ function CompanyProfileContent() {
 
   return (
     <div className="min-h-screen pt-24 pb-12">
-      <div className="mx-auto max-w-[900px] px-6">
+      <div className="mx-auto max-w-[900px] px-4 sm:px-6">
         {/* Header card */}
         <div className="glass-card mb-6 rounded-2xl p-8">
           {!isEditing ? (

@@ -4,13 +4,16 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Bookmark, X } from "lucide-react";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { ContactRequestModal } from "@/components/ContactRequestModal";
 import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/context/ToastContext";
 import {
   getSavedCandidates,
   unsaveCandidate,
   updateCandidateNotes,
 } from "@/lib/api";
 import type { SavedCandidate } from "@/types";
+import { ConfirmModal } from "@/components/ConfirmModal";
 
 function relativeTime(iso: string) {
   try {
@@ -43,6 +46,7 @@ const NOTES_MAX = 500;
 
 function SavedContent() {
   const { token } = useAuth();
+  const { showToast } = useToast();
   const [list, setList] = useState<SavedCandidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -50,13 +54,21 @@ function SavedContent() {
     useState<SavedCandidate | null>(null);
   const [notesDraft, setNotesDraft] = useState("");
   const [notesSaving, setNotesSaving] = useState(false);
+  const [unsaveTarget, setUnsaveTarget] = useState<SavedCandidate | null>(null);
+  const [contactModal, setContactModal] = useState<{
+    userId: number;
+    name: string;
+  } | null>(null);
 
   const load = useCallback(() => {
     if (!token) return;
     setLoading(true);
     getSavedCandidates(token)
       .then((data) => setList(Array.isArray(data) ? data : []))
-      .catch(() => setList([]))
+      .catch((e) => {
+        setList([]);
+        showToast(e instanceof Error ? e.message : "Failed to load saved candidates", "error");
+      })
       .finally(() => setLoading(false));
   }, [token]);
 
@@ -83,13 +95,20 @@ function SavedContent() {
     );
   });
 
-  const handleUnsave = (c: SavedCandidate) => {
-    if (!token) return;
-    unsaveCandidate(token, c.candidate_user_id).then(() => {
-      setList((prev) =>
-        prev.filter((x) => x.candidate_user_id !== c.candidate_user_id)
-      );
-    });
+  const handleUnsave = (c: SavedCandidate) => setUnsaveTarget(c);
+
+  const confirmUnsave = () => {
+    if (!unsaveTarget || !token) return;
+    const c = unsaveTarget;
+    setUnsaveTarget(null);
+    unsaveCandidate(token, c.candidate_user_id)
+      .then(() => {
+        setList((prev) =>
+          prev.filter((x) => x.candidate_user_id !== c.candidate_user_id)
+        );
+        showToast("Candidate removed from saved", "success");
+      })
+      .catch((e) => showToast(e instanceof Error ? e.message : "Failed to remove", "error"));
   };
 
   const handleSaveNotes = () => {
@@ -106,7 +125,9 @@ function SavedContent() {
           )
         );
         setSelectedCandidate(null);
+        showToast("Notes saved", "success");
       })
+      .catch((e) => showToast(e instanceof Error ? e.message : "Failed to save notes", "error"))
       .finally(() => setNotesSaving(false));
   };
 
@@ -115,7 +136,7 @@ function SavedContent() {
 
   return (
     <div className="min-h-screen pt-[6rem] pb-12">
-      <div className="mx-auto max-w-[1100px] px-6">
+      <div className="mx-auto max-w-[1100px] px-4 sm:px-6">
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold text-white">Saved Candidates</h1>
@@ -184,10 +205,7 @@ function SavedContent() {
             {filtered.map((c) => (
               <div
                 key={c.id}
-                className="glass-card rounded-xl p-6 transition-all hover:border-opacity-100"
-                style={{
-                  borderColor: "rgba(99, 102, 241, 0.2)",
-                }}
+                className="glass-card rounded-xl p-6 transition-all border border-[rgba(99,102,241,0.2)] hover:border-[rgba(99,102,241,0.3)]"
               >
                 <div className="flex items-start gap-3">
                   <div
@@ -259,22 +277,46 @@ function SavedContent() {
                   </button>
                 </div>
 
-                <div className="mt-4 flex items-center justify-between">
+                <div className="mt-4 flex items-center justify-between gap-2">
                   <span className="text-xs text-vertex-muted">
                     Saved {relativeTime(c.saved_at)}
                   </span>
-                  <a
-                    href={`mailto:${c.email ?? ""}`}
-                    className="ghost-button rounded-lg px-3 py-1.5 text-xs"
-                  >
-                    Contact
-                  </a>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setContactModal({
+                          userId: c.candidate_user_id,
+                          name: c.full_name ?? "Candidate",
+                        })
+                      }
+                      className="ghost-button rounded-lg px-3 py-1.5 text-xs"
+                    >
+                      Contact
+                    </button>
+                    <a
+                      href={`mailto:${c.email ?? ""}`}
+                      className="ghost-button rounded-lg px-3 py-1.5 text-xs"
+                    >
+                      Email
+                    </a>
+                  </div>
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {contactModal && token && (
+        <ContactRequestModal
+          isOpen={!!contactModal}
+          onClose={() => setContactModal(null)}
+          candidateUserId={contactModal.userId}
+          candidateName={contactModal.name}
+          token={token}
+        />
+      )}
 
       {selectedCandidate && (
         <div
@@ -335,6 +377,16 @@ function SavedContent() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={!!unsaveTarget}
+        title="Remove candidate"
+        message="Remove this candidate from your saved list?"
+        confirmText="Remove"
+        confirmStyle="destructive"
+        onConfirm={confirmUnsave}
+        onCancel={() => setUnsaveTarget(null)}
+      />
     </div>
   );
 }

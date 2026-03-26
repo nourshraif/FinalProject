@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Pencil, Trash2, X } from "lucide-react";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/context/ToastContext";
 import {
   getApplications,
   createApplication,
@@ -11,6 +12,7 @@ import {
   deleteApplication,
 } from "@/lib/api";
 import type { JobApplication, ApplicationStatus } from "@/types";
+import { ConfirmModal } from "@/components/ConfirmModal";
 
 const STATUS_OPTIONS: { value: ApplicationStatus; label: string }[] = [
   { value: "applied", label: "Applied" },
@@ -42,10 +44,12 @@ function formatDate(iso: string) {
 
 function TrackerContent() {
   const { token } = useAuth();
+  const { showToast } = useToast();
   const [applications, setApplications] = useState<JobApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<ApplicationStatus | "all">("all");
   const [showAddModal, setShowAddModal] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<JobApplication | null>(null);
   const [selectedAppForNotes, setSelectedAppForNotes] = useState<JobApplication | null>(null);
   const [notesText, setNotesText] = useState("");
 
@@ -63,7 +67,10 @@ function TrackerContent() {
     setLoading(true);
     getApplications(token)
       .then(setApplications)
-      .catch(() => setApplications([]))
+      .catch((e) => {
+        setApplications([]);
+        showToast(e instanceof Error ? e.message : "Failed to load applications", "error");
+      })
       .finally(() => setLoading(false));
   }, [token]);
 
@@ -105,25 +112,38 @@ function TrackerContent() {
         setAddStatus("applied");
         setAddNotes("");
         load();
+        showToast("Application added", "success");
       })
+      .catch((e) => showToast(e instanceof Error ? e.message : "Failed to add application", "error"))
       .finally(() => setAddSaving(false));
   };
 
   const handleStatusChange = (app: JobApplication, newStatus: ApplicationStatus) => {
     if (!token) return;
-    updateApplication(token, app.id, { status: newStatus }).then(() => {
-      setApplications((prev) =>
-        prev.map((a) => (a.id === app.id ? { ...a, status: newStatus } : a))
-      );
-    });
+    updateApplication(token, app.id, { status: newStatus })
+      .then(() => {
+        setApplications((prev) =>
+          prev.map((a) => (a.id === app.id ? { ...a, status: newStatus } : a))
+        );
+        showToast("Status updated", "success");
+      })
+      .catch((e) => showToast(e instanceof Error ? e.message : "Failed to update", "error"));
   };
 
   const handleDelete = (app: JobApplication) => {
-    if (!window.confirm("Delete this application?")) return;
-    if (!token) return;
-    deleteApplication(token, app.id).then(() => {
-      setApplications((prev) => prev.filter((a) => a.id !== app.id));
-    });
+    setDeleteTarget(app);
+  };
+
+  const confirmDelete = () => {
+    if (!deleteTarget || !token) return;
+    const app = deleteTarget;
+    setDeleteTarget(null);
+    deleteApplication(token, app.id)
+      .then(() => {
+        setApplications((prev) => prev.filter((a) => a.id !== app.id));
+        showToast("Application deleted", "success");
+      })
+      .catch((e) => showToast(e instanceof Error ? e.message : "Failed to delete", "error"));
   };
 
   const openNotes = (app: JobApplication) => {
@@ -142,7 +162,9 @@ function TrackerContent() {
           )
         );
         setSelectedAppForNotes(null);
+        showToast("Notes saved", "success");
       })
+      .catch((e) => showToast(e instanceof Error ? e.message : "Failed to save notes", "error"))
       .finally(() => setNotesSaving(false));
   };
 
@@ -160,7 +182,7 @@ function TrackerContent() {
 
   return (
     <div className="min-h-screen pt-24 pb-12">
-      <div className="mx-auto max-w-[1100px] px-6">
+      <div className="mx-auto max-w-[1100px] px-4 sm:px-6">
         {/* Page header */}
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -517,6 +539,16 @@ function TrackerContent() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={!!deleteTarget}
+        title="Delete application"
+        message="Remove this application from your tracker? This cannot be undone."
+        confirmText="Delete"
+        confirmStyle="destructive"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

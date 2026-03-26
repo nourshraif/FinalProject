@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/context/ToastContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { uploadProfileCV, getMySlug, updateProfileVisibility } from "@/lib/api";
+import { SkeletonProfileHeader } from "@/components/Skeleton";
 
 export default function ProfilePage() {
   return (
@@ -14,6 +17,7 @@ export default function ProfilePage() {
 
 function ProfileContent() {
   const { user, token } = useAuth();
+  const { showToast } = useToast();
   const [profile, setProfile] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
@@ -30,6 +34,20 @@ function ProfileContent() {
   const [yearsExp, setYearsExp] = useState(0);
   const [skills, setSkills] = useState<string[]>([]);
   const [newSkill, setNewSkill] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
+  const [isUploadingCV, setIsUploadingCV] = useState(false);
+  const [uploadResult, setUploadResult] = useState<{
+    success: boolean;
+    cv_filename: string;
+    skills_extracted: string[];
+    skills_count: number;
+  } | null>(null);
+  const cvInputRef = useRef<HTMLInputElement>(null);
+  const [slug, setSlug] = useState<string | null>(null);
+  const [profileUrl, setProfileUrl] = useState<string | null>(null);
+  const [slugLoading, setSlugLoading] = useState(true);
+  const [isPublic, setIsPublic] = useState(true);
+  const [copyFeedback, setCopyFeedback] = useState(false);
 
   const BASE_URL =
     process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -37,6 +55,20 @@ function ProfileContent() {
   useEffect(() => {
     if (token) fetchProfile();
     else setLoading(false);
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) {
+      setSlugLoading(false);
+      return;
+    }
+    getMySlug(token)
+      .then((r) => {
+        setSlug(r.slug);
+        setProfileUrl(r.profile_url);
+      })
+      .catch(() => setSlugLoading(false))
+      .finally(() => setSlugLoading(false));
   }, [token]);
 
   async function fetchProfile() {
@@ -56,6 +88,7 @@ function ProfileContent() {
       setLinkedinUrl((data.linkedin_url as string) || "");
       setYearsExp(Number(data.years_experience) || 0);
       setSkills(Array.isArray(data.skills) ? data.skills : []);
+      setIsPublic((data as { is_public?: boolean }).is_public !== false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load profile");
     } finally {
@@ -88,11 +121,16 @@ function ProfileContent() {
         setSuccess("Profile saved successfully");
         setIsEditing(false);
         fetchProfile();
+        showToast("Profile saved successfully", "success");
       } else {
-        setError((data?.detail as string) || "Failed to save profile");
+        const msg = (data?.detail as string) || "Failed to save profile";
+        setError(msg);
+        showToast(msg, "error");
       }
     } catch (e) {
-      setError("Failed to save profile");
+      const msg = "Failed to save profile";
+      setError(msg);
+      showToast(msg, "error");
     }
   }
 
@@ -113,12 +151,17 @@ function ProfileContent() {
         setEditingSkills(false);
         setSuccess("Skills saved successfully");
         fetchProfile();
+        showToast("Skills saved successfully", "success");
       } else {
         const data = await res.json().catch(() => ({}));
-        setError((data?.detail as string) || "Failed to save skills");
+        const msg = (data?.detail as string) || "Failed to save skills";
+        setError(msg);
+        showToast(msg, "error");
       }
     } catch (e) {
-      setError("Failed to save skills");
+      const msg = "Failed to save skills";
+      setError(msg);
+      showToast(msg, "error");
     }
   }
 
@@ -132,6 +175,35 @@ function ProfileContent() {
 
   function removeSkill(skill: string) {
     setSkills(skills.filter((s) => s !== skill));
+  }
+
+  async function handleCVUpload(file: File) {
+    if (!file.name.endsWith(".pdf")) {
+      setError("Please upload a PDF file only");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setError("File size must be under 10MB");
+      return;
+    }
+    if (!token) return;
+    setIsUploadingCV(true);
+    setError("");
+    setUploadResult(null);
+    try {
+      const result = await uploadProfileCV(token, file);
+      setUploadResult(result);
+      setSkills(result.skills_extracted || []);
+      await fetchProfile();
+      setSuccess("CV uploaded and skills extracted!");
+      showToast("CV uploaded and skills extracted!", "success");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to upload CV";
+      setError(msg);
+      showToast(msg, "error");
+    } finally {
+      setIsUploadingCV(false);
+    }
   }
 
   // Calculate completeness
@@ -169,13 +241,15 @@ function ProfileContent() {
 
   if (loading)
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
+      <div className="min-h-screen px-4 pb-12 pt-24 sm:px-6">
+        <div className="mx-auto max-w-3xl">
+          <SkeletonProfileHeader />
+        </div>
       </div>
     );
 
   return (
-    <div className="min-h-screen px-6 pb-12 pt-24">
+    <div className="min-h-screen px-4 pb-12 pt-24 sm:px-6">
       <div className="mx-auto max-w-3xl">
         {/* Success/Error messages */}
         {success && (
@@ -202,6 +276,86 @@ function ProfileContent() {
             {error}
           </div>
         )}
+
+        {/* Public Profile URL Card */}
+        <div className="glass-card mb-4 p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-bold text-white">Your Public Profile</p>
+              <p
+                className="mt-1 font-mono text-sm"
+                style={{ color: "#6366f1" }}
+              >
+                {slugLoading
+                  ? "Generating..."
+                  : profileUrl || "localhost:3000/u/your-slug"}
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <button
+                type="button"
+                onClick={() => {
+                  if (profileUrl) {
+                    navigator.clipboard.writeText(profileUrl);
+                    setCopyFeedback(true);
+                    showToast("Copied! ✓", "success");
+                    setTimeout(() => setCopyFeedback(false), 2000);
+                  }
+                }}
+                disabled={!profileUrl || slugLoading}
+                className="ghost-button rounded-lg px-3 py-2 text-sm"
+              >
+                {copyFeedback ? "Copied! ✓" : "Copy Link"}
+              </button>
+              {profileUrl && (
+                <a
+                  href={`/u/${slug}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ghost-button rounded-lg px-3 py-2 text-center text-sm"
+                >
+                  View Profile
+                </a>
+              )}
+            </div>
+          </div>
+          <div className="mt-4 flex items-center gap-2 border-t border-white/10 pt-4">
+            <span className="text-xs text-vertex-muted">Public profile</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={isPublic}
+              onClick={() => {
+                if (!token) return;
+                const next = !isPublic;
+                setIsPublic(next);
+                updateProfileVisibility(token, next)
+                  .then(() => {
+                    showToast(
+                      next ? "Profile is now public" : "Profile is now private",
+                      "success"
+                    );
+                  })
+                  .catch(() => {
+                    setIsPublic(isPublic);
+                    showToast("Failed to update visibility", "error");
+                  });
+              }}
+              className={`relative h-8 w-14 shrink-0 rounded-full transition-colors ${
+                isPublic ? "bg-indigo-600" : "bg-white/20"
+              }`}
+            >
+              <span
+                className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow transition-transform ${
+                  isPublic ? "left-7" : "left-1"
+                }`}
+              />
+            </button>
+            {!isPublic && (
+              <span className="text-xs text-vertex-muted">(hidden)</span>
+            )}
+          </div>
+        </div>
 
         {/* Profile Header Card */}
         <div className="glass-card mb-4 p-8">
@@ -297,7 +451,7 @@ function ProfileContent() {
               <h2 className="mb-6 text-lg font-bold text-white">
                 Edit Profile
               </h2>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <label
                     style={{ color: "#94a3b8" }}
@@ -532,6 +686,154 @@ function ProfileContent() {
               >
                 Save Skills
               </button>
+            </div>
+          )}
+        </div>
+
+        {/* CV Upload Card */}
+        <div className="glass-card mb-4 p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-white">
+                Your CV
+              </h2>
+              <p
+                className="mt-1 text-xs"
+                style={{ color: "#94a3b8" }}
+              >
+                Upload your CV to get matched to jobs and appear in company searches
+              </p>
+            </div>
+          </div>
+
+          {profile?.cv_filename ? (
+            <div
+              className="mb-4 flex items-center gap-3 rounded-lg p-3"
+              style={{
+                background: "rgba(34,197,94,0.08)",
+                border: "1px solid rgba(34,197,94,0.2)",
+              }}
+            >
+              <span style={{ color: "#22c55e" }}>📄</span>
+              <div className="flex-1">
+                <p className="text-sm font-medium" style={{ color: "#22c55e" }}>
+                  CV Uploaded
+                </p>
+                <p className="text-xs" style={{ color: "#64748b" }}>
+                  {profile.cv_filename as string}
+                </p>
+              </div>
+              <span
+                className="rounded-full px-2 py-1 text-xs"
+                style={{
+                  background: "rgba(34,197,94,0.15)",
+                  color: "#22c55e",
+                }}
+              >
+                Active
+              </span>
+            </div>
+          ) : (
+            <div
+              className="mb-4 rounded-lg p-3"
+              style={{
+                background: "rgba(239,68,68,0.08)",
+                border: "1px solid rgba(239,68,68,0.15)",
+              }}
+            >
+              <p className="text-sm" style={{ color: "#94a3b8" }}>
+                ⚠️ No CV uploaded yet. Upload your CV to get job matches and appear in company searches.
+              </p>
+            </div>
+          )}
+
+          <div
+            className="cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition-all"
+            style={{
+              borderColor: isDragging ? "#6366f1" : "#2a2a3d",
+              background: isDragging ? "rgba(99,102,241,0.05)" : "transparent",
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDragging(true);
+            }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setIsDragging(false);
+              const file = e.dataTransfer.files[0];
+              if (file) handleCVUpload(file);
+            }}
+            onClick={() => cvInputRef.current?.click()}
+          >
+            <input
+              ref={cvInputRef}
+              type="file"
+              accept=".pdf"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleCVUpload(file);
+              }}
+            />
+
+            {isUploadingCV ? (
+              <div className="flex flex-col items-center gap-3">
+                <div
+                  className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent"
+                  aria-hidden
+                />
+                <p className="text-sm" style={{ color: "#94a3b8" }}>
+                  Uploading and extracting skills...
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-2">
+                <div className="mb-2 text-4xl">📤</div>
+                <p className="text-sm font-medium text-white">
+                  {profile?.cv_filename ? "Upload a new CV" : "Upload your CV"}
+                </p>
+                <p className="text-xs" style={{ color: "#64748b" }}>
+                  Drag and drop or click to browse
+                </p>
+                <p className="text-xs" style={{ color: "#64748b" }}>
+                  PDF only · Max 10MB
+                </p>
+              </div>
+            )}
+          </div>
+
+          {uploadResult && (
+            <div
+              className="mt-4 rounded-lg p-3"
+              style={{
+                background: "rgba(34,197,94,0.08)",
+                border: "1px solid rgba(34,197,94,0.2)",
+              }}
+            >
+              <p className="text-sm font-medium" style={{ color: "#22c55e" }}>
+                ✓ CV uploaded successfully!
+              </p>
+              <p className="mt-1 text-xs" style={{ color: "#94a3b8" }}>
+                Extracted {uploadResult.skills_count} skills from your CV
+              </p>
+              {uploadResult.skills_extracted?.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {uploadResult.skills_extracted.slice(0, 8).map((skill: string) => (
+                    <span
+                      key={skill}
+                      className="rounded-full px-2 py-1 text-xs"
+                      style={{
+                        background: "rgba(99,102,241,0.15)",
+                        color: "#a5b4fc",
+                        border: "1px solid rgba(99,102,241,0.3)",
+                      }}
+                    >
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

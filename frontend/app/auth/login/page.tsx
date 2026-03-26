@@ -1,22 +1,36 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/context/ToastContext";
 import { loginUser } from "@/lib/api";
 import type { User } from "@/context/AuthContext";
+import GoogleButton from "@/components/GoogleButton";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { login } = useAuth();
+  const { showToast } = useToast();
   const [emailInput, setEmailInput] = useState("");
   const [passwordInput, setPasswordInput] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const googleError = searchParams.get("error");
+  useEffect(() => {
+    if (googleError === "google_failed") {
+      showToast(
+        "Google sign in failed. Please try again or use email and password.",
+        "error"
+      );
+    }
+  }, [googleError, showToast]);
 
   async function handleLogin() {
     setLoading(true);
@@ -28,15 +42,19 @@ export default function LoginPage() {
         email: res.email,
         full_name: res.full_name,
         user_type: res.user_type as "jobseeker" | "company",
+        is_admin: res.is_admin ?? false,
       };
       login(res.access_token, user);
+      showToast("Signed in successfully", "success");
       if (user.user_type === "jobseeker") {
         router.push("/dashboard/jobseeker");
       } else {
         router.push("/dashboard/company");
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Sign in failed");
+      const msg = e instanceof Error ? e.message : "Sign in failed";
+      setError(msg);
+      showToast(msg, "error");
     } finally {
       setLoading(false);
     }
@@ -57,6 +75,14 @@ export default function LoginPage() {
         >
           Sign in to your Vertex account
         </p>
+
+        <GoogleButton userType="jobseeker" label="Continue with Google" />
+
+        <div className="my-6 flex items-center gap-3">
+          <div className="h-px flex-1 bg-vertex-border" />
+          <span className="text-sm text-vertex-muted">or</span>
+          <div className="h-px flex-1 bg-vertex-border" />
+        </div>
 
         <div>
           <label className="mb-1 block text-xs text-vertex-muted">Email</label>
@@ -90,6 +116,15 @@ export default function LoginPage() {
               {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
+          <div className="mt-1.5 flex justify-end">
+            <Link
+              href="/auth/forgot-password"
+              className="text-xs font-medium hover:underline"
+              style={{ color: "#6366f1" }}
+            >
+              Forgot password?
+            </Link>
+          </div>
         </div>
 
         {error && (
@@ -121,13 +156,7 @@ export default function LoginPage() {
           )}
         </button>
 
-        <div className="my-6 flex items-center gap-3">
-          <div className="h-px flex-1 bg-vertex-border" />
-          <span className="text-sm text-vertex-muted">or</span>
-          <div className="h-px flex-1 bg-vertex-border" />
-        </div>
-
-        <p className="text-center text-sm text-vertex-muted">
+        <p className="mt-6 text-center text-sm text-vertex-muted">
           Don&apos;t have an account?{" "}
           <Link
             href="/auth/register"
