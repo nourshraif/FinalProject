@@ -9,6 +9,7 @@ import { ToastProvider } from "@/context/ToastContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ScrollToTop } from "@/components/ScrollToTop";
 import { StitchBackdrop } from "@/components/StitchBackdrop";
+import ChatBot from "@/components/ChatBot";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -52,6 +53,7 @@ export default function RootLayout({
               <main className="page-enter relative z-10 flex-1">{children}</main>
             </ErrorBoundary>
             <Footer />
+            <ChatBot />
             <ScrollToTop />
             <Toaster richColors position="top-right" />
           </ToastProvider>

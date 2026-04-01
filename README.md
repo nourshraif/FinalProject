@@ -10,6 +10,21 @@
 
 ---
 
+## Recent Updates
+
+- Added **company posted-jobs management** APIs and UI flow (create/list/update/delete/toggle active).
+- Added **skill-match notifications on job posting** so matching job seekers are notified when a company posts a relevant role.
+- Expanded **notifications system** with unread count, mark-read, mark-all-read, and delete.
+- Added **contact request workflow** between companies and job seekers (send/receive/respond).
+- Added **job alert settings** and test alert endpoint for job seekers.
+- Added **public profile sharing** via slug and profile visibility controls.
+- Added **Google OAuth** login callback flow and broader auth recovery endpoints.
+- Added **Stripe subscription endpoints** and billing webhook handling.
+- Added **role-based analytics endpoints** for both job seekers and companies.
+- Added **in-app AI chat assistant API** (`POST /api/chat`) used by the chat widget for CV/job/interview guidance.
+
+---
+
 ## Table of Contents
 
 - [Technologies Used](#technologies-used)
@@ -73,6 +88,7 @@
 - **Landing page** — Hero, features, aurora-style background
 - **Auth** — Register and login (job seeker or company); JWT-based sessions
 - **Responsive UI** — Glass-morphism cards, transparent backgrounds, modern layout
+- **AI chat assistant** — Context-aware chat endpoint for CV tips, interview prep, and job-search guidance
 
 ### For Job Seekers
 
@@ -81,14 +97,21 @@
 - **Saved jobs** — Bookmark jobs; view and manage saved list with search
 - **Application tracker** — Create and update applications (applied, interviewing, offer, rejected, saved); add notes
 - **Profile** — Edit headline, bio, location, LinkedIn, years of experience, skills
+- **Contact requests inbox** — Receive requests from companies and accept or decline with one click
+- **Notifications center** — In-app notifications with unread count, mark-as-read, and delete support
+- **Job alerts** — Configurable alert settings (immediate/daily/weekly) and test alert endpoint
+- **Public profile link** — Shareable public profile slug with visibility controls
 - **Dashboard** — Quick stats and links to match, tracker, saved, profile
 
 ### For Companies
 
 - **Company profile** — Company name, website, industry, size, description, contact name
+- **Posted jobs management** — Create, list, update, delete, and activate/deactivate company job postings
+- **Skill-match notifications on post** — When a company posts a job, matched job seekers receive notifications
 - **Candidate search** — Search by required skills; keyword + semantic (vector) matching; configurable top-k and min matches
 - **Saved candidates** — Save candidates from search; view saved list with client-side search
 - **Private notes** — Add or edit notes per saved candidate (500 chars); notes modal with save/cancel
+- **Contact workflow** — Send contact requests to candidates and track sent requests
 - **Talent pool (admin)** — View all candidates in the system (email, name, skills, CV filename)
 - **Dashboard** — Candidate pool count, saved candidates count, recently saved candidates (last 3), quick skill search, links to search, talent pool, profile
 
@@ -97,6 +120,19 @@
 - **Job scraping** — Multiple boards (WeWorkRemotely, Indeed, LinkedIn, RemoteOK, Remotive, Arbeitnow, Himalayas, Bayt); idempotent (duplicates skipped)
 - **Vector embeddings** — Stored in PostgreSQL with pgvector; used for semantic job and candidate matching
 - **Role-based access** — Separate routes and API guards for job seeker vs company
+- **Google OAuth** — Google sign-in flow with callback and account bootstrap
+- **Email flows** — Welcome, password reset, contact request, acceptance, and alert emails
+- **Subscriptions & billing** — Stripe checkout, subscription status, cancel-at-period-end, webhook sync
+- **Analytics** — Role-specific analytics endpoints for job seekers and companies
+
+### Admin Panel
+
+- **Internal dashboard** (`/admin`) — Platform stats, user list with search, activate/deactivate users, make admin, recent activity, run scraper. Visible only to users with `is_admin = TRUE`.
+- **Make yourself admin (one-time)** — From the host, run (replace `<postgres_container>` with your container name and `your_email_here` with your account email):
+
+```bash
+docker exec -it <postgres_container> psql -U postgres -d jobs_db -c "UPDATE users SET is_admin = TRUE WHERE email = 'your_email_here';"
+```
 
 ---
 
@@ -239,6 +275,10 @@ Create `.env` from `env.example`. Main variables:
 | `SECRET_KEY` | JWT signing key | *(long random string in production)* |
 | `HF_TOKEN` | Hugging Face API token | *(from [HF settings](https://huggingface.co/settings/tokens))* |
 | `HF_MODEL` | Model for skill extraction | `openai/gpt-oss-120b:groq` |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID | *(from [Google Cloud Console](https://console.cloud.google.com/apis/credentials))* |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret | *(same credentials)* |
+| `GOOGLE_REDIRECT_URI` | OAuth callback URL | `http://localhost:8000/api/auth/google/callback` (default) |
+| `FRONTEND_URL` | Frontend origin for OAuth redirects | `http://localhost:3000` (default) |
 
 Frontend: set `NEXT_PUBLIC_API_URL` in `frontend/.env.local` if the API is not at `http://localhost:8000`.
 
@@ -302,15 +342,24 @@ FinalProject/
 
 ## API Overview
 
-- **Auth:** `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`
-- **CV:** `POST /api/upload-cv`
-- **Jobs:** `POST /api/match-jobs`, `GET /api/jobs/stats`, `POST /api/scraper/run`
-- **Job seeker profile:** `POST /api/jobseeker/save-profile`, `GET /api/profile`, `PUT /api/profile`, `PUT /api/profile/skills`
+- **Auth:** `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/google`, `GET /api/auth/google/callback`, `POST /api/auth/forgot-password`, `POST /api/auth/reset-password`, `GET /api/auth/me`
+- **CV:** `POST /api/upload-cv`, `POST /api/profile/upload-cv`
+- **Jobs (scraped):** `POST /api/match-jobs`, `GET /api/jobs/stats`, `GET /api/jobs/search`, `GET /api/jobs/sources`, `GET /api/jobs/locations`
+- **Posted jobs (company):** `GET /api/jobs/posted`, `GET /api/jobs/posted/{job_id}`, `POST /api/jobs/posted`, `PUT /api/jobs/posted/{job_id}`, `DELETE /api/jobs/posted/{job_id}`, `PUT /api/jobs/posted/{job_id}/toggle`, `GET /api/company/posted-jobs`
+- **Job seeker profile:** `POST /api/jobseeker/save-profile`, `GET /api/profile`, `PUT /api/profile`, `PUT /api/profile/skills`, `GET /api/profile/slug`, `PUT /api/profile/visibility`, `GET /api/public/profile/{slug}`
 - **Applications:** `GET /api/applications`, `POST /api/applications`, `PUT /api/applications/{id}`, `DELETE /api/applications/{id}`
 - **Saved jobs:** `GET /api/saved-jobs`, `POST /api/saved-jobs/{job_id}`, `DELETE /api/saved-jobs/{job_id}`, `GET /api/saved-jobs/check/{job_id}`
 - **Company:** `GET /api/company/profile`, `PUT /api/company/profile`
 - **Company candidates:** `POST /api/company/search-candidates`, `GET /api/company/candidate-count`, `GET /api/company/all-candidates`
 - **Company saved candidates:** `GET /api/company/saved-candidates`, `POST /api/company/saved-candidates`, `DELETE /api/company/saved-candidates/{candidate_user_id}`, `PUT /api/company/saved-candidates/notes`
+- **Contact requests:** `POST /api/contact-requests`, `GET /api/contact-requests/received`, `GET /api/contact-requests/sent`, `PUT /api/contact-requests/{request_id}`
+- **Notifications:** `GET /api/notifications`, `GET /api/notifications/unread-count`, `PUT /api/notifications/{notification_id}/read`, `PUT /api/notifications/read-all`, `DELETE /api/notifications/{notification_id}`
+- **Alerts:** `GET /api/alerts/settings`, `PUT /api/alerts/settings`, `POST /api/alerts/test`
+- **Payments:** `POST /api/payments/create-checkout`, `GET /api/payments/subscription`, `POST /api/payments/cancel`, `POST /api/payments/webhook`
+- **Analytics:** `GET /api/analytics/jobseeker`, `GET /api/analytics/company`
+- **Admin:** `GET /api/admin/stats`, `GET /api/admin/users`, `PUT /api/admin/users/{user_id}/toggle-active`, `PUT /api/admin/users/{user_id}/make-admin`, `GET /api/admin/activity`, `POST /api/admin/scraper/run`
+- **Scraper:** `POST /api/scraper/run`
+- **Chat assistant:** `POST /api/chat`
 
 Protected routes use the `Authorization: Bearer <token>` header.
 
@@ -326,6 +375,7 @@ Protected routes use the `Authorization: Bearer <token>` header.
 | No jobs / empty match results | Run `python -m scripts.scheduled_scraper` to fetch and embed jobs. |
 | Frontend can’t reach API | Ensure backend is on http://localhost:8000 or set `NEXT_PUBLIC_API_URL` in `frontend/.env.local`. |
 | CORS errors | Backend allows all origins in dev; ensure the request URL matches what the frontend uses. |
+| Chatbot replies with generic error | Ensure backend is running and reachable at `NEXT_PUBLIC_API_URL`; verify `POST /api/chat` responds in Swagger (`/docs`). |
 
 ---
 

@@ -32,7 +32,7 @@ async function callChatAPI(
   }
 
   const data = await response.json();
-  return data.reply ?? "Sorry, I couldn\'t generate a response.";
+  return data.reply ?? "Sorry, I couldn't generate a response.";
 }
 
 export default function ChatBot() {

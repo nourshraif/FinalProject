@@ -66,21 +66,22 @@ export function ConstellationCanvas() {
     const canvas = canvasRef.current;
     const container = containerRef.current;
     if (!canvas || !container) return;
+    const canvasEl = canvas;
+    const containerEl = container;
 
-    const ctx = canvas.getContext("2d");
+    const ctx = canvasEl.getContext("2d");
     if (!ctx) return;
 
-    let width = container.offsetWidth;
-    let height = container.offsetHeight;
+    let width = containerEl.offsetWidth;
+    let height = containerEl.offsetHeight;
     const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
     const pointCount = isMobile ? POINT_COUNT_MOBILE : POINT_COUNT_DESKTOP;
 
     function resize() {
-      if (!container) return;
-      width = container.offsetWidth;
-      height = container.offsetHeight;
-      canvas.width = width;
-      canvas.height = height;
+      width = containerEl.offsetWidth;
+      height = containerEl.offsetHeight;
+      canvasEl.width = width;
+      canvasEl.height = height;
       const mobile = typeof window !== "undefined" && window.innerWidth < 768;
       pointsRef.current = initPoints(
         width,
@@ -106,13 +107,13 @@ export function ConstellationCanvas() {
     const resizeObserver = new ResizeObserver(() => {
       resize();
     });
-    resizeObserver.observe(container);
+    resizeObserver.observe(containerEl);
 
     function loop() {
-      if (!ctx || !canvas) return;
+      if (!ctx) return;
       const points = pointsRef.current;
-      const w = canvas.width;
-      const h = canvas.height;
+      const w = canvasEl.width;
+      const h = canvasEl.height;
       if (w <= 0 || h <= 0 || points.length === 0) {
         rafRef.current = requestAnimationFrame(loop);
         return;

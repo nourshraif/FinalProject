@@ -110,7 +110,10 @@ def find_matching_candidates(
                     up.cv_filename,
                     up.created_at,
                     1 - (up.skills_embedding <=> %s::vector) AS vector_score,
-                    u.id AS user_id
+                    u.id AS user_id,
+                    up.profile_slug,
+                    up.location,
+                    up.years_experience
                 FROM user_profiles up
                 LEFT JOIN users u ON u.email = up.email
                 WHERE up.skills_embedding IS NOT NULL
@@ -130,7 +133,10 @@ def find_matching_candidates(
                     up.cv_filename,
                     up.created_at,
                     0.0 AS vector_score,
-                    u.id AS user_id
+                    u.id AS user_id,
+                    up.profile_slug,
+                    up.location,
+                    up.years_experience
                 FROM user_profiles up
                 LEFT JOIN users u ON u.email = up.email
                 ORDER BY up.created_at DESC
@@ -149,7 +155,12 @@ def find_matching_candidates(
     candidates = []
 
     for row in rows:
-        (pid, email, full_name, skills, cv_filename, created_at, vector_score, user_id) = row
+        if len(row) >= 11:
+            (pid, email, full_name, skills, cv_filename, created_at, vector_score, user_id, profile_slug, location, years_experience) = row
+        else:
+            (pid, email, full_name, skills, cv_filename, created_at, vector_score, user_id, profile_slug) = row
+            location = None
+            years_experience = None
         candidate_skills = [s.lower().strip() for s in (skills or [])]
 
         matched = [r for r in required_lower if any(r in c or c in r for c in candidate_skills)]
@@ -173,6 +184,9 @@ def find_matching_candidates(
                 "vector_score": round(float(vector_score) * 100, 1),
                 "combined_score": round(combined_score * 100, 1),
                 "user_id": user_id,
+                "profile_slug": profile_slug,
+                "location": location,
+                "years_experience": years_experience,
             }
         )
 
@@ -184,13 +198,22 @@ def find_matching_candidates(
 # Log a company search (optional audit)
 # ---------------------------------------------------------------------------
 
-def log_company_search(company_name: str, required_skills: List[str]) -> None:
+def log_company_search(
+    company_name: str,
+    required_skills: List[str],
+    user_id: Optional[int] = None,
+    results_count: int = 0,
+) -> None:
     conn = get_connection()
     cur = conn.cursor()
     try:
         cur.execute(
-            "INSERT INTO company_searches (company_name, required_skills) VALUES (%s, %s)",
-            (company_name, required_skills),
+            """
+            INSERT INTO company_searches
+                (company_name, required_skills, user_id, results_count)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (company_name, required_skills, user_id, results_count),
         )
         conn.commit()
     except Exception:
