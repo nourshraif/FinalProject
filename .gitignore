@@ -11,6 +11,7 @@ downloads/
 eggs/
 .eggs/
 lib/
+!frontend/lib/
 lib64/
 parts/
 sdist/
@@ -81,3 +82,24 @@ htmlcov/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# Node / Next.js
+node_modules/
+frontend/node_modules/
+.next/
+frontend/.next/
+out/
+frontend/out/
+.turbo/
+.npm/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Frontend env files
+frontend/.env.local
+frontend/.env.*.local
+
+# Generated uploads
+uploads/*.tmp
