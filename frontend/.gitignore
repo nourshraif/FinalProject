@@ -3,22 +3,23 @@ node_modules/
 .pnp
 .pnp.js
 
-# Build
+# Build output
 .next/
 out/
 build/
 dist/
 
-# Debug
+# Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
 # Local env
 .env*.local
-.vercel
 
-# IDE
+# Hosting / IDE
+.vercel
 .idea/
 .vscode/
 *.swp

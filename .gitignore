@@ -1,105 +1,105 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-!frontend/lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+# ===========================
+# SENSITIVE - NEVER COMMIT
+# ===========================
+.env
+*.env
+.env.local
+.env.development
+.env.production
+.env.test
 
-# Virtual Environment
+# ===========================
+# PYTHON
+# ===========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
 venv/
 env/
+.venv/
 ENV/
-env.bak/
-venv.bak/
-.venv
+pip-log.txt
+pip-delete-this-directory.txt
 
-# Environment variables
-.env
-.env.local
-.env.*.local
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.spyderproject
-.spyproject
-
-# OS
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-Desktop.ini
-
-# Streamlit
-.streamlit/
-
-# Logs
-*.log
-logs/
-*.log.*
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
-
-# Docker
-.dockerignore
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# pytest
-.pytest_cache/
-.coverage
-htmlcov/
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Node / Next.js
+# ===========================
+# NODE / NEXT.JS
+# ===========================
 node_modules/
 frontend/node_modules/
 .next/
 frontend/.next/
 out/
 frontend/out/
+.vercel
 .turbo/
 .npm/
+*.tsbuildinfo
+next-env.d.ts
+
+# ===========================
+# DATABASE
+# ===========================
+*.sql
+*.dump
+*.db
+*.sqlite
+
+# ===========================
+# UPLOADS (user files)
+# ===========================
+uploads/
+*.pdf
+
+# ===========================
+# OS FILES
+# ===========================
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ===========================
+# IDE
+# ===========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+.vs/
+
+# ===========================
+# LOGS
+# ===========================
+*.log
+logs/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Frontend env files
-frontend/.env.local
-frontend/.env.*.local
-
-# Generated uploads
-uploads/*.tmp
+# ===========================
+# MISC
+# ===========================
+*.zip
+*.tar.gz
+*.rar
+.cache/
+.pytest_cache/
+.mypy_cache/
+coverage/
+.coverage
+htmlcov/

@@ -1,5 +1,77 @@
 # Vertex — Job Matching & Talent Platform
 
+## Quick Setup for New Developers
+
+### Prerequisites
+- Python 3.9+
+- Node.js 18+
+- Docker Desktop
+- Git
+
+### 1. Clone the repository
+```bash
+git clone https://github.com/nourshraif/FinalProject.git
+cd FinalProject
+```
+
+### 2. Set up environment variables
+```bash
+cp env.example .env
+# Edit .env and fill in your values
+# Ask the project owner for the actual values
+
+cp frontend/.env.example frontend/.env.local
+# Edit frontend/.env.local with your values
+```
+
+### 3. Start the database
+```bash
+docker compose up -d
+```
+
+### 4. Set up Python environment
+```bash
+python -m venv venv
+
+# Windows:
+venv\Scripts\activate
+
+# Mac/Linux:
+source venv/bin/activate
+
+pip install -r requirements.txt
+```
+
+### 5. Initialize the database
+```bash
+python app/database/db.py
+```
+
+### 6. Set up the frontend
+```bash
+cd frontend
+npm install
+cd ..
+```
+
+### 7. Start the backend
+```bash
+uvicorn api.main:app --reload --port 8000
+```
+
+### 8. Start the frontend
+```bash
+cd frontend
+npm run dev
+```
+
+### 9. Open the app
+```bash
+http://localhost:3000
+```
+
+---
+
 [![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-14-black.svg)](https://nextjs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-green.svg)](https://fastapi.tiangolo.com/)
