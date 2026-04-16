@@ -84,6 +84,16 @@ http://localhost:3000
 
 ## Recent Updates
 
+### Latest (Unreleased)
+
+- Added **Skills Gap Analyzer** flow with new endpoints (`/api/skills-gap/analyze`, `/api/skills-gap/analyze-job/{job_id}`) and a dedicated `/skills-gap` page for job seekers.
+- Added **plan-based feature gating** (Free/Pro/Business) across key workflows such as full match visibility, saved jobs, application tracker, candidate search, contact request limits, and company posting limits.
+- Introduced **new Lebanon-focused scrapers** for HireLebanese and CareersAndJobsInLebanon, integrated into the scraper service pipeline.
+- Added new **public product pages**: About, Contact, Privacy Policy, and Terms of Service, plus navigation/footer updates.
+- Improved **subscription UX** in frontend auth/navigation and pricing flows with clearer plan awareness and gated upgrade prompts (`PlanGate`).
+
+### Previous Milestone
+
 - Added **company posted-jobs management** APIs and UI flow (create/list/update/delete/toggle active).
 - Added **skill-match notifications on job posting** so matching job seekers are notified when a company posts a relevant role.
 - Expanded **notifications system** with unread count, mark-read, mark-all-read, and delete.

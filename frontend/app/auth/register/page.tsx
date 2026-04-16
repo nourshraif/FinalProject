@@ -91,6 +91,7 @@ export default function RegisterPage() {
         full_name: res.full_name,
         user_type: res.user_type as "jobseeker" | "company",
         is_admin: res.is_admin ?? false,
+        plan: res.plan ?? "free",
       };
       login(res.access_token, user);
       showToast("Account created successfully", "success");
@@ -264,6 +265,17 @@ export default function RegisterPage() {
           )}
         </button>
 
+        <p className="mt-4 text-center text-xs text-vertex-muted">
+          By creating an account you agree to our{" "}
+          <Link href="/terms" className="font-medium text-indigo-400 hover:underline">
+            Terms of Service
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" className="font-medium text-indigo-400 hover:underline">
+            Privacy Policy
+          </Link>
+          .
+        </p>
         <p className="mt-6 text-center text-sm text-vertex-muted">
           Already have an account?{" "}
           <Link

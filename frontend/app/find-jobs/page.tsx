@@ -15,7 +15,7 @@ const LIMIT = 20;
 const DEBOUNCE_MS = 500;
 
 export default function FindJobsPage() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [query, setQuery] = useState("");
   const [queryDebounced, setQueryDebounced] = useState("");
   const [sources, setSources] = useState<string[]>([]);
@@ -324,6 +324,8 @@ export default function FindJobsPage() {
                     job={job}
                     isSaved={savedIds.has(job.id)}
                     token={token}
+                    showAnalyzeGap={false}
+                    isProUser={user?.plan === "pro" || user?.plan === "business"}
                   />
                 ))}
               </div>

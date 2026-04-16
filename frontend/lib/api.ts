@@ -1,5 +1,6 @@
 import type {
   Job,
+  MatchJobsResult,
   Stats,
   Skill,
   Candidate,
@@ -18,6 +19,7 @@ import type {
   Subscription,
   PostedJob,
   ScrapedJob,
+  SkillsGapResult,
 } from "@/types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -28,8 +30,13 @@ async function handleResponse<T>(res: Response): Promise<T> {
     const text = await res.text();
     let message = text;
     try {
-      const json = JSON.parse(text) as { detail?: string };
-      message = typeof json.detail === "string" ? json.detail : text;
+      const json = JSON.parse(text) as { detail?: unknown };
+      const d = json.detail;
+      if (typeof d === "string") {
+        message = d;
+      } else if (d && typeof d === "object" && d !== null && "message" in d) {
+        message = String((d as { message: string }).message);
+      }
     } catch {
       // use text as-is
     }
@@ -50,14 +57,30 @@ export async function uploadCV(file: File): Promise<Skill[]> {
   return data.skills;
 }
 
-/** Get job matches for a list of skills */
-export async function matchJobs(skills: Skill[]): Promise<Job[]> {
+/** Get job matches for a list of skills (no auth required). */
+export async function matchJobs(skills: Skill[]): Promise<MatchJobsResult> {
   const res = await fetch(`${API_BASE}/api/match-jobs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ skills }),
   });
-  return handleResponse<Job[]>(res);
+  return handleResponse<MatchJobsResult>(res);
+}
+
+/** Match jobs using saved profile skills; sends bearer token (same JSON body as matchJobs). */
+export async function matchJobsWithSkills(
+  token: string,
+  skills: string[]
+): Promise<MatchJobsResult> {
+  const res = await fetch(`${API_BASE}/api/match-jobs`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ skills }),
+  });
+  return handleResponse<MatchJobsResult>(res);
 }
 
 /** Get jobs dashboard stats */
@@ -115,9 +138,21 @@ export async function getJobLocations(): Promise<string[]> {
   return handleResponse<string[]>(res);
 }
 
+export async function getJobById(jobId: number): Promise<ScrapedJob> {
+  const res = await fetch(`${API_BASE}/api/jobs/${jobId}`);
+  return handleResponse<ScrapedJob>(res);
+}
+
 // ---------------------------------------------------------------------------
 // Posted jobs (company job postings)
 // ---------------------------------------------------------------------------
+
+export interface PostedJobsListResponse {
+  jobs: PostedJob[];
+  total: number;
+  page: number;
+  total_pages: number;
+}
 
 export async function getPostedJobs(params?: {
   limit?: number;
@@ -125,7 +160,7 @@ export async function getPostedJobs(params?: {
   job_type?: string;
   experience_level?: string;
   search?: string;
-}): Promise<PostedJob[]> {
+}): Promise<PostedJobsListResponse> {
   const sp = new URLSearchParams();
   if (params?.limit != null) sp.set("limit", String(params.limit));
   if (params?.offset != null) sp.set("offset", String(params.offset));
@@ -134,12 +169,25 @@ export async function getPostedJobs(params?: {
   if (params?.search) sp.set("search", params.search);
   const q = sp.toString();
   const res = await fetch(`${API_BASE}/api/jobs/posted${q ? `?${q}` : ""}`);
-  return handleResponse<PostedJob[]>(res);
+  return handleResponse<PostedJobsListResponse>(res);
 }
 
 export async function getPostedJobById(id: number): Promise<PostedJob> {
   const res = await fetch(`${API_BASE}/api/jobs/posted/${id}`);
   return handleResponse<PostedJob>(res);
+}
+
+export async function analyzeJobGap(
+  token: string,
+  jobId: number
+): Promise<SkillsGapResult> {
+  const res = await fetch(`${API_BASE}/api/skills-gap/analyze-job/${jobId}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  return handleResponse<SkillsGapResult>(res);
 }
 
 export async function createPostedJob(
@@ -230,11 +278,40 @@ export interface AdminStats {
   jobs_scraped_today: number;
 }
 
+export interface AdminScraperLastRunResponse {
+  last_run: string | null;
+}
+
+export interface AdminHealthResponse {
+  database: boolean;
+  email_configured: boolean;
+  last_scraper_run: string | null;
+  total_jobs: number;
+}
+
 export async function getAdminStats(token: string): Promise<AdminStats> {
   const res = await fetch(`${API_BASE}/api/admin/stats`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   return handleResponse<AdminStats>(res);
+}
+
+export async function getAdminScraperLastRun(
+  token: string
+): Promise<AdminScraperLastRunResponse> {
+  const res = await fetch(`${API_BASE}/api/admin/scraper/last-run`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return handleResponse<AdminScraperLastRunResponse>(res);
+}
+
+export async function getAdminHealth(
+  token: string
+): Promise<AdminHealthResponse> {
+  const res = await fetch(`${API_BASE}/api/admin/health`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return handleResponse<AdminHealthResponse>(res);
 }
 
 export interface AdminUserRow {
@@ -306,6 +383,26 @@ export async function runAdminScraper(token: string): Promise<{ message: string 
     headers: { Authorization: `Bearer ${token}` },
   });
   return handleResponse<{ message: string }>(res);
+}
+
+export async function cleanupInactiveJobs(
+  token: string
+): Promise<{
+  success: boolean;
+  deleted_scraped: number;
+  deleted_posted: number;
+  total_deleted: number;
+}> {
+  const res = await fetch(`${API_BASE}/api/admin/cleanup-inactive-jobs`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return handleResponse<{
+    success: boolean;
+    deleted_scraped: number;
+    deleted_posted: number;
+    total_deleted: number;
+  }>(res);
 }
 
 

@@ -311,6 +311,43 @@ def init_database():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_contact_requests_candidate ON contact_requests(candidate_user_id);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_contact_requests_company ON contact_requests(company_user_id);")
 
+        # ── Contact messages (public contact us form) ────────────────────────
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS contact_messages (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                full_name VARCHAR(255) NOT NULL,
+                email VARCHAR(255) NOT NULL,
+                company VARCHAR(255),
+                subject VARCHAR(255) NOT NULL,
+                message TEXT NOT NULL,
+                status VARCHAR(20) DEFAULT 'new'
+                    CHECK (status IN ('new', 'in_progress', 'resolved')),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        # Backward-compatible migration for existing databases
+        cur.execute("ALTER TABLE contact_messages ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_contact_messages_status ON contact_messages(status);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_contact_messages_created_at ON contact_messages(created_at DESC);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_contact_messages_user_id ON contact_messages(user_id);")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS contact_message_replies (
+                id SERIAL PRIMARY KEY,
+                contact_message_id INTEGER REFERENCES contact_messages(id) ON DELETE CASCADE,
+                sender_type VARCHAR(20) NOT NULL
+                    CHECK (sender_type IN ('admin', 'user')),
+                sender_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                message TEXT NOT NULL,
+                sent_via VARCHAR(20) NOT NULL
+                    CHECK (sent_via IN ('backend', 'email')),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_contact_message_replies_message_id ON contact_message_replies(contact_message_id);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_contact_message_replies_created_at ON contact_message_replies(created_at DESC);")
+
         # ── Notifications ─────────────────────────────────────────────────────
         cur.execute("""
             CREATE TABLE IF NOT EXISTS notifications (
@@ -481,7 +518,12 @@ def get_user_by_email(email: str) -> Optional[dict]:
     cur = conn.cursor()
     try:
         cur.execute(
-            "SELECT id, email, full_name, hashed_password, user_type, is_verified, is_active, is_admin, created_at, updated_at FROM users WHERE email = %s;",
+            """
+            SELECT id, email, full_name, hashed_password, user_type, is_verified, is_active, is_admin,
+                   COALESCE(NULLIF(TRIM(plan), ''), 'free') AS plan,
+                   created_at, updated_at
+            FROM users WHERE email = %s;
+            """,
             (email,),
         )
         row = cur.fetchone()
@@ -518,7 +560,12 @@ def get_user_by_id(user_id: int) -> Optional[dict]:
     cur = conn.cursor()
     try:
         cur.execute(
-            "SELECT id, email, full_name, hashed_password, user_type, is_verified, is_active, is_admin, created_at, updated_at FROM users WHERE id = %s;",
+            """
+            SELECT id, email, full_name, hashed_password, user_type, is_verified, is_active, is_admin,
+                   COALESCE(NULLIF(TRIM(plan), ''), 'free') AS plan,
+                   created_at, updated_at
+            FROM users WHERE id = %s;
+            """,
             (user_id,),
         )
         row = cur.fetchone()
@@ -927,6 +974,60 @@ def is_job_saved(user_id: int, job_id: int) -> bool:
             (user_id, job_id),
         )
         return cur.fetchone() is not None
+    finally:
+        cur.close()
+        conn.close()
+
+
+def count_saved_jobs_for_user(user_id: int) -> int:
+    """Number of jobs saved by this user."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT COUNT(*) FROM saved_jobs WHERE user_id = %s;", (user_id,))
+        row = cur.fetchone()
+        return int(row[0]) if row and row[0] is not None else 0
+    finally:
+        cur.close()
+        conn.close()
+
+
+def count_company_active_posted_jobs(company_user_id: int) -> int:
+    """Active posted jobs for a company (is_active = TRUE, not expired)."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT COUNT(*) FROM posted_jobs
+            WHERE company_user_id = %s
+              AND is_active = TRUE
+              AND (expires_at IS NULL OR expires_at > NOW());
+            """,
+            (company_user_id,),
+        )
+        row = cur.fetchone()
+        return int(row[0]) if row and row[0] is not None else 0
+    finally:
+        cur.close()
+        conn.close()
+
+
+def count_company_contact_requests_last_30_days(company_user_id: int) -> int:
+    """Contact requests sent by company in the last 30 days."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT COUNT(*) FROM contact_requests
+            WHERE company_user_id = %s
+              AND created_at > NOW() - INTERVAL '30 days';
+            """,
+            (company_user_id,),
+        )
+        row = cur.fetchone()
+        return int(row[0]) if row and row[0] is not None else 0
     finally:
         cur.close()
         conn.close()
@@ -1369,6 +1470,261 @@ def get_contact_request_by_id(request_id: int) -> Optional[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Contact messages (public contact form)
+# ---------------------------------------------------------------------------
+
+def create_contact_message(
+    user_id: Optional[int],
+    full_name: str,
+    email: str,
+    company: Optional[str],
+    subject: str,
+    message: str,
+) -> int:
+    """Create a contact message and return its id."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            INSERT INTO contact_messages (user_id, full_name, email, company, subject, message)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (
+                user_id,
+                (full_name or "").strip(),
+                (email or "").strip(),
+                (company or "").strip() or None,
+                (subject or "").strip(),
+                (message or "").strip(),
+            ),
+        )
+        message_id = cur.fetchone()[0]
+        conn.commit()
+        return message_id
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_contact_messages(
+    limit: int = 50,
+    offset: int = 0,
+    status: Optional[str] = None,
+) -> list:
+    """Return admin contact messages ordered by newest first."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        where = []
+        params = []
+        if status and status.strip():
+            where.append("status = %s")
+            params.append(status.strip())
+        where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+        cur.execute(
+            f"""
+            SELECT
+                cm.id,
+                cm.user_id,
+                cm.full_name,
+                cm.email,
+                cm.company,
+                cm.subject,
+                cm.message,
+                cm.status,
+                cm.created_at,
+                cm.updated_at,
+                MAX(cmr.created_at) AS last_reply_at,
+                COUNT(cmr.id) AS replies_count
+            FROM contact_messages cm
+            LEFT JOIN contact_message_replies cmr ON cmr.contact_message_id = cm.id
+            {where_sql}
+            GROUP BY cm.id
+            ORDER BY COALESCE(MAX(cmr.created_at), cm.created_at) DESC
+            LIMIT %s OFFSET %s
+            """,
+            tuple(params + [limit, offset]),
+        )
+        rows = cur.fetchall()
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row)) for row in rows]
+    finally:
+        cur.close()
+        conn.close()
+
+
+def update_contact_message_status(message_id: int, status: str) -> bool:
+    """Update contact message status. Returns True if updated."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            UPDATE contact_messages
+            SET status = %s, updated_at = NOW()
+            WHERE id = %s
+            """,
+            (status, message_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    except Exception:
+        conn.rollback()
+        return False
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_contact_message_by_id(message_id: int) -> Optional[dict]:
+    """Get a single contact message row."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT id, user_id, full_name, email, company, subject, message, status, created_at, updated_at
+            FROM contact_messages
+            WHERE id = %s
+            """,
+            (message_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        cols = [d[0] for d in cur.description]
+        return dict(zip(cols, row))
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_contact_message_thread(message_id: int) -> Optional[dict]:
+    """Get message + replies ordered oldest-first."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT id, user_id, full_name, email, company, subject, message, status, created_at, updated_at
+            FROM contact_messages
+            WHERE id = %s
+            """,
+            (message_id,),
+        )
+        root = cur.fetchone()
+        if root is None:
+            return None
+        root_cols = [d[0] for d in cur.description]
+        message_obj = dict(zip(root_cols, root))
+
+        cur.execute(
+            """
+            SELECT id, contact_message_id, sender_type, sender_user_id, message, sent_via, created_at
+            FROM contact_message_replies
+            WHERE contact_message_id = %s
+            ORDER BY created_at ASC, id ASC
+            """,
+            (message_id,),
+        )
+        rows = cur.fetchall()
+        cols = [d[0] for d in cur.description]
+        message_obj["replies"] = [dict(zip(cols, row)) for row in rows]
+        return message_obj
+    finally:
+        cur.close()
+        conn.close()
+
+
+def add_contact_message_reply(
+    message_id: int,
+    sender_type: str,
+    message: str,
+    sender_user_id: Optional[int] = None,
+    sent_via: str = "backend",
+) -> int:
+    """Add reply to contact message and return reply id."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            INSERT INTO contact_message_replies
+            (contact_message_id, sender_type, sender_user_id, message, sent_via)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (
+                message_id,
+                sender_type,
+                sender_user_id,
+                (message or "").strip(),
+                sent_via,
+            ),
+        )
+        reply_id = cur.fetchone()[0]
+        cur.execute(
+            """
+            UPDATE contact_messages
+            SET updated_at = NOW(),
+                status = CASE WHEN status = 'resolved' THEN 'in_progress' ELSE status END
+            WHERE id = %s
+            """,
+            (message_id,),
+        )
+        conn.commit()
+        return reply_id
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_user_contact_messages(user_id: int, limit: int = 50, offset: int = 0) -> list:
+    """Get contact messages belonging to one logged-in user."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT
+                cm.id,
+                cm.user_id,
+                cm.full_name,
+                cm.email,
+                cm.company,
+                cm.subject,
+                cm.message,
+                cm.status,
+                cm.created_at,
+                cm.updated_at,
+                MAX(cmr.created_at) AS last_reply_at,
+                COUNT(cmr.id) AS replies_count
+            FROM contact_messages cm
+            LEFT JOIN contact_message_replies cmr ON cmr.contact_message_id = cm.id
+            WHERE cm.user_id = %s
+            GROUP BY cm.id
+            ORDER BY COALESCE(MAX(cmr.created_at), cm.created_at) DESC
+            LIMIT %s OFFSET %s
+            """,
+            (user_id, limit, offset),
+        )
+        rows = cur.fetchall()
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row)) for row in rows]
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
 # Notifications
 # ---------------------------------------------------------------------------
 
@@ -1662,6 +2018,93 @@ def get_platform_stats() -> dict:
         conn.close()
 
 
+def remove_duplicate_jobs() -> int:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        # Delete duplicates keeping the most recent one
+        cur.execute(
+            """
+            DELETE FROM jobs a
+            USING jobs b
+            WHERE a.id < b.id
+            AND a.job_url = b.job_url
+            """
+        )
+        deleted = cur.rowcount
+        conn.commit()
+        return deleted
+    finally:
+        cur.close()
+        conn.close()
+
+
+def normalize_job_sources() -> int:
+    """Normalize source names in existing jobs rows."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            UPDATE jobs
+            SET source = CASE
+                WHEN LOWER(TRIM(source)) IN ('hirelebanese', 'hire_lebanese') THEN 'HireLebanese'
+                WHEN LOWER(TRIM(source)) IN ('weworkremotely', 'we_work_remotely') THEN 'WeWorkRemotely'
+                WHEN LOWER(TRIM(source)) IN ('remoteok', 'remote_ok') THEN 'RemoteOK'
+                WHEN LOWER(TRIM(source)) = 'remotive' THEN 'Remotive'
+                WHEN LOWER(TRIM(source)) = 'himalayas' THEN 'Himalayas'
+                WHEN LOWER(TRIM(source)) = 'arbeitnow' THEN 'Arbeitnow'
+                WHEN LOWER(TRIM(source)) = 'bayt' THEN 'Bayt'
+                WHEN LOWER(TRIM(source)) = 'linkedin' THEN 'LinkedIn'
+                WHEN LOWER(TRIM(source)) = 'indeed' THEN 'Indeed'
+                WHEN LOWER(TRIM(source)) IN ('careersandjobs', 'careers_and_jobs', 'careersandjobsinlebanon', 'careers_and_jobs_in_lebanon')
+                    THEN 'CareersAndJobsInLebanon'
+                ELSE source
+            END
+            WHERE source IS NOT NULL AND TRIM(source) != '';
+            """
+        )
+        updated = cur.rowcount
+        conn.commit()
+        return updated
+    finally:
+        cur.close()
+        conn.close()
+
+
+def remove_inactive_or_expired_jobs() -> dict:
+    """
+    Remove jobs that are no longer active or expired.
+    - Scraped jobs table: delete where is_active = FALSE
+    - Posted jobs table: delete where is_active = FALSE or expires_at <= NOW()
+    Returns deletion counts.
+    """
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM jobs WHERE is_active = FALSE")
+        deleted_scraped = cur.rowcount
+
+        cur.execute(
+            """
+            DELETE FROM posted_jobs
+            WHERE is_active = FALSE
+               OR (expires_at IS NOT NULL AND expires_at <= NOW())
+            """
+        )
+        deleted_posted = cur.rowcount
+
+        conn.commit()
+        return {
+            "deleted_scraped": deleted_scraped,
+            "deleted_posted": deleted_posted,
+            "total_deleted": deleted_scraped + deleted_posted,
+        }
+    finally:
+        cur.close()
+        conn.close()
+
+
 def get_all_users(limit: int = 50, offset: int = 0, search: Optional[str] = None) -> list:
     """Return users for admin list. If search is set, filter by email or full_name ILIKE."""
     conn = get_connection()
@@ -1793,7 +2236,7 @@ def get_recent_activity() -> list:
             })
         cur.execute(
             """
-            SELECT id, created_at FROM job_applications
+            SELECT id, applied_at FROM job_applications
             ORDER BY applied_at DESC
             LIMIT 20
             """
@@ -2257,7 +2700,7 @@ def search_jobs(
             where.append("(job_title ILIKE %s OR company ILIKE %s OR description ILIKE %s)")
             params.extend([t, t, t])
         if source and source.strip():
-            where.append("source = %s")
+            where.append("LOWER(TRIM(source)) = LOWER(TRIM(%s))")
             params.append(source.strip())
         if location and location.strip():
             where.append("location ILIKE %s")
@@ -2305,7 +2748,19 @@ def get_job_sources() -> list:
     cur = conn.cursor()
     try:
         cur.execute(
-            "SELECT DISTINCT source FROM jobs WHERE is_active = TRUE ORDER BY source"
+            """
+            SELECT source
+            FROM (
+                SELECT DISTINCT ON (LOWER(TRIM(source)))
+                    TRIM(source) AS source
+                FROM jobs
+                WHERE is_active = TRUE
+                  AND source IS NOT NULL
+                  AND TRIM(source) != ''
+                ORDER BY LOWER(TRIM(source)), id DESC
+            ) s
+            ORDER BY source
+            """
         )
         return [r[0] for r in cur.fetchall()]
     finally:
@@ -2328,6 +2783,32 @@ def get_job_locations(limit: int = 50) -> list:
             (limit,),
         )
         return [r[0] for r in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_job_by_id(job_id: int) -> Optional[dict]:
+    """Return scraped job from jobs table by id."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT id, source, job_title, company, location, description, job_url, scraped_at
+            FROM jobs
+            WHERE id = %s AND is_active = TRUE
+            """,
+            (job_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        cols = ["id", "source", "job_title", "company", "location", "description", "job_url", "scraped_at"]
+        out = dict(zip(cols, row))
+        if out.get("scraped_at") and hasattr(out["scraped_at"], "isoformat"):
+            out["scraped_at"] = out["scraped_at"].isoformat()
+        return out
     finally:
         cur.close()
         conn.close()
@@ -2665,6 +3146,40 @@ def get_all_posted_jobs(
                     d[k] = d[k].isoformat()
             out.append(d)
         return out
+    finally:
+        cur.close()
+        conn.close()
+
+
+def count_all_posted_jobs(
+    job_type: Optional[str] = None,
+    experience_level: Optional[str] = None,
+    search: Optional[str] = None,
+) -> int:
+    """Count active, non-expired posted jobs with the same filters as get_all_posted_jobs."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        q = """
+            SELECT COUNT(*)
+            FROM posted_jobs pj
+            WHERE pj.is_active = TRUE
+            AND (pj.expires_at IS NULL OR pj.expires_at > NOW())
+            """
+        params = []
+        if job_type:
+            q += " AND pj.job_type = %s"
+            params.append(job_type)
+        if experience_level:
+            q += " AND pj.experience_level = %s"
+            params.append(experience_level)
+        if search and search.strip():
+            q += " AND (pj.title ILIKE %s OR pj.description ILIKE %s)"
+            t = f"%{search.strip()}%"
+            params.extend([t, t])
+        cur.execute(q, tuple(params))
+        row = cur.fetchone()
+        return int(row[0]) if row and row[0] is not None else 0
     finally:
         cur.close()
         conn.close()

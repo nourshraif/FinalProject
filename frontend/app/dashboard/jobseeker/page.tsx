@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Briefcase, Bookmark, Bell, Building2, ClipboardList, Mail, Target } from "lucide-react";
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
@@ -34,6 +35,7 @@ function profileCompleteness(p: UserProfile | null): number {
 
 function JobseekerDashboardContent() {
   const { user, token } = useAuth();
+  const router = useRouter();
   const { showToast } = useToast();
   const [totalJobs, setTotalJobs] = useState<number | null>(null);
   const [profileComplete, setProfileComplete] = useState<number | null>(null);
@@ -43,6 +45,14 @@ function JobseekerDashboardContent() {
   const [respondingId, setRespondingId] = useState<number | null>(null);
   const [applicationsChartData, setApplicationsChartData] = useState<{ date: string; count: number }[]>([]);
   const [alertsEnabled, setAlertsEnabled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (user?.is_admin) {
+      router.push("/admin");
+    }
+  }, [user?.is_admin, router]);
+
+  if (user?.is_admin) return null;
 
   const loadData = useCallback(() => {
     getStats()

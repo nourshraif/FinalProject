@@ -11,15 +11,19 @@ import {
   Mail,
   TrendingUp,
   Loader2,
+  Clock3,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import {
   getAdminStats,
+  getAdminHealth,
+  getAdminScraperLastRun,
   getAdminUsers,
   getAdminActivity,
   runScraper,
+  cleanupInactiveJobs,
   toggleUserActive,
   makeUserAdmin,
   type AdminStats as AdminStatsType,
@@ -81,7 +85,9 @@ export default function AdminPage() {
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [loadingActivity, setLoadingActivity] = useState(true);
   const [scraperLoading, setScraperLoading] = useState(false);
-  const [scraperSuccess, setScraperSuccess] = useState(false);
+  const [cleanupInactiveLoading, setCleanupInactiveLoading] = useState(false);
+  const [lastScraperRun, setLastScraperRun] = useState<string | null>(null);
+  const [emailConfigured, setEmailConfigured] = useState<boolean>(false);
 
   const loadStats = useCallback(() => {
     if (!token) return;
@@ -116,6 +122,25 @@ export default function AdminPage() {
       .finally(() => setLoadingActivity(false));
   }, [token]);
 
+  const loadLastScraperRun = useCallback(() => {
+    if (!token) return;
+    getAdminScraperLastRun(token)
+      .then((r) => setLastScraperRun(r.last_run))
+      .catch(() => setLastScraperRun(null));
+  }, [token]);
+
+  const loadHealth = useCallback(() => {
+    if (!token) return;
+    getAdminHealth(token)
+      .then((h) => {
+        setEmailConfigured(Boolean(h.email_configured));
+        if (h.last_scraper_run) setLastScraperRun(h.last_scraper_run);
+      })
+      .catch(() => {
+        setEmailConfigured(false);
+      });
+  }, [token]);
+
   useEffect(() => {
     loadStats();
   }, [loadStats]);
@@ -129,22 +154,45 @@ export default function AdminPage() {
   useEffect(() => {
     loadActivity();
   }, [loadActivity]);
+  useEffect(() => {
+    loadLastScraperRun();
+    loadHealth();
+  }, [loadLastScraperRun, loadHealth]);
 
   const handleRunScraper = useCallback(() => {
     if (!token) return;
     setScraperLoading(true);
-    setScraperSuccess(false);
     runScraper(token)
       .then(() => {
-        setScraperSuccess(true);
-        showToast("Scraper started", "success");
+        showToast("Scraper started successfully", "success");
         loadStats();
+        loadLastScraperRun();
+        loadHealth();
       })
       .catch((e) => {
         showToast(e instanceof Error ? e.message : "Failed to start scraper", "error");
       })
       .finally(() => setScraperLoading(false));
-  }, [token, loadStats]);
+  }, [token, loadStats, loadLastScraperRun, loadHealth, showToast]);
+
+  const handleCleanupInactiveJobs = useCallback(() => {
+    if (!token) return;
+    setCleanupInactiveLoading(true);
+    cleanupInactiveJobs(token)
+      .then((res) => {
+        showToast(
+          `Removed ${res.total_deleted} inactive/expired jobs (${res.deleted_scraped} scraped, ${res.deleted_posted} posted)`,
+          "success"
+        );
+        loadStats();
+        loadLastScraperRun();
+        loadHealth();
+      })
+      .catch((e) => {
+        showToast(e instanceof Error ? e.message : "Failed to remove inactive jobs", "error");
+      })
+      .finally(() => setCleanupInactiveLoading(false));
+  }, [token, showToast, loadStats, loadLastScraperRun, loadHealth]);
 
   const handleToggleActive = useCallback(
     (userId: number) => {
@@ -210,20 +258,26 @@ export default function AdminPage() {
             Platform overview and management
           </p>
         </div>
-        <button
-          type="button"
-          onClick={handleRunScraper}
-          disabled={scraperLoading}
-          className="glow-button flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-white disabled:opacity-70"
-        >
-          {scraperLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : null}
-          Run Scraper
-        </button>
-        {scraperSuccess && !scraperLoading && (
-          <span className="text-sm text-green-400">Scraper started</span>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleCleanupInactiveJobs}
+            disabled={cleanupInactiveLoading}
+            className="ghost-button inline-flex min-w-[190px] items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-70"
+          >
+            {cleanupInactiveLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {cleanupInactiveLoading ? "Removing..." : "Remove Inactive/Expired"}
+          </button>
+          <button
+            type="button"
+            onClick={handleRunScraper}
+            disabled={scraperLoading}
+            className="glow-button inline-flex min-w-[150px] items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-white disabled:opacity-70"
+          >
+            {scraperLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {scraperLoading ? "Running..." : "Run Scraper"}
+          </button>
+        </div>
       </div>
 
       {/* Stats grid 1: 2 cols on mobile */}
@@ -329,7 +383,7 @@ export default function AdminPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_0.4fr]">
         {/* User Management */}
         <div className="glass-card rounded-xl p-6">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
+          <div id="users-section" className="mb-4 flex flex-wrap items-center justify-between gap-4">
             <h2 className="text-lg font-bold text-white">Users</h2>
             <input
               type="text"
@@ -472,49 +526,52 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* Recent Activity */}
-        <div className="glass-card rounded-xl p-6">
-          <h2 className="mb-4 text-lg font-bold text-white">Recent Activity</h2>
-          <div className="space-y-0">
-            {loadingActivity ? (
-              <p className="py-6 text-center text-sm text-vertex-muted">
-                Loading…
-              </p>
-            ) : activity.length === 0 ? (
-              <p className="py-6 text-center text-sm text-vertex-muted">
-                No recent activity
-              </p>
-            ) : (
-              activity.map((a, i) => (
-                <div
-                  key={i}
-                  className="flex items-start gap-3 border-b border-[#1e1e3a] py-3 last:border-0"
-                >
+        <div className="space-y-6">
+          {/* Recent Activity */}
+          <div className="glass-card rounded-xl p-6">
+            <h2 className="mb-4 text-lg font-bold text-white">Recent Activity</h2>
+            <div className="space-y-0">
+              {loadingActivity ? (
+                <p className="py-6 text-center text-sm text-vertex-muted">
+                  Loading…
+                </p>
+              ) : activity.length === 0 ? (
+                <p className="py-6 text-center text-sm text-vertex-muted">
+                  No recent activity
+                </p>
+              ) : (
+                activity.map((a, i) => (
                   <div
-                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm ${
-                      a.type === "registration"
-                        ? "bg-indigo-500/30"
-                        : a.type === "contact_request"
-                          ? "bg-purple-500/30"
-                          : "bg-amber-500/30"
-                    }`}
+                    key={i}
+                    className="flex items-start gap-3 border-b border-[#1e1e3a] py-3 last:border-0"
                   >
-                    {a.type === "registration"
-                      ? "👤"
-                      : a.type === "contact_request"
-                        ? "✉"
-                        : "📋"}
+                    <div
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm ${
+                        a.type === "registration"
+                          ? "bg-indigo-500/30"
+                          : a.type === "contact_request"
+                            ? "bg-purple-500/30"
+                            : "bg-amber-500/30"
+                      }`}
+                    >
+                      {a.type === "registration"
+                        ? "👤"
+                        : a.type === "contact_request"
+                          ? "✉"
+                          : "📋"}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm text-white">{a.description}</p>
+                      <p className="text-xs text-vertex-muted">
+                        {timeAgo(a.created_at)}
+                      </p>
+                    </div>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm text-white">{a.description}</p>
-                    <p className="text-xs text-vertex-muted">
-                      {timeAgo(a.created_at)}
-                    </p>
-                  </div>
-                </div>
-              ))
-            )}
+                ))
+              )}
+            </div>
           </div>
+
         </div>
       </div>
 
@@ -523,20 +580,24 @@ export default function AdminPage() {
         <h2 className="mb-4 text-lg font-bold text-white">Platform Health</h2>
         <div className="flex flex-wrap gap-6">
           <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-green-500" />
+            <span className={`h-2 w-2 rounded-full ${stats !== null ? "bg-green-500" : "bg-red-500"}`} />
             <span className="text-sm text-white">
-              {stats !== null ? "Database Connected" : "Database —"}
+              {stats !== null ? "Database Connected" : "Database Unavailable"}
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-green-500" />
+            <span className={`h-2 w-2 rounded-full ${emailConfigured ? "bg-green-500" : "bg-red-500"}`} />
             <span className="text-sm text-vertex-muted">
-              Last run: TODO track last scraper run
+              Email Service: {emailConfigured ? "Configured" : "Not configured"}
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-green-500" />
-            <span className="text-sm text-vertex-muted">Resend Active (TODO)</span>
+            <Clock3 className="h-4 w-4 text-vertex-muted" />
+            <span className="text-sm text-vertex-muted">
+              {lastScraperRun
+                ? `Last scraper run: ${timeAgo(lastScraperRun)}`
+                : "Scraper has not run yet"}
+            </span>
           </div>
         </div>
       </div>

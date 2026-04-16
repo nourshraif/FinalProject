@@ -15,6 +15,8 @@ export default function AuthCallbackPage() {
     const full_name = searchParams.get("full_name");
     const user_id = searchParams.get("user_id");
     const email = searchParams.get("email");
+    const plan = searchParams.get("plan") || "free";
+    const is_admin_param = searchParams.get("is_admin");
     const error = searchParams.get("error");
 
     if (error) {
@@ -28,7 +30,8 @@ export default function AuthCallbackPage() {
         email: decodeURIComponent(email),
         full_name: decodeURIComponent(full_name),
         user_type: user_type as "jobseeker" | "company",
-        is_admin: false,
+        is_admin: is_admin_param === "true",
+        plan: decodeURIComponent(plan),
       });
       if (user_type === "company") {
         router.push("/dashboard/company");

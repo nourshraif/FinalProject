@@ -56,6 +56,14 @@ function CompanyDashboardContent() {
   const [searchesChartData, setSearchesChartData] = useState<{ date: string; count: number }[]>([]);
   const [postedJobs, setPostedJobs] = useState<PostedJob[]>([]);
 
+  useEffect(() => {
+    if (user?.is_admin) {
+      router.push("/admin");
+    }
+  }, [user?.is_admin, router]);
+
+  if (user?.is_admin) return null;
+
   const loadData = useCallback(() => {
     getCandidateCount()
       .then(setCandidateCount)

@@ -32,8 +32,7 @@ export default function PaymentSuccessPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-6 pt-24 pb-16">
       <div
-        className="mb-6 flex h-20 w-20 shrink-0 items-center justify-center rounded-full text-4xl text-white"
-        className="animate-scale-in"
+        className="animate-scale-in mb-6 flex h-20 w-20 shrink-0 items-center justify-center rounded-full text-4xl text-white"
         style={{
           background: "linear-gradient(135deg, #22c55e, #16a34a)",
           boxShadow: "0 0 40px rgba(34,197,94,0.4)",

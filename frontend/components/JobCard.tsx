@@ -1,9 +1,13 @@
+"use client";
+
 import type { Job } from "@/types";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SaveButton } from "@/components/SaveButton";
 import { ExternalLink, MapPin, Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useRouter } from "next/navigation";
+import { useToast } from "@/context/ToastContext";
 
 export interface JobCardProps {
   title: string;
@@ -19,6 +23,8 @@ export interface JobCardProps {
   /** If provided, SaveButton is shown with token and initialSaved */
   token?: string | null;
   initialSaved?: boolean;
+  showAnalyzeGap?: boolean;
+  isProUser?: boolean;
 }
 
 function MatchScoreBadge({ score }: { score: number }) {
@@ -52,7 +58,11 @@ export function JobCard(props: JobCardProps) {
     jobId,
     token,
     initialSaved = false,
+    showAnalyzeGap = false,
+    isProUser = false,
   } = props;
+  const router = useRouter();
+  const { showToast } = useToast();
 
   return (
     <Card className="overflow-hidden transition-shadow hover:shadow-lg">
@@ -105,12 +115,30 @@ export function JobCard(props: JobCardProps) {
         )}
       </CardContent>
       <CardFooter className="pt-2">
-        <Button variant="default" size="sm" className="gap-1.5" asChild>
-          <a href={url} target="_blank" rel="noopener noreferrer">
-            View Job
-            <ExternalLink className="h-3.5 w-3.5" />
-          </a>
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="default" size="sm" className="gap-1.5" asChild>
+            <a href={url} target="_blank" rel="noopener noreferrer">
+              View Job
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          </Button>
+          {showAnalyzeGap && jobId != null && (
+            <button
+              type="button"
+              className="ghost-button rounded-lg px-3 py-1.5 text-xs font-medium"
+              onClick={() => {
+                if (isProUser) {
+                  router.push(`/skills-gap?job_id=${jobId}`);
+                  return;
+                }
+                showToast("Skills Gap Analyzer requires Pro plan", "info");
+                router.push("/pricing");
+              }}
+            >
+              📊 Analyze My Gap
+            </button>
+          )}
+        </div>
       </CardFooter>
     </Card>
   );
@@ -122,11 +150,15 @@ export function JobCardFromJob({
   onSave,
   token,
   initialSaved,
+  showAnalyzeGap,
+  isProUser,
 }: {
   job: Job;
   onSave?: (jobId: number) => void;
   token?: string | null;
   initialSaved?: boolean;
+  showAnalyzeGap?: boolean;
+  isProUser?: boolean;
 }) {
   return (
     <JobCard
@@ -141,6 +173,8 @@ export function JobCardFromJob({
       onSave={onSave}
       token={token}
       initialSaved={initialSaved}
+      showAnalyzeGap={showAnalyzeGap}
+      isProUser={isProUser}
     />
   );
 }

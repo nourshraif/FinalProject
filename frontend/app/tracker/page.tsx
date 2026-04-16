@@ -13,6 +13,7 @@ import {
 } from "@/lib/api";
 import type { JobApplication, ApplicationStatus } from "@/types";
 import { ConfirmModal } from "@/components/ConfirmModal";
+import { PlanGate } from "@/components/PlanGate";
 
 const STATUS_OPTIONS: { value: ApplicationStatus; label: string }[] = [
   { value: "applied", label: "Applied" },
@@ -556,7 +557,9 @@ function TrackerContent() {
 export default function TrackerPage() {
   return (
     <ProtectedRoute requiredRole="jobseeker">
-      <TrackerContent />
+      <PlanGate feature="application_tracker" requiredPlan="pro">
+        <TrackerContent />
+      </PlanGate>
     </ProtectedRoute>
   );
 }

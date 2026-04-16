@@ -11,6 +11,8 @@ export interface User {
   full_name: string;
   user_type: "jobseeker" | "company";
   is_admin?: boolean;
+  /** Subscription tier from backend (`users.plan`). */
+  plan?: string;
 }
 
 interface AuthContextType {
@@ -23,6 +25,14 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+function normalizeUser(raw: User): User {
+  return {
+    ...raw,
+    is_admin: Boolean(raw?.is_admin),
+    plan: raw?.plan || "free",
+  };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -33,7 +43,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const u = localStorage.getItem(STORAGE_USER_KEY);
       if (t && u) {
         setToken(t);
-        setUser(JSON.parse(u) as User);
+        setUser(normalizeUser(JSON.parse(u) as User));
       }
     } catch {
       // ignore corrupt storage
@@ -41,11 +51,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = useCallback((newToken: string, newUser: User) => {
+    const normalized = normalizeUser(newUser);
     setToken(newToken);
-    setUser(newUser);
+    setUser(normalized);
     try {
       localStorage.setItem(STORAGE_TOKEN_KEY, newToken);
-      localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(newUser));
+      localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(normalized));
     } catch {
       // ignore quota / private mode
     }

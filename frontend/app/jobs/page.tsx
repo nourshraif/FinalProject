@@ -25,7 +25,7 @@ export default function JobsBoardPage() {
       experience_level: experienceLevel || undefined,
       search: search.trim() || undefined,
     })
-      .then((list) => setJobs(Array.isArray(list) ? list : []))
+      .then((res) => setJobs(res.jobs ?? []))
       .catch(() => setJobs([]))
       .finally(() => setLoading(false));
   }, [search, jobType, experienceLevel]);

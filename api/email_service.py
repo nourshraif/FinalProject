@@ -495,3 +495,67 @@ def send_password_reset_email(
     except Exception as e:
         print(f"Email error: {e}")
         return False
+
+
+def send_support_reply_email(
+    to_email: str,
+    full_name: str,
+    subject: str,
+    reply_message: str,
+) -> bool:
+    """Send admin support reply email for guest contact submissions."""
+    try:
+        resend.Emails.send({
+            "from": FROM_EMAIL,
+            "to": [to_email],
+            "subject": f"Re: {subject}",
+            "html": f"""
+      <div style="font-family: Arial, sans-serif;
+                  max-width: 600px; margin: 0 auto;
+                  background: #0a0a0f; color: white;
+                  padding: 40px; border-radius: 12px;">
+
+        <div style="text-align: center;
+                    margin-bottom: 24px;">
+          <h1 style="font-size: 28px; margin: 0;">
+            <span style="color: white;">Vert</span>
+            <span style="color: #6366f1;">ex</span>
+          </h1>
+        </div>
+
+        <h2 style="color: white; font-size: 22px; margin-bottom: 8px;">
+          Hello {full_name or "there"},
+        </h2>
+
+        <p style="color: #94a3b8; line-height: 1.6; margin-top: 0;">
+          Thanks for contacting Vertex support. Here is our reply:
+        </p>
+
+        <div style="background: #13131f;
+                    border: 1px solid #2a2a3d;
+                    border-left: 3px solid #6366f1;
+                    border-radius: 10px;
+                    padding: 18px;
+                    margin: 24px 0;">
+          <p style="color: #e2e8f0; margin: 0; line-height: 1.6; white-space: pre-wrap;">
+            {reply_message}
+          </p>
+        </div>
+
+        <p style="color: #94a3b8; line-height: 1.6;">
+          If you need anything else, just reply to this email.
+        </p>
+
+        <p style="color: #64748b;
+                  font-size: 12px;
+                  text-align: center;
+                  margin-top: 30px;">
+          © 2026 Vertex. All rights reserved.
+        </p>
+      </div>
+      """
+        })
+        return True
+    except Exception as e:
+        print(f"Email error: {e}")
+        return False

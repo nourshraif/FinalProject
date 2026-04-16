@@ -7,6 +7,7 @@ export interface Job {
   url: string;
   match_score: number;
   tags: string[];
+  source?: string | null;
 }
 
 /** Scraped job from GET /api/jobs/search */
@@ -86,6 +87,14 @@ export interface TokenResponse {
   user_id: number;
   email: string;
   is_admin?: boolean;
+  plan?: string;
+}
+
+/** Response from POST /api/match-jobs */
+export interface MatchJobsResult {
+  jobs: Job[];
+  total_matched: number;
+  upgrade_message?: string | null;
 }
 
 export interface RegisterRequest {
@@ -178,6 +187,35 @@ export interface ContactRequest {
   updated_at: string;
 }
 
+export interface ContactMessage {
+  id: number;
+  user_id?: number | null;
+  full_name: string;
+  email: string;
+  company?: string | null;
+  subject: string;
+  message: string;
+  status: "new" | "in_progress" | "resolved";
+  created_at: string;
+  updated_at: string;
+  last_reply_at?: string | null;
+  replies_count?: number;
+}
+
+export interface ContactMessageReply {
+  id: number;
+  contact_message_id: number;
+  sender_type: "admin" | "user";
+  sender_user_id?: number | null;
+  message: string;
+  sent_via: "backend" | "email";
+  created_at: string;
+}
+
+export interface ContactMessageThread extends ContactMessage {
+  replies: ContactMessageReply[];
+}
+
 export interface Notification {
   id: number;
   user_id: number;
@@ -230,4 +268,31 @@ export interface PostedJob {
   company_website?: string;
   industry?: string;
   company_size?: string;
+}
+
+export interface SkillGapResource {
+  title: string;
+  platform: string;
+  url: string;
+  duration: string;
+  is_free: boolean;
+}
+
+export interface MissingSkill {
+  skill: string;
+  importance: "high" | "medium" | "low" | string;
+  reason: string;
+  time_to_learn: string;
+  difficulty: string;
+  resources: SkillGapResource[];
+}
+
+export interface SkillsGapResult {
+  match_percentage: number;
+  matched_skills: string[];
+  missing_skills: MissingSkill[];
+  overall_assessment: string;
+  estimated_ready_in: string;
+  priority_learning_path: string[];
+  strengths: string[];
 }

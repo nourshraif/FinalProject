@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { uploadCV, matchJobs } from "@/lib/api";
-import type { Job, Skill } from "@/types";
+import { uploadCV, matchJobs, uploadProfileCV } from "@/lib/api";
+import type { MatchJobsResult, Skill } from "@/types";
 import { toast } from "sonner";
 import { Upload, FileText, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,13 +10,19 @@ import { cn } from "@/lib/utils";
 
 export interface CVUploaderProps {
   /** Called with job results after upload + match (on submit) */
-  onMatchComplete?: (jobs: Job[]) => void;
+  onMatchComplete?: (result: MatchJobsResult) => void;
   /** Optional: called when skills are extracted so parent can display them */
   onSkillsExtracted?: (skills: Skill[]) => void;
   /** Optional: called when an error occurs */
   onError?: (message: string) => void;
   /** Optional: called when loading state changes (e.g. for showing skeletons) */
   onLoadingChange?: (loading: boolean) => void;
+  /** When set with persistToProfile, uploads CV via /api/profile/upload-cv (saves skills + file). */
+  token?: string | null;
+  /** If true and token is set, persist CV and skills to the user profile before matching. */
+  persistToProfile?: boolean;
+  /** Called after a successful profile CV upload (before matching). */
+  onPersistedToProfile?: () => void;
   className?: string;
 }
 
@@ -25,6 +31,9 @@ export function CVUploader({
   onSkillsExtracted,
   onError,
   onLoadingChange,
+  token,
+  persistToProfile = false,
+  onPersistedToProfile,
   className,
 }: CVUploaderProps) {
   const [dragging, setDragging] = useState(false);
@@ -78,13 +87,22 @@ export function CVUploader({
     setLoading(true);
     onLoadingChange?.(true);
     try {
-      const extractedSkills = await uploadCV(file);
+      let extractedSkills: Skill[];
+      if (persistToProfile && token) {
+        const r = await uploadProfileCV(token, file);
+        extractedSkills = r.skills_extracted ?? [];
+        onPersistedToProfile?.();
+        toast.success("CV saved to your profile");
+      } else {
+        extractedSkills = await uploadCV(file);
+        toast.success("CV uploaded successfully");
+      }
       setSkills(extractedSkills);
       onSkillsExtracted?.(extractedSkills);
-      toast.success("CV uploaded successfully");
-      const jobs = await matchJobs(extractedSkills);
-      onMatchComplete?.(jobs);
-      toast.success(`Loaded ${jobs.length} matching job${jobs.length !== 1 ? "s" : ""}`);
+      const matchResult = await matchJobs(extractedSkills);
+      onMatchComplete?.(matchResult);
+      const n = matchResult.jobs?.length ?? 0;
+      toast.success(`Loaded ${n} matching job${n !== 1 ? "s" : ""}`);
     } catch (e) {
       const message = e instanceof Error ? e.message : "Something went wrong";
       setError(message);
@@ -94,7 +112,7 @@ export function CVUploader({
       setLoading(false);
       onLoadingChange?.(false);
     }
-  }, [file, onMatchComplete, onSkillsExtracted, onError, onLoadingChange]);
+  }, [file, onMatchComplete, onSkillsExtracted, onError, onLoadingChange, onPersistedToProfile, persistToProfile, token]);
 
   const canSubmit = Boolean(file && !loading);
 

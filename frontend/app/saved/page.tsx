@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Bookmark } from "lucide-react";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
-import { getSavedJobs, unsaveJob } from "@/lib/api";
+import { getProfile, getSavedJobs, unsaveJob } from "@/lib/api";
 import type { SavedJob } from "@/types";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { SkeletonJobCard } from "@/components/Skeleton";
@@ -28,11 +29,24 @@ function relativeTime(iso: string) {
   }
 }
 
+function normalizeText(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9\s+#.-]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function toAcronym(phrase: string): string {
+  const words = normalizeText(phrase).split(" ").filter(Boolean);
+  if (words.length < 2) return "";
+  return words.map((w) => w[0]).join("");
+}
+
 function SavedContent() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const router = useRouter();
   const { showToast } = useToast();
   const [jobs, setJobs] = useState<SavedJob[]>([]);
   const [loading, setLoading] = useState(true);
+  const [plan, setPlan] = useState<string>(user?.plan || "free");
+  const [profileSkills, setProfileSkills] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
   const [unsaveTarget, setUnsaveTarget] = useState<SavedJob | null>(null);
@@ -52,6 +66,43 @@ function SavedContent() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!token) {
+      setProfileSkills([]);
+      return;
+    }
+    getProfile(token)
+      .then((p) => {
+        const skills = (p.skills || []).map((s) => String(s).trim().toLowerCase()).filter(Boolean);
+        setProfileSkills(skills);
+      })
+      .catch(() => setProfileSkills([]));
+  }, [token]);
+
+  const isJobMatchingProfileSkills = useCallback(
+    (job: SavedJob): boolean => {
+      if (!profileSkills.length) return false;
+      const haystack = normalizeText(`${job.job_title || ""} ${job.company || ""} ${job.description || ""}`);
+
+      return profileSkills.some((rawSkill) => {
+        const skill = normalizeText(rawSkill);
+        if (!skill) return false;
+
+        // Direct phrase match (e.g. "manual testing")
+        if (haystack.includes(skill)) return true;
+
+        // Acronym match (e.g. "quality assurance" -> "qa")
+        const acronym = toAcronym(skill);
+        if (acronym && haystack.includes(acronym)) return true;
+
+        // Token overlap fallback for composite skills
+        const tokens = skill.split(" ").filter((t) => t.length >= 3);
+        return tokens.some((token) => haystack.includes(token));
+      });
+    },
+    [profileSkills]
+  );
 
   const sources = Array.from(
     new Set(jobs.map((j) => j.source || "Unknown").filter(Boolean))
@@ -104,6 +155,20 @@ function SavedContent() {
             {jobs.length}
           </span>
         </div>
+
+        {plan === "free" && jobs.length >= 5 && !user?.is_admin && (
+          <div className="glass-card mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-4 text-center sm:text-left">
+            <p className="text-sm font-medium text-amber-100">
+              You have reached the 5 job limit on the Free plan.
+            </p>
+            <p className="mt-1 text-sm text-amber-200/80">
+              Upgrade to Pro for unlimited saved jobs.{" "}
+              <Link href="/pricing" className="font-semibold text-indigo-300 underline-offset-2 hover:text-indigo-200 hover:underline">
+                Upgrade
+              </Link>
+            </p>
+          </div>
+        )}
 
         {/* Search / filter */}
         <div className="mb-6 flex flex-wrap gap-3">
@@ -218,14 +283,32 @@ function SavedContent() {
                   <span className="text-xs text-vertex-muted">
                     Saved {relativeTime(job.saved_at)}
                   </span>
-                  <a
-                    href={job.job_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="ghost-button rounded-lg px-3 py-1.5 text-xs"
-                  >
-                    View Job
-                  </a>
+                  <div className="flex items-center gap-2">
+                    {isJobMatchingProfileSkills(job) && (
+                      <button
+                        type="button"
+                        className="ghost-button rounded-lg px-3 py-1.5 text-xs"
+                        onClick={() => {
+                          if (plan === "pro" || plan === "business") {
+                            router.push(`/skills-gap?job_id=${job.id}`);
+                            return;
+                          }
+                          showToast("Skills Gap Analyzer requires Pro plan", "info");
+                          router.push("/pricing");
+                        }}
+                      >
+                        📊 Analyze My Gap
+                      </button>
+                    )}
+                    <a
+                      href={job.job_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ghost-button rounded-lg px-3 py-1.5 text-xs"
+                    >
+                      View Job
+                    </a>
+                  </div>
                 </div>
               </div>
             ))}

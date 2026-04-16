@@ -4,10 +4,37 @@ import time
 import logging
 from typing import List, Dict
 from app.services.Scrapers import get_all_scrapers
+from app.services.Scrapers.hirelebanese_scraper import scrape_hirelebanese
+from app.services.Scrapers.careersandjobsinlebanon_scraper import (
+    scrape_careersandjobsinlebanon,
+)
 from app.database.db import get_connection
 from app.services.embedding_service import generate_and_save_embedding
 
 logger = logging.getLogger(__name__)
+
+
+def normalize_source(source: str) -> str:
+    mapping = {
+        "hirelebanese": "HireLebanese",
+        "hire_lebanese": "HireLebanese",
+        "weworkremotely": "WeWorkRemotely",
+        "we_work_remotely": "WeWorkRemotely",
+        "remoteok": "RemoteOK",
+        "remote_ok": "RemoteOK",
+        "remotive": "Remotive",
+        "himalayas": "Himalayas",
+        "arbeitnow": "Arbeitnow",
+        "bayt": "Bayt",
+        "linkedin": "LinkedIn",
+        "indeed": "Indeed",
+        "careersandjobs": "CareersAndJobsInLebanon",
+        "careers_and_jobs": "CareersAndJobsInLebanon",
+        "careersandjobsinlebanon": "CareersAndJobsInLebanon",
+        "careers_and_jobs_in_lebanon": "CareersAndJobsInLebanon",
+    }
+    src = str(source or "").strip()
+    return mapping.get(src.lower(), src)
 
 
 class ScraperService:
@@ -36,6 +63,22 @@ class ScraperService:
             except Exception as e:
                 print(f"  ✗ {scraper.source_name}: {e}")
         
+        try:
+            logger.info("Scraping HireLebanese...")
+            hl_jobs = scrape_hirelebanese()
+            all_jobs += hl_jobs
+            logger.info(f"HireLebanese: {len(hl_jobs)} jobs")
+        except Exception as e:
+            logger.error(f"HireLebanese scraper failed: {e}")
+
+        try:
+            logger.info("Scraping CareersAndJobsInLebanon...")
+            cjl_jobs = scrape_careersandjobsinlebanon()
+            all_jobs += cjl_jobs
+            logger.info(f"CareersAndJobsInLebanon: {len(cjl_jobs)} jobs")
+        except Exception as e:
+            logger.error(f"CareersAndJobsInLebanon scraper failed: {e}")
+        
         print(f"\n{'='*70}")
         print(f"✅ Total collected: {len(all_jobs)} jobs")
         print(f"{'='*70}\n")
@@ -61,13 +104,21 @@ class ScraperService:
             company_str = str(job_data.get('company', '')) if job_data.get('company') else ''
             location_str = str(job_data.get('location', 'Remote')) if job_data.get('location', 'Remote') else 'Remote'
             
+            source_name = normalize_source(job_data.get("source", ""))
+
             self.cur.execute("""
                 INSERT INTO jobs (source, job_title, company, location, description, job_url, scraped_at)
                 VALUES (%s, %s, %s, %s, %s, %s, NOW())
-                ON CONFLICT (job_url) DO NOTHING
+                ON CONFLICT (job_url) DO UPDATE SET
+                  source = EXCLUDED.source,
+                  job_title = EXCLUDED.job_title,
+                  company = EXCLUDED.company,
+                  location = EXCLUDED.location,
+                  description = EXCLUDED.description,
+                  scraped_at = NOW()
                 RETURNING id;
             """, (
-                job_data.get('source', ''),
+                source_name,
                 title_str[:255],
                 company_str[:255],
                 location_str[:255],
@@ -77,7 +128,7 @@ class ScraperService:
             
             result = self.cur.fetchone()
             if result:
-                # New job was inserted - commit immediately so job is stored even if embedding fails
+                # Upserted job (new or existing) - commit so row is persisted even if embedding fails
                 job_id = result[0]
                 self.jobs_saved += 1
                 self.conn.commit()
@@ -101,7 +152,7 @@ class ScraperService:
                     print(f"  💾 Saved {self.jobs_saved} jobs...")
                 return True
             else:
-                # Duplicate job (ON CONFLICT DO NOTHING means no row returned)
+                # Defensive fallback; RETURNING id should always return a row for upsert.
                 return False
             
         except Exception as e:

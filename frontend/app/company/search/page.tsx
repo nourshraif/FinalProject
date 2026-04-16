@@ -15,6 +15,8 @@ import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { Loader2, Search, Users, TrendingUp, Award, SlidersHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PlanGate } from "@/components/PlanGate";
+import { SkeletonCandidateCard } from "@/components/Skeleton";
 
 export default function CompanySearchPage() {
   const { token } = useAuth();
@@ -104,6 +106,7 @@ export default function CompanySearchPage() {
     candidates.length > 0 ? Math.max(...candidates.map((c) => c.combined_score)) : 0;
 
   return (
+    <PlanGate feature="search_candidates" requiredPlan="business">
     <div className="container px-4 py-8 sm:px-6">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-vertex-white">Search Talent</h1>
@@ -372,5 +375,6 @@ export default function CompanySearchPage() {
         />
       )}
     </div>
+    </PlanGate>
   );
 }

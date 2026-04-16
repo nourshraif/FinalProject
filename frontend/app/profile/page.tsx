@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
@@ -17,6 +18,7 @@ export default function ProfilePage() {
 
 function ProfileContent() {
   const { user, token } = useAuth();
+  const router = useRouter();
   const { showToast } = useToast();
   const [profile, setProfile] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
@@ -51,6 +53,14 @@ function ProfileContent() {
 
   const BASE_URL =
     process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+  useEffect(() => {
+    if (user?.is_admin) {
+      router.push("/admin");
+    }
+  }, [user?.is_admin, router]);
+
+  if (user?.is_admin) return null;
 
   useEffect(() => {
     if (token) fetchProfile();

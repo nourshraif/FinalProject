@@ -6,6 +6,9 @@ const footerLinks = [
   { href: "/jobs", label: "Opportunities" },
   { href: "/match", label: "Match" },
   { href: "/pricing", label: "Pricing" },
+  { href: "/contact", label: "Contact" },
+  { href: "/privacy", label: "Privacy" },
+  { href: "/terms", label: "Terms" },
 ];
 
 export function Footer() {

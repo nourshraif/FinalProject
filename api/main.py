@@ -8,6 +8,7 @@ Requires: pip install fastapi uvicorn python-multipart
 import os
 import sys
 import subprocess
+import json
 from pathlib import Path
 from io import BytesIO
 
@@ -22,7 +23,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 import secrets
 from contextlib import asynccontextmanager
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
 from urllib.parse import urlencode, quote
 
@@ -53,6 +54,9 @@ from app.database.db import (
     save_job as db_save_job,
     unsave_job as db_unsave_job,
     is_job_saved as db_is_job_saved,
+    count_saved_jobs_for_user as db_count_saved_jobs_for_user,
+    count_company_active_posted_jobs as db_count_company_active_posted_jobs,
+    count_company_contact_requests_last_30_days as db_count_company_contact_requests_last_30_days,
     get_company_profile as db_get_company_profile,
     upsert_company_profile as db_upsert_company_profile,
     get_saved_candidates as db_get_saved_candidates,
@@ -67,11 +71,20 @@ from app.database.db import (
     get_company_requests as db_get_company_requests,
     update_request_status as db_update_request_status,
     get_contact_request_by_id as db_get_contact_request_by_id,
+    create_contact_message as db_create_contact_message,
+    get_contact_messages as db_get_contact_messages,
+    update_contact_message_status as db_update_contact_message_status,
+    get_contact_message_by_id as db_get_contact_message_by_id,
+    get_contact_message_thread as db_get_contact_message_thread,
+    add_contact_message_reply as db_add_contact_message_reply,
+    get_user_contact_messages as db_get_user_contact_messages,
     create_password_reset_token as db_create_password_reset_token,
     get_valid_password_reset_token as db_get_valid_password_reset_token,
     mark_password_reset_used as db_mark_password_reset_used,
     update_user_password as db_update_user_password,
     get_platform_stats as db_get_platform_stats,
+    remove_duplicate_jobs as db_remove_duplicate_jobs,
+    remove_inactive_or_expired_jobs as db_remove_inactive_or_expired_jobs,
     get_all_users as db_get_all_users,
     get_all_users_total as db_get_all_users_total,
     toggle_user_active as db_toggle_user_active,
@@ -87,6 +100,7 @@ from app.database.db import (
     upsert_alert_settings as db_upsert_alert_settings,
     get_recent_jobs as db_get_recent_jobs,
     search_jobs as db_search_jobs,
+    get_job_by_id as db_get_job_by_id,
     get_job_sources as db_get_job_sources,
     get_job_locations as db_get_job_locations,
     get_profile_by_slug as db_get_profile_by_slug,
@@ -95,6 +109,7 @@ from app.database.db import (
     create_posted_job as db_create_posted_job,
     get_company_posted_jobs as db_get_company_posted_jobs,
     get_all_posted_jobs as db_get_all_posted_jobs,
+    count_all_posted_jobs as db_count_all_posted_jobs,
     get_posted_job_by_id as db_get_posted_job_by_id,
     update_posted_job as db_update_posted_job,
     toggle_job_active as db_toggle_job_active,
@@ -112,8 +127,10 @@ from api.email_service import (
     send_contact_request_email,
     send_acceptance_email,
     send_job_alert_email,
+    send_support_reply_email,
 )
 from api.job_alerts_scheduler import create_scheduler
+from api.skills_gap_service import analyze_job_specific_gap
 
 # ---------------------------------------------------------------------------
 # JWT Auth configuration
@@ -124,6 +141,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
 
 BCRYPT_ROUNDS = 12
 security = HTTPBearer()
+security_optional = HTTPBearer(auto_error=False)
 
 # Google OAuth
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
@@ -189,6 +207,13 @@ class JobMatchResponse(BaseModel):
     url: str
     match_score: float
     tags: List[str]
+    source: Optional[str] = None
+
+
+class MatchJobsResponse(BaseModel):
+    jobs: List[JobMatchResponse]
+    total_matched: int = 0
+    upgrade_message: Optional[str] = None
 
 
 class JobsStatsResponse(BaseModel):
@@ -253,6 +278,22 @@ class ContactRequestStatusUpdate(BaseModel):
     status: str  # "accepted" | "declined"
 
 
+class ContactMessageCreate(BaseModel):
+    full_name: str
+    email: str
+    company: Optional[str] = None
+    subject: str
+    message: str
+
+
+class ContactMessageStatusUpdate(BaseModel):
+    status: str  # "new" | "in_progress" | "resolved"
+
+
+class ContactMessageReplyCreate(BaseModel):
+    message: str
+
+
 class SaveProfileRequest(BaseModel):
     email: str
     full_name: Optional[str] = None
@@ -299,6 +340,7 @@ class TokenResponse(BaseModel):
     user_id: int
     email: str
     is_admin: bool = False
+    plan: str = "free"
 
 
 class ProfileUpdateRequest(BaseModel):
@@ -447,6 +489,86 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 
+async def get_current_user_optional(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_optional),
+) -> Optional[dict]:
+    if credentials is None or not getattr(credentials, "credentials", None):
+        return None
+    try:
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("user_id")
+        if user_id is None:
+            return None
+        return get_user_by_id(int(user_id))
+    except (JWTError, TypeError, ValueError):
+        return None
+
+
+def check_plan_access(current_user: dict, feature: str) -> bool:
+    """Return True if the user's plan allows this feature."""
+    plan = (current_user.get("plan") or "free").strip().lower()
+    if plan not in ("free", "pro", "business"):
+        plan = "free"
+    user_type = (current_user.get("user_type") or "").strip().lower()
+
+    JOBSEEKER_FREE_FEATURES = [
+        "apply_jobs",
+        "view_profile",
+        "upload_cv",
+        "browse_jobs",
+    ]
+    JOBSEEKER_PRO_FEATURES = [
+        "view_matches",
+        "save_jobs",
+        "skills_gap",
+        "priority_matching",
+        "profile_boost",
+        "application_tracker",
+        "job_alerts",
+    ]
+    COMPANY_FREE_FEATURES = [
+        "post_job_1",
+        "contact_requests_3",
+    ]
+    COMPANY_PRO_FEATURES = [
+        "search_candidates",
+        "save_candidates",
+        "unlimited_contact_requests",
+        "search_history",
+        "analytics",
+        "unlimited_jobs",
+    ]
+
+    if user_type == "jobseeker":
+        if feature in JOBSEEKER_FREE_FEATURES:
+            return True
+        if feature in JOBSEEKER_PRO_FEATURES:
+            return plan in ("pro", "business")
+
+    if user_type == "company":
+        if feature in COMPANY_FREE_FEATURES:
+            return True
+        if feature in COMPANY_PRO_FEATURES:
+            return plan == "business"
+
+    return False
+
+
+def require_plan(current_user: dict, feature: str, upgrade_to: str = "pro") -> None:
+    if not check_plan_access(current_user, feature):
+        plan = (current_user.get("plan") or "free").strip().lower()
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "plan_required",
+                "message": f"This feature requires a {upgrade_to} plan",
+                "current_plan": plan,
+                "required_plan": upgrade_to,
+                "upgrade_url": "/pricing",
+            },
+        )
+
+
 async def get_admin_user(
     current_user: dict = Depends(get_current_user),
 ) -> dict:
@@ -493,7 +615,7 @@ def _maybe_create_welcome_notification(user: dict) -> None:
         print(f"Notification creation error: {e}")
 
 
-def _generate_chat_reply(messages: List[ChatMessage]) -> str:
+def _generate_fallback_chat_reply(messages: List[ChatMessage]) -> str:
     latest_user = ""
     for msg in reversed(messages):
         if (msg.role or "").lower() == "user":
@@ -527,6 +649,54 @@ def _generate_chat_reply(messages: List[ChatMessage]) -> str:
         "I can help with CV improvement, interview prep, and job search strategy. "
         "Share your target role and experience level for tailored advice."
     )
+
+
+def _generate_chat_reply(messages: List[ChatMessage]) -> str:
+    """
+    Generate chatbot reply using Hugging Face router first.
+    Falls back to local canned logic if API is unavailable.
+    """
+    hf_token = os.getenv("HF_TOKEN")
+    hf_model = os.getenv("HF_CHAT_MODEL") or os.getenv("HF_MODEL") or "openai/gpt-oss-120b:groq"
+
+    if hf_token:
+        try:
+            from openai import OpenAI
+
+            client = OpenAI(
+                base_url="https://router.huggingface.co/v1",
+                api_key=hf_token,
+            )
+
+            system_prompt = (
+                "You are Vertex AI, a concise and practical career assistant. "
+                "Help with CV feedback, job search strategy, interview prep, and career decisions. "
+                "Be specific, actionable, and supportive. Keep responses clear and compact. "
+                "Use short paragraphs and bullet points. Do not use markdown tables. "
+                "Keep answers within about 6-10 lines unless the user asks for detail."
+            )
+
+            conversation = [{"role": "system", "content": system_prompt}]
+            for msg in messages[-12:]:
+                role = (msg.role or "user").lower()
+                if role not in ("user", "assistant"):
+                    role = "user"
+                conversation.append({"role": role, "content": msg.content or ""})
+
+            completion = client.chat.completions.create(
+                model=hf_model,
+                messages=conversation,
+                max_tokens=700,
+                temperature=0.5,
+            )
+
+            if completion.choices and completion.choices[0].message and completion.choices[0].message.content:
+                return completion.choices[0].message.content.strip()
+        except Exception as e:
+            # Keep chat available even when HF is down/misconfigured.
+            print(f"[chat] Hugging Face chat fallback: {e}")
+
+    return _generate_fallback_chat_reply(messages)
 
 
 # ---------------------------------------------------------------------------
@@ -607,6 +777,7 @@ def auth_register(request: RegisterRequest):
             user_id=user_id,
             email=request.email,
             is_admin=bool(user_row.get("is_admin") if user_row else False),
+            plan=str((user_row or {}).get("plan") or "free"),
         )
     except HTTPException:
         raise
@@ -639,6 +810,7 @@ def auth_login(request: LoginRequest):
         user_id=user["id"],
         email=user["email"],
         is_admin=bool(user.get("is_admin")),
+        plan=str(user.get("plan") or "free"),
     )
 
 
@@ -734,6 +906,8 @@ async def auth_google_callback(code: Optional[str] = None, state: Optional[str] 
                 f"&full_name={quote(str(existing['full_name'] or ''), safe='')}"
                 f"&user_id={existing['id']}"
                 f"&email={quote(str(existing['email']), safe='')}"
+                f"&is_admin={str(bool(existing.get('is_admin', False))).lower()}"
+                f"&plan={quote(str(existing.get('plan') or 'free'), safe='')}"
             )
             return RedirectResponse(url=redirect_url)
 
@@ -770,6 +944,8 @@ async def auth_google_callback(code: Optional[str] = None, state: Optional[str] 
             f"&full_name={quote(full_name, safe='')}"
             f"&user_id={user_id}"
             f"&email={quote(email, safe='')}"
+            f"&is_admin={str(bool(created_user.get('is_admin', False)) if created_user else False).lower()}"
+            f"&plan={quote(str((created_user or {}).get('plan') or 'free'), safe='')}"
             f"&new_user=true"
         )
         return RedirectResponse(url=redirect_url)
@@ -883,8 +1059,181 @@ def admin_scraper_run(
     background_tasks: BackgroundTasks,
     admin_user: dict = Depends(get_admin_user),
 ):
+    status_file = PROJECT_ROOT / "logs" / "scraper_status.json"
+    if status_file.exists():
+        try:
+            with status_file.open("r", encoding="utf-8") as f:
+                current = json.load(f)
+            if bool(current.get("running")):
+                return {"message": "Scraper is already running", "status": "running"}
+        except Exception:
+            pass
     background_tasks.add_task(_run_scraper)
-    return {"message": "Scraper started"}
+    return {"message": "Scraper started", "status": "started"}
+
+
+@app.post("/api/admin/cleanup-duplicates")
+def admin_cleanup_duplicates(admin_user: dict = Depends(get_admin_user)):
+    deleted = db_remove_duplicate_jobs()
+    return {"deleted": deleted, "success": True}
+
+
+@app.post("/api/admin/cleanup-inactive-jobs")
+def admin_cleanup_inactive_jobs(admin_user: dict = Depends(get_admin_user)):
+    result = db_remove_inactive_or_expired_jobs()
+    return {"success": True, **result}
+
+
+@app.get("/api/admin/scraper/last-run")
+def admin_scraper_last_run(admin_user: dict = Depends(get_admin_user)):
+    """Return best-known scraper run timestamp (DB or runner status file)."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT MAX(scraped_at) FROM jobs")
+        row = cur.fetchone()
+        db_ts = row[0] if row else None
+        db_iso = db_ts.isoformat() if db_ts and hasattr(db_ts, "isoformat") else (str(db_ts) if db_ts else None)
+
+        status_file = PROJECT_ROOT / "logs" / "scraper_status.json"
+        status = {}
+        if status_file.exists():
+            try:
+                with status_file.open("r", encoding="utf-8") as f:
+                    status = json.load(f)
+            except Exception:
+                status = {}
+
+        status_iso = status.get("last_finished_at") or status.get("last_started_at")
+        return {
+            "last_run": status_iso or db_iso,
+            "job_data_last_run": db_iso,
+            "running": bool(status.get("running", False)),
+            "last_exit_code": status.get("last_exit_code"),
+            "last_error": status.get("last_error"),
+        }
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.get("/api/admin/health")
+def admin_health(admin_user: dict = Depends(get_admin_user)):
+    """Return admin health summary for dashboard indicators."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT MAX(scraped_at), COUNT(*) FROM jobs")
+        row = cur.fetchone() or (None, 0)
+        last_run = row[0]
+        total_jobs = int(row[1] or 0)
+        db_iso = (
+            last_run.isoformat() if last_run and hasattr(last_run, "isoformat") else (str(last_run) if last_run else None)
+        )
+
+        status_file = PROJECT_ROOT / "logs" / "scraper_status.json"
+        status = {}
+        if status_file.exists():
+            try:
+                with status_file.open("r", encoding="utf-8") as f:
+                    status = json.load(f)
+            except Exception:
+                status = {}
+        status_iso = status.get("last_finished_at") or status.get("last_started_at")
+        return {
+            "database": True,
+            "email_configured": bool(os.getenv("RESEND_API_KEY")),
+            "last_scraper_run": status_iso or db_iso,
+            "last_scraper_db_update": db_iso,
+            "scraper_running": bool(status.get("running", False)),
+            "scraper_last_exit_code": status.get("last_exit_code"),
+            "scraper_last_error": status.get("last_error"),
+            "total_jobs": total_jobs,
+        }
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _extract_skills_from_pdf_bytes(content: bytes) -> Tuple[List[str], bool]:
+    """
+    Extract skills from raw PDF bytes (same pipeline as /api/upload-cv).
+    Returns (skills, used_fallback).
+    """
+    from app.utils.pdf_utils import extract_text_from_pdf
+    from app.services.skill_extraction_service import (
+        call_huggingface_api,
+        parse_skills_from_response,
+        merge_skills_from_api_and_fallback,
+    )
+
+    pdf_file = BytesIO(content)
+    cv_text = extract_text_from_pdf(pdf_file)
+    if not cv_text or not cv_text.strip():
+        raise HTTPException(status_code=422, detail="Could not extract text from PDF")
+    model_name = os.getenv("HF_MODEL")
+    skills: List[str] = []
+    used_fallback = False
+    try:
+        api_response = call_huggingface_api(cv_text=cv_text, model_name=model_name)
+        if api_response:
+            skills = parse_skills_from_response(api_response)
+    except Exception:
+        used_fallback = True
+    pre_merge = len(skills)
+    skills = merge_skills_from_api_and_fallback(cv_text, skills)
+    if pre_merge == 0 and skills:
+        used_fallback = True
+    if not skills:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Could not extract any skills from this PDF. "
+                "Use a PDF with selectable text (not a scan-only image), set HF_TOKEN for AI extraction, "
+                "or add skills manually."
+            ),
+        )
+    return skills, used_fallback
+
+
+def _match_jobs_from_skills(skills: List[str]) -> List[JobMatchResponse]:
+    """Run hybrid vector/keyword matching for a skill list."""
+    skills = [s for s in (skills or []) if s and str(s).strip()]
+    if not skills:
+        return []
+    from app.services.vector_matching_service import VectorSkillMatcher
+
+    matcher = VectorSkillMatcher()
+    try:
+        jobs = matcher.find_matching_jobs_hybrid(
+            cv_skills=skills,
+            top_k=20,
+            vector_weight=0.7,
+            keyword_weight=0.3,
+        )
+    finally:
+        matcher.close()
+    result: List[JobMatchResponse] = []
+    for j in jobs:
+        score = j.get("match_percentage") or (j.get("similarity_score", 0) * 100)
+        tags = []
+        st = j.get("skills_text") or ""
+        if st:
+            tags = [t.strip() for t in st.split(",") if t.strip()][:15]
+        result.append(
+            JobMatchResponse(
+                id=j.get("job_id", 0),
+                title=j.get("title") or "",
+                company=j.get("company") or "",
+                location=j.get("location") or "Remote",
+                description=(j.get("description") or "")[:2000] or None,
+                url=j.get("url") or "",
+                match_score=round(float(score), 1),
+                tags=tags,
+                source=j.get("source"),
+            )
+        )
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -898,32 +1247,7 @@ async def upload_cv(file: UploadFile = File(...)):
     if not content:
         raise HTTPException(status_code=400, detail="Empty file")
     try:
-        from app.utils.pdf_utils import extract_text_from_pdf
-        from app.services.skill_extraction_service import (
-            call_huggingface_api,
-            parse_skills_from_response,
-            fallback_extract_skills,
-        )
-
-        pdf_file = BytesIO(content)
-        cv_text = extract_text_from_pdf(pdf_file)
-        if not cv_text or not cv_text.strip():
-            raise HTTPException(status_code=422, detail="Could not extract text from PDF")
-        model_name = os.getenv("HF_MODEL")
-        skills = []
-        used_fallback = False
-        try:
-            api_response = call_huggingface_api(cv_text=cv_text, model_name=model_name)
-            if api_response:
-                skills = parse_skills_from_response(api_response)
-        except Exception:
-            skills = fallback_extract_skills(cv_text)
-            used_fallback = True
-        if not skills:
-            raise HTTPException(
-                status_code=502,
-                detail="Could not extract skills (API unavailable and fallback found none). Try again or add skills manually.",
-            )
+        skills, used_fallback = _extract_skills_from_pdf_bytes(content)
         return {"skills": skills, "fallback": used_fallback}
     except HTTPException:
         raise
@@ -936,46 +1260,116 @@ async def upload_cv(file: UploadFile = File(...)):
 # ---------------------------------------------------------------------------
 # POST /api/match-jobs
 # ---------------------------------------------------------------------------
-@app.post("/api/match-jobs", response_model=List[JobMatchResponse])
-def match_jobs(body: SkillsRequest):
-    skills = body.skills or []
-    if not skills:
-        return []
-    try:
-        from app.services.vector_matching_service import VectorSkillMatcher
+@app.post("/api/match-jobs", response_model=MatchJobsResponse)
+async def match_jobs(
+    request: Request,
+    current_user: Optional[dict] = Depends(get_current_user_optional),
+):
+    """
+    Match jobs from skills or from a CV PDF.
+    - JSON body: { \"skills\": [\"Python\", \"React\"] } — skips extraction, runs matching only.
+    - multipart/form-data: field \"cv\" (PDF) — extracts skills then matches.
+    Free jobseekers (and guests) receive up to 3 matches; Pro/Business see all (within top_k).
+    """
+    ct = (request.headers.get("content-type") or "").lower()
+    skills: List[str] = []
 
-        matcher = VectorSkillMatcher()
+    if "multipart/form-data" in ct:
+        form = await request.form()
+        file_item = form.get("cv")
+        if file_item is None:
+            file_item = form.get("file")
+        if file_item is None or not hasattr(file_item, "read"):
+            raise HTTPException(
+                status_code=400,
+                detail='Multipart requests must include a PDF field named "cv" (or "file").',
+            )
+        uf = file_item
+        filename = getattr(uf, "filename", None) or ""
+        if not str(filename).lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="PDF file required")
+        content = await uf.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="Empty file")
         try:
-            jobs = matcher.find_matching_jobs_hybrid(
-                cv_skills=skills,
-                top_k=20,
-                vector_weight=0.7,
-                keyword_weight=0.3,
-            )
-        finally:
-            matcher.close()
-        result = []
-        for j in jobs:
-            score = j.get("match_percentage") or (j.get("similarity_score", 0) * 100)
-            tags = []
-            st = j.get("skills_text") or ""
-            if st:
-                tags = [t.strip() for t in st.split(",") if t.strip()][:15]
-            result.append(
-                JobMatchResponse(
-                    id=j.get("job_id", 0),
-                    title=j.get("title") or "",
-                    company=j.get("company") or "",
-                    location=j.get("location") or "Remote",
-                    description=(j.get("description") or "")[:2000] or None,
-                    url=j.get("url") or "",
-                    match_score=round(float(score), 1),
-                    tags=tags,
-                )
-            )
-        return result
+            skills, _ = _extract_skills_from_pdf_bytes(content)
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    else:
+        try:
+            body = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail="Expected JSON body with a \"skills\" array or multipart PDF.")
+        if not isinstance(body, dict):
+            raise HTTPException(status_code=400, detail="Invalid JSON body")
+        raw = body.get("skills")
+        if raw is None:
+            raise HTTPException(status_code=400, detail='JSON body must include a "skills" array.')
+        if not isinstance(raw, list):
+            raise HTTPException(status_code=400, detail='"skills" must be an array of strings.')
+        skills = [str(s).strip() for s in raw if s is not None and str(s).strip()]
+
+    try:
+        full = _match_jobs_from_skills(skills)
+        total = len(full)
+        viewer = current_user if current_user is not None else {"plan": "free", "user_type": "jobseeker"}
+        if check_plan_access(viewer, "view_matches"):
+            return MatchJobsResponse(jobs=full, total_matched=total, upgrade_message=None)
+        upgrade_message = "Upgrade to see all matches" if total > 3 else None
+        return MatchJobsResponse(jobs=full[:3], total_matched=total, upgrade_message=upgrade_message)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# POST /api/skills-gap/analyze
+# ---------------------------------------------------------------------------
+@app.post("/api/skills-gap/analyze")
+def skills_gap_analyze(current_user: dict = Depends(get_current_user)):
+    """Pro/Business jobseeker: skills gap analysis (placeholder until ML pipeline is wired)."""
+    if current_user.get("user_type") != "jobseeker":
+        raise HTTPException(status_code=403, detail="Job seeker access only")
+    require_plan(current_user, "skills_gap")
+    return {
+        "skills_to_learn": [],
+        "matched_roles": [],
+        "message": "Skills gap analysis is available on your plan. Detailed breakdowns will appear here.",
+    }
+
+
+@app.post("/api/skills-gap/analyze-job/{job_id}")
+def skills_gap_analyze_job(job_id: int, current_user: dict = Depends(get_current_user)):
+    """Analyze skill gap for a specific scraped job using profile skills."""
+    if current_user.get("user_type") != "jobseeker":
+        raise HTTPException(status_code=403, detail="Job seeker access only")
+    require_plan(current_user, "skills_gap")
+
+    job = db_get_job_by_id(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    profile = db_get_user_profile(current_user["id"])
+    user_skills = profile.get("skills") if profile else []
+    user_skills = [str(s).strip() for s in (user_skills or []) if str(s).strip()]
+    if not user_skills:
+        raise HTTPException(status_code=400, detail="Please add skills to your profile first")
+
+    try:
+        analysis = analyze_job_specific_gap(
+            user_skills=user_skills,
+            job_title=job.get("job_title") or "",
+            job_description=job.get("description") or "",
+            job_requirements="",
+        )
+        return analysis
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Skills gap analysis failed: {str(e)}")
 
 
 # ---------------------------------------------------------------------------
@@ -1088,15 +1482,32 @@ def get_posted_jobs(
     experience_level: Optional[str] = None,
     search: Optional[str] = None,
 ):
-    """List active, non-expired posted jobs. No auth required."""
+    """List active, non-expired posted jobs with total count for pagination. No auth required."""
+    import math
+
     try:
-        return db_get_all_posted_jobs(
+        limit = min(max(limit, 1), 100)
+        offset = max(offset, 0)
+        jobs_list = db_get_all_posted_jobs(
             limit=limit,
             offset=offset,
             job_type=job_type,
             experience_level=experience_level,
             search=search,
         )
+        total = db_count_all_posted_jobs(
+            job_type=job_type,
+            experience_level=experience_level,
+            search=search,
+        )
+        page = (offset // limit) + 1 if limit else 1
+        total_pages = math.ceil(total / limit) if limit else 0
+        return {
+            "jobs": jobs_list,
+            "total": total,
+            "page": page,
+            "total_pages": total_pages,
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1108,6 +1519,18 @@ def get_posted_jobs(
 def get_posted_job(job_id: int):
     """Get single posted job by id; increments view count. No auth required."""
     job = db_get_posted_job_by_id(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+
+# ---------------------------------------------------------------------------
+# GET /api/jobs/{job_id}
+# ---------------------------------------------------------------------------
+@app.get("/api/jobs/{job_id}")
+def get_job(job_id: int):
+    """Get single scraped job by id. No auth required."""
+    job = db_get_job_by_id(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
@@ -1134,6 +1557,18 @@ def post_posted_job(
         company_name = (body.company_name or "").strip()
     if not company_name:
         raise HTTPException(status_code=400, detail="Company name is required")
+    active_ct = db_count_company_active_posted_jobs(current_user["id"])
+    if not check_plan_access(current_user, "unlimited_jobs") and active_ct >= 1:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "plan_required",
+                "message": "Free plan allows 1 active job posting. Upgrade to Business for unlimited postings.",
+                "current_plan": (current_user.get("plan") or "free"),
+                "required_plan": "business",
+                "upgrade_url": "/pricing",
+            },
+        )
     data = body.model_dump()
     data["company_name"] = company_name
     try:
@@ -1259,12 +1694,52 @@ def toggle_posted_job(
 
 
 def _run_scraper():
-    subprocess.run(
-        [sys.executable, "-m", "scripts.scheduled_scraper"],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        timeout=3600,
+    status_file = PROJECT_ROOT / "logs" / "scraper_status.json"
+    status_file.parent.mkdir(parents=True, exist_ok=True)
+
+    def _write_status(payload: Dict) -> None:
+        with status_file.open("w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=True, indent=2)
+
+    started_at = datetime.utcnow().isoformat()
+    _write_status(
+        {
+            "running": True,
+            "last_started_at": started_at,
+            "last_finished_at": None,
+            "last_exit_code": None,
+            "last_error": None,
+        }
     )
+
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-m", "scripts.scheduled_scraper"],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=3600,
+        )
+        _write_status(
+            {
+                "running": False,
+                "last_started_at": started_at,
+                "last_finished_at": datetime.utcnow().isoformat(),
+                "last_exit_code": proc.returncode,
+                "last_error": None if proc.returncode == 0 else (proc.stderr or proc.stdout or "Scraper failed"),
+            }
+        )
+    except Exception as e:
+        _write_status(
+            {
+                "running": False,
+                "last_started_at": started_at,
+                "last_finished_at": datetime.utcnow().isoformat(),
+                "last_exit_code": -1,
+                "last_error": str(e),
+            }
+        )
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -1286,6 +1761,7 @@ def search_candidates(
 ):
     if current_user.get("user_type") != "company":
         raise HTTPException(status_code=403, detail="Company access only")
+    require_plan(current_user, "search_candidates", upgrade_to="business")
     try:
         from app.services.user_profile_service import (
             find_matching_candidates,
@@ -1535,7 +2011,7 @@ async def upload_profile_cv(
         from app.services.skill_extraction_service import (
             call_huggingface_api,
             parse_skills_from_response,
-            fallback_extract_skills,
+            merge_skills_from_api_and_fallback,
         )
         with open(file_path, "rb") as f:
             extracted_text = extract_text_from_pdf(f)
@@ -1548,9 +2024,8 @@ async def upload_profile_cv(
             if api_response:
                 skills = parse_skills_from_response(api_response)
         except Exception:
-            skills = fallback_extract_skills(extracted_text)
-        if not skills:
-            skills = fallback_extract_skills(extracted_text)
+            pass
+        skills = merge_skills_from_api_and_fallback(extracted_text, skills)
         if not db_upsert_user_profile_cv(
             current_user["id"],
             filename,
@@ -1576,6 +2051,8 @@ async def upload_profile_cv(
 @app.get("/api/applications")
 def get_applications(current_user: dict = Depends(get_current_user)):
     """Return current user's job applications."""
+    if current_user.get("user_type") == "jobseeker":
+        require_plan(current_user, "application_tracker")
     apps = db_get_user_applications(current_user["id"])
     return apps
 
@@ -1632,8 +2109,11 @@ def delete_app(app_id: int, current_user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 @app.get("/api/saved-jobs")
 def get_saved_jobs_route(current_user: dict = Depends(get_current_user)):
-    """Return current user's saved jobs."""
-    return db_get_saved_jobs(current_user["id"])
+    """Return current user's saved jobs (max 5 on Free for jobseekers)."""
+    jobs = db_get_saved_jobs(current_user["id"])
+    if current_user.get("user_type") == "jobseeker" and not check_plan_access(current_user, "save_jobs"):
+        return jobs[:5]
+    return jobs
 
 
 # ---------------------------------------------------------------------------
@@ -1642,6 +2122,21 @@ def get_saved_jobs_route(current_user: dict = Depends(get_current_user)):
 @app.post("/api/saved-jobs/{job_id}")
 def post_save_job(job_id: int, current_user: dict = Depends(get_current_user)):
     """Save a job for the current user."""
+    if current_user.get("user_type") != "jobseeker":
+        raise HTTPException(status_code=403, detail="Job seeker access only")
+    if not check_plan_access(current_user, "save_jobs"):
+        n = db_count_saved_jobs_for_user(current_user["id"])
+        if n >= 5:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "plan_required",
+                    "message": "Free plan allows up to 5 saved jobs. Upgrade to Pro for unlimited saves.",
+                    "current_plan": (current_user.get("plan") or "free"),
+                    "required_plan": "pro",
+                    "upgrade_url": "/pricing",
+                },
+            )
     db_save_job(current_user["id"], job_id)
     return {"success": True, "saved": True}
 
@@ -1736,6 +2231,7 @@ def put_company_profile(
 def get_saved_candidates_route(current_user: dict = Depends(get_current_user)):
     if current_user.get("user_type") != "company":
         raise HTTPException(status_code=403, detail="Company access only")
+    require_plan(current_user, "save_candidates", upgrade_to="business")
     return db_get_saved_candidates(current_user["id"])
 
 
@@ -1749,6 +2245,7 @@ def post_save_candidate(
 ):
     if current_user.get("user_type") != "company":
         raise HTTPException(status_code=403, detail="Company access only")
+    require_plan(current_user, "save_candidates", upgrade_to="business")
     db_save_candidate(current_user["id"], body.candidate_user_id)
     return {"success": True, "saved": True}
 
@@ -1792,6 +2289,7 @@ def put_candidate_notes(
 def get_search_history_route(current_user: dict = Depends(get_current_user)):
     if current_user.get("user_type") != "company":
         raise HTTPException(status_code=403, detail="Company access only")
+    require_plan(current_user, "search_history", upgrade_to="business")
     return db_get_search_history(current_user["id"])
 
 
@@ -1830,6 +2328,18 @@ def post_contact_request(
 ):
     if current_user.get("user_type") != "company":
         raise HTTPException(status_code=403, detail="Company access only")
+    sent_30d = db_count_company_contact_requests_last_30_days(current_user["id"])
+    if not check_plan_access(current_user, "unlimited_contact_requests") and sent_30d >= 3:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "plan_required",
+                "message": "Free plan allows 3 contact requests per 30 days. Upgrade to Business for unlimited requests.",
+                "current_plan": (current_user.get("plan") or "free"),
+                "required_plan": "business",
+                "upgrade_url": "/pricing",
+            },
+        )
     message = (body.message or "").strip()
     if not message:
         raise HTTPException(status_code=400, detail="Message cannot be empty")
@@ -1866,6 +2376,195 @@ def post_contact_request(
         "request_id": request_id,
         "message": "Request sent successfully",
     }
+
+
+# ---------------------------------------------------------------------------
+# Public contact messages
+# ---------------------------------------------------------------------------
+@app.post("/api/contact")
+def create_public_contact_message(
+    body: ContactMessageCreate,
+    current_user: Optional[dict] = Depends(get_current_user_optional),
+):
+    user_id = current_user["id"] if current_user else None
+    full_name = (body.full_name or "").strip()
+    email = (body.email or "").strip()
+    subject = (body.subject or "").strip()
+    message = (body.message or "").strip()
+    company = (body.company or "").strip()
+
+    if current_user:
+        full_name = current_user.get("full_name") or full_name
+        email = current_user.get("email") or email
+
+    if not full_name:
+        raise HTTPException(status_code=400, detail="Full name is required")
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+    if "@" not in email or "." not in email.split("@")[-1]:
+        raise HTTPException(status_code=400, detail="Please provide a valid email")
+    if not subject:
+        raise HTTPException(status_code=400, detail="Subject is required")
+    if not message:
+        raise HTTPException(status_code=400, detail="Message is required")
+    if len(full_name) > 255 or len(email) > 255 or len(subject) > 255:
+        raise HTTPException(status_code=400, detail="Name, email, and subject must be 255 characters or less")
+    if len(message) > 5000:
+        raise HTTPException(status_code=400, detail="Message must be 5000 characters or less")
+
+    msg_id = db_create_contact_message(
+        user_id=user_id,
+        full_name=full_name,
+        email=email,
+        company=company or None,
+        subject=subject,
+        message=message,
+    )
+    return {"success": True, "message_id": msg_id, "message": "Thanks, we received your message."}
+
+
+@app.get("/api/admin/contact-messages")
+def get_admin_contact_messages(
+    limit: int = 50,
+    offset: int = 0,
+    status: Optional[str] = None,
+    admin_user: dict = Depends(get_admin_user),
+):
+    _ = admin_user
+    if limit < 1 or limit > 200:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 200")
+    if offset < 0:
+        raise HTTPException(status_code=400, detail="offset must be 0 or greater")
+    if status and status not in ("new", "in_progress", "resolved"):
+        raise HTTPException(status_code=400, detail="status must be new, in_progress, or resolved")
+    return db_get_contact_messages(limit=limit, offset=offset, status=status)
+
+
+@app.get("/api/admin/contact-messages/{message_id}")
+def get_admin_contact_message_thread(
+    message_id: int,
+    admin_user: dict = Depends(get_admin_user),
+):
+    _ = admin_user
+    thread = db_get_contact_message_thread(message_id)
+    if thread is None:
+        raise HTTPException(status_code=404, detail="Contact message not found")
+    return thread
+
+
+@app.put("/api/admin/contact-messages/{message_id}/status")
+def update_admin_contact_message_status(
+    message_id: int,
+    body: ContactMessageStatusUpdate,
+    admin_user: dict = Depends(get_admin_user),
+):
+    _ = admin_user
+    status = (body.status or "").strip()
+    if status not in ("new", "in_progress", "resolved"):
+        raise HTTPException(status_code=400, detail="status must be new, in_progress, or resolved")
+    ok = db_update_contact_message_status(message_id, status)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Contact message not found")
+    return {"success": True}
+
+
+@app.post("/api/admin/contact-messages/{message_id}/reply")
+def post_admin_contact_message_reply(
+    message_id: int,
+    body: ContactMessageReplyCreate,
+    admin_user: dict = Depends(get_admin_user),
+):
+    reply_message = (body.message or "").strip()
+    if not reply_message:
+        raise HTTPException(status_code=400, detail="Reply message is required")
+    if len(reply_message) > 5000:
+        raise HTTPException(status_code=400, detail="Reply message must be 5000 characters or less")
+
+    contact_msg = db_get_contact_message_by_id(message_id)
+    if contact_msg is None:
+        raise HTTPException(status_code=404, detail="Contact message not found")
+
+    sent_via = "backend"
+    if contact_msg.get("user_id"):
+        # Logged-in user: keep communication inside the app.
+        db_create_notification(
+            user_id=contact_msg["user_id"],
+            type="system",
+            title="New support reply",
+            message=f"Support replied to: {contact_msg.get('subject') or 'your message'}",
+            link="/contact",
+        )
+    else:
+        # Guest user: reply through email.
+        sent_ok = send_support_reply_email(
+            to_email=contact_msg["email"],
+            full_name=contact_msg.get("full_name") or "",
+            subject=contact_msg.get("subject") or "Support reply",
+            reply_message=reply_message,
+        )
+        if not sent_ok:
+            raise HTTPException(status_code=500, detail="Failed to send email reply")
+        sent_via = "email"
+
+    reply_id = db_add_contact_message_reply(
+        message_id=message_id,
+        sender_type="admin",
+        message=reply_message,
+        sender_user_id=admin_user["id"],
+        sent_via=sent_via,
+    )
+    db_update_contact_message_status(message_id, "in_progress")
+    return {"success": True, "reply_id": reply_id, "sent_via": sent_via}
+
+
+@app.get("/api/contact/my-messages")
+def get_my_contact_messages(
+    current_user: dict = Depends(get_current_user),
+    limit: int = 50,
+    offset: int = 0,
+):
+    if limit < 1 or limit > 200:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 200")
+    if offset < 0:
+        raise HTTPException(status_code=400, detail="offset must be 0 or greater")
+    return db_get_user_contact_messages(current_user["id"], limit=limit, offset=offset)
+
+
+@app.get("/api/contact/my-messages/{message_id}")
+def get_my_contact_message_thread(
+    message_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    thread = db_get_contact_message_thread(message_id)
+    if thread is None or thread.get("user_id") != current_user["id"]:
+        raise HTTPException(status_code=404, detail="Message not found")
+    return thread
+
+
+@app.post("/api/contact/my-messages/{message_id}/reply")
+def post_my_contact_message_reply(
+    message_id: int,
+    body: ContactMessageReplyCreate,
+    current_user: dict = Depends(get_current_user),
+):
+    thread = db_get_contact_message_thread(message_id)
+    if thread is None or thread.get("user_id") != current_user["id"]:
+        raise HTTPException(status_code=404, detail="Message not found")
+    reply_message = (body.message or "").strip()
+    if not reply_message:
+        raise HTTPException(status_code=400, detail="Reply message is required")
+    if len(reply_message) > 5000:
+        raise HTTPException(status_code=400, detail="Reply message must be 5000 characters or less")
+
+    reply_id = db_add_contact_message_reply(
+        message_id=message_id,
+        sender_type="user",
+        message=reply_message,
+        sender_user_id=current_user["id"],
+        sent_via="backend",
+    )
+    db_update_contact_message_status(message_id, "in_progress")
+    return {"success": True, "reply_id": reply_id}
 
 
 @app.get("/api/contact-requests/received")
@@ -2118,6 +2817,7 @@ def get_analytics_jobseeker(current_user: dict = Depends(get_current_user)):
 def get_analytics_company(current_user: dict = Depends(get_current_user)):
     if current_user.get("user_type") != "company":
         raise HTTPException(status_code=403, detail="Company access only")
+    require_plan(current_user, "analytics", upgrade_to="business")
     return db_get_company_analytics(current_user["id"])
 
 
@@ -2129,6 +2829,7 @@ def get_analytics_company(current_user: dict = Depends(get_current_user)):
 def get_alerts_settings(current_user: dict = Depends(get_current_user)):
     if current_user.get("user_type") != "jobseeker":
         raise HTTPException(status_code=403, detail="Jobseeker access only")
+    require_plan(current_user, "job_alerts")
     return db_get_alert_settings(current_user["id"])
 
 
@@ -2139,6 +2840,7 @@ def update_alerts_settings(
 ):
     if current_user.get("user_type") != "jobseeker":
         raise HTTPException(status_code=403, detail="Jobseeker access only")
+    require_plan(current_user, "job_alerts")
     frequency = (body.frequency or "daily").strip().lower()
     if frequency not in ("immediate", "daily", "weekly"):
         raise HTTPException(status_code=400, detail="frequency must be immediate, daily, or weekly")
@@ -2158,6 +2860,7 @@ def update_alerts_settings(
 def send_test_alert(current_user: dict = Depends(get_current_user)):
     if current_user.get("user_type") != "jobseeker":
         raise HTTPException(status_code=403, detail="Jobseeker access only")
+    require_plan(current_user, "job_alerts")
     from api.job_alerts_scheduler import calculate_match_score
 
     profile = db_get_user_profile(current_user["id"])

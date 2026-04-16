@@ -43,6 +43,7 @@ export default function LoginPage() {
         full_name: res.full_name,
         user_type: res.user_type as "jobseeker" | "company",
         is_admin: res.is_admin ?? false,
+        plan: res.plan ?? "free",
       };
       login(res.access_token, user);
       showToast("Signed in successfully", "success");
@@ -164,6 +165,15 @@ export default function LoginPage() {
             style={{ color: "#6366f1" }}
           >
             Get started
+          </Link>
+        </p>
+        <p className="mt-4 text-center text-xs text-vertex-muted">
+          <Link href="/privacy" className="hover:text-indigo-300 hover:underline">
+            Privacy Policy
+          </Link>
+          {" · "}
+          <Link href="/terms" className="hover:text-indigo-300 hover:underline">
+            Terms of Service
           </Link>
         </p>
       </div>

@@ -85,56 +85,51 @@ export default function PricingPage() {
   const businessPrice = billingCycle === "monthly" ? businessMonthly : businessAnnual;
 
   const freeFeaturesJobSeekers = [
-    { text: "Upload 1 CV", included: true },
-    { text: "See top 10 job matches", included: true },
+    { text: "Upload your CV", included: true },
+    { text: "Apply to jobs directly", included: true },
     { text: "Basic profile page", included: true },
-    { text: "Application tracker", included: true },
-    { text: "Job alerts", included: false },
-    { text: "Priority matching", included: false },
-    { text: "Profile boost", included: false },
+    { text: "See job matches (Pro only)", included: false },
+    { text: "Save jobs (Pro only)", included: false },
+    { text: "Skills Gap Analyzer (Pro only)", included: false },
+    { text: "Application tracker (Pro only)", included: false },
+    { text: "Job alerts (Pro only)", included: false },
   ];
 
   const freeFeaturesCompanies = [
-    { text: "Search up to 10 candidates/month", included: true },
-    { text: "Basic candidate profiles", included: true },
-    { text: "3 contact requests/month", included: true },
-    { text: "Saved candidates list", included: false },
-    { text: "Search history", included: false },
-    { text: "Analytics", included: false },
+    { text: "Post 1 job listing", included: true },
+    { text: "3 contact requests per month", included: true },
+    { text: "Search candidates (Business only)", included: false },
+    { text: "Save candidates (Business only)", included: false },
+    { text: "Analytics (Business only)", included: false },
   ];
 
   const proFeaturesJobSeekers = [
-    "Unlimited CV uploads",
+    "Everything in Free",
     "See all job matches (unlimited)",
-    "Advanced profile page",
-    "Application tracker",
-    "Daily job alerts by email",
+    "Save unlimited jobs",
+    "Skills Gap Analyzer",
     "Priority matching algorithm",
     "Profile boost in searches",
-    "Download match reports",
+    "Application tracker",
+    "Daily job alerts",
   ];
 
   const growthFeaturesCompanies = [
-    "100 candidate searches/month",
-    "Full candidate profiles",
-    "20 contact requests/month",
-    "Saved candidates list",
-    "Search history",
-    { text: "Team access", included: false },
-    { text: "API access", included: false },
+    "Everything in Free",
+    "Higher job visibility",
+    "Email support",
+    { text: "Search candidates (Business)", included: false },
+    { text: "Unlimited contact requests", included: false },
+    { text: "Search history & analytics", included: false },
   ];
 
   const businessFeaturesCompanies = [
+    "Everything in Free",
     "Unlimited candidate searches",
-    "Full candidate profiles",
-    "Contact request system",
+    "Unlimited contact requests",
     "Save unlimited candidates",
     "Search history & analytics",
-    "Team collaboration", // TODO
-    "Priority support",
-    "Custom skill filters",
-    { text: "API access", included: false },
-    { text: "White label", included: false },
+    "Unlimited job postings",
   ];
 
   return (

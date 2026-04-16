@@ -424,6 +424,10 @@ export default function HomePage() {
                 Already have an account?{" "}
                 <Link href="/auth/login" className="font-semibold text-v-primary transition hover:text-v-primaryContainer">
                   Sign in
+                </Link>{" "}
+                ·{" "}
+                <Link href="/about" className="font-semibold text-v-primary transition hover:text-v-primaryContainer">
+                  About
                 </Link>
               </p>
             </div>
