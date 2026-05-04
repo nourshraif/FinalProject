@@ -5,6 +5,7 @@ Run from project root: uvicorn api.main:app --reload
 Requires: pip install fastapi uvicorn python-multipart
 """
 
+import logging
 import os
 import sys
 import subprocess
@@ -132,12 +133,14 @@ from api.email_service import (
 from api.job_alerts_scheduler import create_scheduler
 from api.skills_gap_service import analyze_job_specific_gap
 
+logger = logging.getLogger(__name__)
+
 # ---------------------------------------------------------------------------
 # JWT Auth configuration
 # ---------------------------------------------------------------------------
 SECRET_KEY = os.getenv("SECRET_KEY", "vertex-dev-secret-change-in-prod")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 
 BCRYPT_ROUNDS = 12
 security = HTTPBearer()
@@ -958,15 +961,22 @@ async def auth_google_callback(code: Optional[str] = None, state: Optional[str] 
 # ---------------------------------------------------------------------------
 @app.post("/api/auth/forgot-password")
 def auth_forgot_password(request: ForgotPasswordRequest):
-    user = get_user_by_email(request.email)
+    email = request.email.strip()
+    user = get_user_by_email(email)
     if user is not None:
         reset_token = secrets.token_urlsafe(32)
         db_create_password_reset_token(user["id"], reset_token)
-        send_password_reset_email(
-            request.email,
+        sent = send_password_reset_email(
+            user["email"],
             user.get("full_name") or "User",
             reset_token,
         )
+        if not sent:
+            logger.error(
+                "Password reset email failed (check RESEND_API_KEY and Resend dashboard). "
+                "user_id=%s",
+                user["id"],
+            )
     return {
         "message": "If this email exists you will receive a reset link shortly",
     }
@@ -1003,6 +1013,7 @@ def auth_me(current_user: dict = Depends(get_current_user)):
         "full_name": current_user["full_name"],
         "user_type": current_user["user_type"],
         "is_admin": bool(current_user.get("is_admin")),
+        "plan": (current_user.get("plan") or "free"),
         "created_at": (
             current_user["created_at"].isoformat()
             if current_user.get("created_at") and hasattr(current_user["created_at"], "isoformat")
@@ -2751,6 +2762,63 @@ def get_subscription(current_user: dict = Depends(get_current_user)):
     if sub is None:
         return {"plan": "free", "status": "active"}
     return sub
+
+
+@app.post("/api/payments/verify-session")
+def verify_checkout_session(
+    session_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Confirm a Stripe Checkout session server-side and upsert the subscription.
+
+    This exists so the success page can activate a subscription without
+    relying on the Stripe webhook, which is not always configured in
+    local dev.
+    """
+    if not session_id:
+        raise HTTPException(status_code=400, detail="session_id is required")
+
+    try:
+        session = stripe.checkout.Session.retrieve(session_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Invalid checkout session")
+
+    def _safe(obj, key, default=None):
+        """Stripe objects allow subscript access but not dict.get()."""
+        try:
+            val = obj[key]
+            return default if val is None else val
+        except Exception:
+            return default
+
+    metadata = _safe(session, "metadata", {}) or {}
+    session_user_id = _safe(metadata, "user_id")
+    if not session_user_id or int(session_user_id) != int(current_user["id"]):
+        raise HTTPException(status_code=403, detail="Session does not belong to this user")
+
+    if _safe(session, "payment_status") != "paid":
+        raise HTTPException(status_code=402, detail="Payment not completed")
+
+    plan = (_safe(metadata, "plan", "") or "").strip().lower()
+    if plan not in ("pro", "business"):
+        raise HTTPException(status_code=400, detail="Invalid plan in session metadata")
+
+    subscription_id = _safe(session, "subscription")
+    customer_id = _safe(session, "customer")
+    if not subscription_id or not customer_id:
+        raise HTTPException(status_code=400, detail="Session is missing subscription data")
+
+    try:
+        sub = stripe.Subscription.retrieve(subscription_id)
+        period_end = datetime.fromtimestamp(sub["current_period_end"])
+    except Exception:
+        period_end = None
+
+    db_upsert_subscription(
+        current_user["id"], customer_id, subscription_id, plan, "active", period_end
+    )
+
+    return {"success": True, "plan": plan, "status": "active"}
 
 
 @app.post("/api/payments/cancel")

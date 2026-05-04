@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import { getMe } from "@/lib/api";
 
 const STORAGE_TOKEN_KEY = "vertex_token";
 const STORAGE_USER_KEY = "vertex_user";
@@ -21,6 +22,10 @@ interface AuthContextType {
   isLoggedIn: boolean;
   login: (token: string, user: User) => void;
   logout: () => void;
+  /** Shallow-merge fields into the current user (and persist). */
+  updateUser: (patch: Partial<User>) => void;
+  /** Re-fetch the current user from the backend (and persist). */
+  refreshUser: () => Promise<User | null>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -73,6 +78,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const updateUser = useCallback((patch: Partial<User>) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const next = normalizeUser({ ...prev, ...patch } as User);
+      try {
+        localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, []);
+
+  const refreshUser = useCallback(async (): Promise<User | null> => {
+    if (!token) return null;
+    try {
+      const fresh = await getMe(token);
+      const normalized = normalizeUser(fresh);
+      setUser(normalized);
+      try {
+        localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(normalized));
+      } catch {
+        // ignore
+      }
+      return normalized;
+    } catch {
+      return null;
+    }
+  }, [token]);
+
   return (
     <AuthContext.Provider
       value={{
@@ -81,6 +116,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isLoggedIn: !!user && !!token,
         login,
         logout,
+        updateUser,
+        refreshUser,
       }}
     >
       {children}

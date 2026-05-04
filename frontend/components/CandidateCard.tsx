@@ -32,10 +32,10 @@ function ScoreBadge({ score }: { score: number }) {
   return (
     <span
       className={cn(
-        "shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium",
-        variant === "green" && "bg-vertex-success/20 text-vertex-success",
-        variant === "yellow" && "bg-vertex-warning/20 text-vertex-warning",
-        variant === "red" && "bg-vertex-danger/20 text-vertex-danger"
+        "shrink-0 rounded-full border border-transparent px-2.5 py-0.5 text-xs font-medium",
+        variant === "green" && "badge-green bg-vertex-success/20 text-vertex-success",
+        variant === "yellow" && "badge-amber bg-vertex-warning/20 text-vertex-warning",
+        variant === "red" && "badge-red bg-vertex-danger/20 text-vertex-danger"
       )}
     >
       {score}%

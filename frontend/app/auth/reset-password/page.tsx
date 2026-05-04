@@ -119,24 +119,28 @@ export default function ResetPasswordPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={loading}
               />
-              <div
-                className="mt-1.5 h-1 w-full overflow-hidden rounded-sm"
-                style={{ background: "#2a2a3d" }}
-              >
-                <div
-                  className="h-full rounded-sm transition-all duration-200"
-                  style={{
-                    width: `${strength.width}%`,
-                    background: strength.color,
-                  }}
-                />
-              </div>
-              <p
-                className="mt-0.5 text-xs"
-                style={{ color: strength.color }}
-              >
-                {strength.label}
-              </p>
+              {password.length > 0 && (
+                <>
+                  <div
+                    className="mt-1.5 h-1 w-full overflow-hidden rounded-sm"
+                    style={{ background: "#2a2a3d" }}
+                  >
+                    <div
+                      className="h-full rounded-sm transition-all duration-200"
+                      style={{
+                        width: `${strength.width}%`,
+                        background: strength.color,
+                      }}
+                    />
+                  </div>
+                  <p
+                    className="mt-0.5 text-xs"
+                    style={{ color: strength.color }}
+                  >
+                    {strength.label}
+                  </p>
+                </>
+              )}
             </div>
 
             <div className="mt-4">

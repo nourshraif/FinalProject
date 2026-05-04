@@ -12,10 +12,10 @@ export function SkillChip({ skill, variant = "default", className }: SkillChipPr
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
-        variant === "matched" && "bg-vertex-success/20 text-vertex-success",
-        variant === "required" && "bg-vertex-violet/20 text-vertex-cyan",
-        variant === "default" && "bg-vertex-card text-vertex-muted",
+        "skill-chip inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium",
+        variant === "matched" && "matched-chip bg-vertex-success/20 text-vertex-success border-transparent",
+        variant === "required" && "bg-vertex-violet/20 text-vertex-cyan border-transparent",
+        variant === "default" && "bg-vertex-card text-vertex-muted border-transparent",
         className
       )}
     >

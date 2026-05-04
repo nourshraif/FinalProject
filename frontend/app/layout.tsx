@@ -23,7 +23,7 @@ const manrope = Manrope({
 });
 
 export const metadata: Metadata = {
-  title: "Vertex | Celestial Talent Matching",
+  title: "Vertex | Talent Matching",
   description: "Vertex — Where talent meets opportunity",
 };
 
@@ -33,7 +33,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" data-theme="dark">
       <head>
         <link
           rel="stylesheet"
@@ -41,7 +41,7 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${inter.variable} ${manrope.variable} ${inter.className} font-body flex min-h-screen flex-col bg-v-bg text-v-onSurface selection:bg-v-primary/30`}
+        className={`${inter.variable} ${manrope.variable} ${inter.className} font-body flex min-h-screen flex-col selection:bg-v-primary/30`}
       >
         <StitchBackdrop />
         <AuthProvider>

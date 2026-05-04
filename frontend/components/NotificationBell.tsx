@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface Notification {
   id: number;
@@ -174,8 +175,7 @@ export default function NotificationBell() {
       <button
         type="button"
         onClick={handleBellClick}
-        className="relative rounded-lg p-2 transition-colors hover:bg-white/10"
-        style={{ color: "white" }}
+        className="relative rounded-lg p-2 text-white transition-colors hover:bg-white/10"
         aria-label="Notifications"
       >
         <Bell size={20} />
@@ -202,7 +202,7 @@ export default function NotificationBell() {
 
       {isOpen && (
         <div
-          className="glass-card absolute overflow-hidden"
+          className="notification-panel glass-card absolute overflow-hidden"
           style={{
             top: "calc(100% + 8px)",
             right: 0,
@@ -212,8 +212,7 @@ export default function NotificationBell() {
           }}
         >
           <div
-            className="flex items-center justify-between p-4"
-            style={{ borderBottom: "1px solid #2a2a3d" }}
+            className="flex items-center justify-between border-b border-[#2a2a3d] p-4"
           >
             <div className="flex items-center gap-2">
               <span className="text-sm font-bold text-white">
@@ -221,11 +220,8 @@ export default function NotificationBell() {
               </span>
               {unreadCount > 0 && (
                 <span
-                  className="rounded-full px-2 py-0.5 text-xs"
-                  style={{
-                    background: "rgba(99,102,241,0.2)",
-                    color: "#a5b4fc",
-                  }}
+                  className="rounded-full px-2 py-0.5 text-xs text-[#a5b4fc]"
+                  style={{ background: "rgba(99,102,241,0.2)" }}
                 >
                   {unreadCount} unread
                 </span>
@@ -234,8 +230,7 @@ export default function NotificationBell() {
             <button
               type="button"
               onClick={markAllRead}
-              className="text-xs transition-colors"
-              style={{ color: "#6366f1" }}
+              className="text-xs text-[#6366f1] transition-colors"
             >
               Mark all read
             </button>
@@ -252,7 +247,7 @@ export default function NotificationBell() {
             ) : notifications.length === 0 ? (
               <div className="p-8 text-center">
                 <div className="mb-2 text-4xl">🔔</div>
-                <p className="text-sm" style={{ color: "#94a3b8" }}>
+                <p className="text-sm text-slate-400">
                   No notifications yet
                 </p>
               </div>
@@ -276,9 +271,11 @@ export default function NotificationBell() {
                       setIsOpen(false);
                     }
                   }}
-                  className="flex cursor-pointer gap-3 p-4 transition-colors"
+                  className={cn(
+                    "flex cursor-pointer gap-3 border-b border-[#1e1e3a] p-4 transition-colors",
+                    !notification.is_read && "notification-unread"
+                  )}
                   style={{
-                    borderBottom: "1px solid #1e1e3a",
                     background: notification.is_read
                       ? "transparent"
                       : "rgba(99,102,241,0.05)",
@@ -314,9 +311,8 @@ export default function NotificationBell() {
                       {notification.title}
                     </p>
                     <p
-                      className="mt-0.5 text-xs"
+                      className="mt-0.5 text-xs text-slate-500"
                       style={{
-                        color: "#64748b",
                         display: "-webkit-box",
                         WebkitLineClamp: 2,
                         WebkitBoxOrient: "vertical",
@@ -325,7 +321,7 @@ export default function NotificationBell() {
                     >
                       {notification.message}
                     </p>
-                    <p className="mt-1 text-xs" style={{ color: "#475569" }}>
+                    <p className="mt-1 text-xs text-slate-600">
                       {getTimeAgo(notification.created_at)}
                     </p>
                   </div>
@@ -345,15 +341,14 @@ export default function NotificationBell() {
             )}
           </div>
 
-          <div className="p-3 text-center" style={{ borderTop: "1px solid #2a2a3d" }}>
+          <div className="border-t border-[#2a2a3d] p-3 text-center">
             <button
               type="button"
               onClick={() => {
                 router.push("/notifications");
                 setIsOpen(false);
               }}
-              className="text-sm transition-colors"
-              style={{ color: "#6366f1" }}
+              className="text-sm text-[#6366f1] transition-colors"
             >
               View all notifications →
             </button>

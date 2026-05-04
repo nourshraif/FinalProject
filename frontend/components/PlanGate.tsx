@@ -124,20 +124,24 @@ export function PlanGate({
 
   if (!token) {
     return (
-      <div className="glass-card mx-auto max-w-lg rounded-2xl border border-white/[0.08] p-8 text-center">
-        <Lock className="mx-auto h-12 w-12 text-indigo-400" aria-hidden />
-        <p className="mt-4 text-lg font-bold text-white">Sign in required</p>
-        <p className="mt-2 text-sm text-slate-400">Please sign in to use this feature.</p>
-        <Link href="/auth/login" className="glow-button mt-6 inline-block rounded-lg px-6 py-2.5 text-sm font-semibold text-white">
-          Sign in
-        </Link>
+      <div className="px-4 pt-28 pb-16 md:pt-32">
+        <div className="glass-card mx-auto max-w-lg rounded-2xl border border-white/[0.08] p-8 text-center">
+          <Lock className="mx-auto h-12 w-12 text-indigo-400" aria-hidden />
+          <p className="mt-4 text-lg font-bold text-white">Sign in required</p>
+          <p className="mt-2 text-sm text-slate-400">Please sign in to use this feature.</p>
+          <Link href="/auth/login" className="glow-button mt-6 inline-block rounded-lg px-6 py-2.5 text-sm font-semibold text-white">
+            Sign in
+          </Link>
+        </div>
       </div>
     );
   }
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-lg animate-pulse rounded-2xl border border-white/[0.06] bg-white/[0.04] p-12" />
+      <div className="px-4 pt-28 pb-16 md:pt-32">
+        <div className="mx-auto max-w-lg animate-pulse rounded-2xl border border-white/[0.06] bg-white/[0.04] p-12" />
+      </div>
     );
   }
 
@@ -156,23 +160,25 @@ export function PlanGate({
     requiredPlan === "business" ? "Business feature" : "Pro feature";
 
   return (
-    <div className="glass-card mx-auto max-w-md rounded-2xl border border-white/[0.08] p-8 text-center shadow-[0_16px_48px_rgba(0,0,0,0.35)]">
-      <Lock className="mx-auto h-12 w-12 text-indigo-400" aria-hidden />
-      <h2 className="mt-4 text-lg font-bold text-white">{planLabel}</h2>
-      <p className="mt-3 text-sm leading-relaxed text-slate-400">{meta.description}</p>
-      <p className="mt-4 text-xs text-slate-500">
-        You are on the {effectivePlan === "free" ? "Free" : effectivePlan.charAt(0).toUpperCase() + effectivePlan.slice(1)} plan
-      </p>
-      <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
-        <Link href="/pricing" className="glow-button inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-sm font-semibold text-white">
-          Upgrade Now
-        </Link>
-        <Link
-          href="/pricing"
-          className="ghost-button inline-flex items-center justify-center rounded-lg border border-white/15 px-5 py-2.5 text-sm font-medium text-white"
-        >
-          See all plans
-        </Link>
+    <div className="px-4 pt-28 pb-16 md:pt-32">
+      <div className="glass-card mx-auto max-w-md rounded-2xl border border-white/[0.08] p-8 text-center shadow-[0_16px_48px_rgba(0,0,0,0.35)]">
+        <Lock className="mx-auto h-12 w-12 text-indigo-400" aria-hidden />
+        <h2 className="mt-4 text-lg font-bold text-white">{planLabel}</h2>
+        <p className="mt-3 text-sm leading-relaxed text-slate-400">{meta.description}</p>
+        <p className="mt-4 text-xs text-slate-500">
+          You are on the {effectivePlan === "free" ? "Free" : effectivePlan.charAt(0).toUpperCase() + effectivePlan.slice(1)} plan
+        </p>
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+          <Link href="/pricing" className="glow-button inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-sm font-semibold text-white">
+            Upgrade Now
+          </Link>
+          <Link
+            href="/pricing"
+            className="ghost-button inline-flex items-center justify-center rounded-lg border border-white/15 px-5 py-2.5 text-sm font-medium text-white"
+          >
+            See all plans
+          </Link>
+        </div>
       </div>
     </div>
   );

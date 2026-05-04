@@ -30,7 +30,7 @@ export function Toast({ message, type, onClose }: ToastProps) {
 
   return (
     <div
-      className="glass-card flex min-w-[300px] max-w-[400px] items-center gap-3 rounded-xl px-5 py-4 shadow-lg animate-toast-slide-in"
+      className="glass-card flex min-w-[300px] max-w-[400px] items-center gap-3 rounded-xl px-5 py-4 animate-toast-slide-in"
       style={{ borderLeft: `4px solid ${borderColor}` }}
     >
       <Icon className={cn("h-5 w-5 shrink-0", iconColor)} />

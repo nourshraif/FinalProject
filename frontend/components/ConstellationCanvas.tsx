@@ -2,17 +2,16 @@
 
 import { useEffect, useRef } from "react";
 
-const PURPLE = "#7c3aed";
-const CYAN = "#06b6d4";
+const PURPLE_DARK = "#7c3aed";
+const CYAN_DARK = "#06b6d4";
+
 const CONNECTION_DISTANCE = 130;
-const LINE_MAX_OPACITY = 0.12;
 const PADDING = 10;
 const POINT_COUNT_DESKTOP = 35;
 const POINT_COUNT_MOBILE = 20;
 const MAX_VELOCITY = 0.12;
 const MIN_RADIUS = 1;
 const MAX_RADIUS = 1.8;
-const POINT_OPACITY_RANGE: [number, number] = [0.15, 0.45];
 
 type Point = {
   x: number;
@@ -21,7 +20,7 @@ type Point = {
   vy: number;
   radius: number;
   opacity: number;
-  color: string;
+  colorKey: "purple" | "cyan";
 };
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -31,13 +30,8 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-function initPoints(
-  width: number,
-  height: number,
-  count: number
-): Point[] {
+function initPoints(width: number, height: number, count: number): Point[] {
   const points: Point[] = [];
-  const [minOp, maxOp] = POINT_OPACITY_RANGE;
   for (let i = 0; i < count; i++) {
     points.push({
       x: PADDING + Math.random() * (width - 2 * PADDING),
@@ -45,8 +39,8 @@ function initPoints(
       vx: (Math.random() - 0.5) * 2 * MAX_VELOCITY,
       vy: (Math.random() - 0.5) * 2 * MAX_VELOCITY,
       radius: MIN_RADIUS + Math.random() * (MAX_RADIUS - MIN_RADIUS),
-      opacity: minOp + Math.random() * (maxOp - minOp),
-      color: Math.random() < 0.7 ? PURPLE : CYAN,
+      opacity: 0.15 + Math.random() * 0.3,
+      colorKey: Math.random() < 0.7 ? "purple" : "cyan",
     });
   }
   return points;
@@ -74,8 +68,6 @@ export function ConstellationCanvas() {
 
     let width = containerEl.offsetWidth;
     let height = containerEl.offsetHeight;
-    const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
-    const pointCount = isMobile ? POINT_COUNT_MOBILE : POINT_COUNT_DESKTOP;
 
     function resize() {
       width = containerEl.offsetWidth;
@@ -83,11 +75,7 @@ export function ConstellationCanvas() {
       canvasEl.width = width;
       canvasEl.height = height;
       const mobile = typeof window !== "undefined" && window.innerWidth < 768;
-      pointsRef.current = initPoints(
-        width,
-        height,
-        mobile ? POINT_COUNT_MOBILE : POINT_COUNT_DESKTOP
-      );
+      pointsRef.current = initPoints(width, height, mobile ? POINT_COUNT_MOBILE : POINT_COUNT_DESKTOP);
     }
 
     resize();
@@ -104,10 +92,12 @@ export function ConstellationCanvas() {
     };
     document.addEventListener("visibilitychange", visibilityHandler);
 
-    const resizeObserver = new ResizeObserver(() => {
-      resize();
-    });
+    const resizeObserver = new ResizeObserver(() => resize());
     resizeObserver.observe(containerEl);
+
+    const lineMaxOpacity = 0.12;
+    const purpleColor = PURPLE_DARK;
+    const cyanColor = CYAN_DARK;
 
     function loop() {
       if (!ctx) return;
@@ -121,7 +111,6 @@ export function ConstellationCanvas() {
 
       ctx.clearRect(0, 0, w, h);
 
-      // Update positions and bounce
       for (const p of points) {
         p.x += p.vx;
         p.y += p.vy;
@@ -131,17 +120,18 @@ export function ConstellationCanvas() {
         p.y = Math.max(PADDING, Math.min(h - PADDING, p.y));
       }
 
-      // Draw connections first
       for (let i = 0; i < points.length; i++) {
         for (let j = i + 1; j < points.length; j++) {
           const a = points[i];
           const b = points[j];
           const d = dist(a, b);
           if (d > CONNECTION_DISTANCE) continue;
-          const alpha = (1 - d / CONNECTION_DISTANCE) * LINE_MAX_OPACITY;
+          const alpha = (1 - d / CONNECTION_DISTANCE) * lineMaxOpacity;
+          const aColor = a.colorKey === "purple" ? purpleColor : cyanColor;
+          const bColor = b.colorKey === "purple" ? purpleColor : cyanColor;
           const gradient = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
-          gradient.addColorStop(0, hexToRgba(a.color, alpha));
-          gradient.addColorStop(1, hexToRgba(b.color, alpha));
+          gradient.addColorStop(0, hexToRgba(aColor, alpha));
+          gradient.addColorStop(1, hexToRgba(bColor, alpha));
           ctx.strokeStyle = gradient;
           ctx.lineWidth = 0.6;
           ctx.beginPath();
@@ -151,14 +141,14 @@ export function ConstellationCanvas() {
         }
       }
 
-      // Draw points
       for (const p of points) {
         ctx.globalAlpha = p.opacity;
-        ctx.fillStyle = p.color;
+        ctx.fillStyle = p.colorKey === "purple" ? purpleColor : cyanColor;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
         ctx.fill();
       }
+
       ctx.globalAlpha = 1;
 
       if (visible) {
@@ -178,12 +168,12 @@ export function ConstellationCanvas() {
   return (
     <div
       ref={containerRef}
-      className="absolute inset-0 w-full h-full pointer-events-none"
+      className="pointer-events-none absolute inset-0 h-full w-full"
       aria-hidden
     >
       <canvas
         ref={canvasRef}
-        className="absolute w-full h-full opacity-60"
+        className="constellation-canvas-layer absolute h-full w-full opacity-60"
         style={{ width: "100%", height: "100%" }}
       />
     </div>

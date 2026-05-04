@@ -27,6 +27,18 @@ const API_BASE = BASE_URL;
 
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
+    if (res.status === 401) {
+      try {
+        localStorage.removeItem("vertex_token");
+        localStorage.removeItem("vertex_user");
+      } catch {
+        // ignore
+      }
+      if (typeof window !== "undefined") {
+        window.location.href = "/auth/login";
+      }
+      throw new Error("Session expired. Please log in again.");
+    }
     const text = await res.text();
     let message = text;
     try {
@@ -1023,6 +1035,20 @@ export async function getSubscription(token: string): Promise<Subscription> {
     headers: { Authorization: `Bearer ${token}` },
   });
   return handleResponse<Subscription>(res);
+}
+
+export async function verifyCheckoutSession(
+  token: string,
+  sessionId: string
+): Promise<{ success: boolean; plan: string; status: string }> {
+  const res = await fetch(
+    `${API_BASE}/api/payments/verify-session?session_id=${encodeURIComponent(sessionId)}`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+  return handleResponse<{ success: boolean; plan: string; status: string }>(res);
 }
 
 export async function cancelSubscription(

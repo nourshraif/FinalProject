@@ -37,6 +37,10 @@ async function callChatAPI(
 
 export default function ChatBot() {
   const { user, token } = useAuth();
+  const accentGradient = "linear-gradient(135deg, #7c3aed, #6366f1)";
+  const accentFabShadow = "0 8px 32px rgba(124, 58, 237, 0.45)";
+  const panelShadowDark =
+    "0 24px 80px rgba(124, 58, 237, 0.3), 0 0 0 1px rgba(255,255,255,0.06)";
   const [open, setOpen] = useState(false);
   const [minimised, setMinimised] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
@@ -127,7 +131,9 @@ export default function ChatBot() {
       if (/^[-•]\s/.test(line)) {
         return (
           <div key={i} className="flex gap-2">
-            <span className="mt-1 text-[#9b8cff] shrink-0">•</span>
+            <span className="mt-1 shrink-0 text-[#9b8cff]">
+              •
+            </span>
             <span dangerouslySetInnerHTML={{ __html: boldLine.replace(/^[-•]\s/, "") }} />
           </div>
         );
@@ -147,8 +153,8 @@ export default function ChatBot() {
           onClick={() => setOpen(true)}
           className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full shadow-2xl transition-all duration-300 hover:scale-110 active:scale-95"
           style={{
-            background: "linear-gradient(135deg, #7c3aed, #6366f1)",
-            boxShadow: "0 8px 32px rgba(124, 58, 237, 0.45)",
+            background: accentGradient,
+            boxShadow: accentFabShadow,
           }}
           aria-label="Open AI chat assistant"
         >
@@ -160,19 +166,18 @@ export default function ChatBot() {
       {open && (
         <div
           className={cn(
-            "fixed right-6 z-50 flex flex-col overflow-hidden rounded-2xl border border-white/10 shadow-2xl transition-all duration-300",
-            minimised ? "bottom-6 h-14 w-72" : "bottom-6 h-[520px] w-[360px]"
+            "chatbot-panel fixed right-6 z-50 flex flex-col overflow-hidden rounded-2xl border border-white/10 shadow-2xl transition-all duration-300",
+            minimised ? "bottom-6 h-14 w-72" : "bottom-6 h-[520px] w-[360px]",
           )}
           style={{
-            background: "rgba(15, 14, 26, 0.97)",
-            backdropFilter: "blur(24px)",
-            boxShadow: "0 24px 80px rgba(124, 58, 237, 0.3), 0 0 0 1px rgba(255,255,255,0.06)",
+            background: "var(--bg-primary)",
+            boxShadow: panelShadowDark,
           }}
         >
           {/* Header */}
           <div
             className="flex shrink-0 cursor-pointer items-center gap-3 px-4 py-3"
-            style={{ background: "linear-gradient(135deg, #7c3aed, #6366f1)" }}
+            style={{ background: accentGradient }}
             onClick={() => minimised && setMinimised(false)}
           >
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20">
@@ -206,7 +211,12 @@ export default function ChatBot() {
           {!minimised && (
             <>
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 scrollbar-thin scrollbar-thumb-white/10">
+              <div
+                className="flex-1 overflow-y-auto px-4 py-3 space-y-3 scrollbar-thin"
+                style={{
+                  scrollbarColor: "rgba(255,255,255,0.1) transparent",
+                }}
+              >
                 {messages.map((msg) => (
                   <div
                     key={msg.id}
@@ -218,7 +228,7 @@ export default function ChatBot() {
                     {msg.role === "assistant" && (
                       <div
                         className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full mt-1"
-                        style={{ background: "linear-gradient(135deg, #7c3aed, #6366f1)" }}
+                        style={{ background: accentGradient }}
                       >
                         <Bot className="h-3.5 w-3.5 text-white" />
                       </div>
@@ -227,13 +237,16 @@ export default function ChatBot() {
                       className={cn(
                         "max-w-[85%] rounded-2xl px-3 py-2.5 text-sm leading-relaxed",
                         msg.role === "user"
-                          ? "rounded-tr-sm text-white"
-                          : "rounded-tl-sm text-white/90"
+                          ? "chatbot-message-user rounded-tr-sm text-white"
+                          : "chatbot-message-assistant rounded-tl-sm text-white/90"
                       )}
                       style={
                         msg.role === "user"
-                          ? { background: "linear-gradient(135deg, #7c3aed, #6366f1)" }
-                          : { background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.08)" }
+                          ? { background: accentGradient }
+                          : {
+                              background: "var(--glass-bg)",
+                              border: "1px solid var(--glass-border)",
+                            }
                       }
                     >
                       <div className="space-y-0.5">{renderContent(msg.content)}</div>
@@ -245,18 +258,21 @@ export default function ChatBot() {
                   <div className="flex gap-2">
                     <div
                       className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
-                      style={{ background: "linear-gradient(135deg, #7c3aed, #6366f1)" }}
+                      style={{ background: accentGradient }}
                     >
                       <Bot className="h-3.5 w-3.5 text-white" />
                     </div>
                     <div
-                      className="flex items-center gap-1.5 rounded-2xl rounded-tl-sm px-3 py-2.5"
-                      style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.08)" }}
+                      className="chatbot-message-assistant flex items-center gap-1.5 rounded-2xl rounded-tl-sm px-3 py-2.5"
+                      style={{
+                        background: "var(--glass-bg)",
+                        border: "1px solid var(--glass-border)",
+                      }}
                     >
                       {[0, 1, 2].map((i) => (
                         <span
                           key={i}
-                          className="h-1.5 w-1.5 rounded-full bg-[#9b8cff] animate-bounce"
+                          className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#9b8cff]"
                           style={{ animationDelay: `${i * 0.15}s` }}
                         />
                       ))}
@@ -268,12 +284,18 @@ export default function ChatBot() {
 
               {/* Input */}
               <div
-                className="shrink-0 p-3 border-t border-white/10"
-                style={{ background: "rgba(255,255,255,0.03)" }}
+                className="shrink-0 p-3"
+                style={{
+                  background: "var(--bg-secondary)",
+                  borderTop: "1px solid var(--border-subtle)",
+                }}
               >
                 <div
                   className="flex items-end gap-2 rounded-xl px-3 py-2"
-                  style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)" }}
+                  style={{
+                    background: "var(--input-bg)",
+                    border: "1px solid var(--input-border)",
+                  }}
                 >
                   <textarea
                     ref={inputRef}
@@ -283,14 +305,14 @@ export default function ChatBot() {
                     placeholder="Ask me anything about your career…"
                     rows={1}
                     disabled={loading}
-                    className="flex-1 resize-none bg-transparent text-sm text-white placeholder-white/30 outline-none disabled:opacity-50 max-h-24"
+                    className="max-h-24 flex-1 resize-none bg-transparent text-sm text-white outline-none placeholder:text-white/30 disabled:opacity-50"
                     style={{ lineHeight: "1.5" }}
                   />
                   <button
                     onClick={sendMessage}
                     disabled={!input.trim() || loading}
                     className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed hover:scale-105 active:scale-95"
-                    style={{ background: "linear-gradient(135deg, #7c3aed, #6366f1)" }}
+                    style={{ background: accentGradient }}
                     aria-label="Send message"
                   >
                     {loading ? (
@@ -301,7 +323,7 @@ export default function ChatBot() {
                   </button>
                 </div>
                 <p className="mt-1.5 text-center text-[10px] text-white/25">
-                  Powered by Claude · Press Enter to send
+                  Vertex AI assistant · Press Enter to send
                 </p>
               </div>
             </>

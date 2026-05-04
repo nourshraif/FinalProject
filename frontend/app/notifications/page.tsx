@@ -210,7 +210,7 @@ function NotificationsPageContent() {
                       {sym}
                     </span>
                     {unread && (
-                      <div className="absolute -right-0.5 -top-0.5 h-3.5 w-3.5 rounded-full border-2 border-[#0b1326] bg-v-primary shadow-[0_0_10px_rgba(192,193,255,0.6)]" />
+                      <div className="absolute -right-0.5 -top-0.5 h-3.5 w-3.5 rounded-full border-2 border-[#0e182c] bg-v-primary shadow-[0_0_10px_rgba(192,193,255,0.6)]" />
                     )}
                   </div>
                   <div className="min-w-0 flex-1">

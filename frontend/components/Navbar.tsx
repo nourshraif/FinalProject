@@ -9,7 +9,7 @@ import NotificationBell from "@/components/NotificationBell";
 import { useAuth } from "@/context/AuthContext";
 import { getReceivedRequests, getSubscription, getUnreadCount } from "@/lib/api";
 import type { Subscription } from "@/types";
-import { Menu, X, ChevronDown, ChevronRight } from "lucide-react";
+import { Menu, X, ChevronDown, ChevronRight, type LucideIcon } from "lucide-react";
 
 function getInitials(fullName: string): string {
   const parts = (fullName || "").trim().split(/\s+/);
@@ -33,7 +33,7 @@ const publicNav = [
 export type NavItem = {
   href: string;
   label: string;
-  icon?: typeof Shield;
+  icon?: LucideIcon;
   className?: string;
 };
 
@@ -127,7 +127,7 @@ function NavLinks({
                 linkClass,
                 !linkClass &&
                   (active
-                    ? "border-b-2 border-indigo-400 px-1 py-1 text-indigo-200"
+                    ? "border-b-2 border-indigo-400 px-1 py-1 text-indigo-300"
                     : "rounded-lg px-3 py-1.5 text-slate-400 hover:bg-white/5 hover:text-indigo-100")
               )}
             >
@@ -147,21 +147,20 @@ function NavLinks({
   );
 }
 
-const dropdownPanelClass =
-  "absolute z-[60] mt-1.5 min-w-[12.5rem] rounded-xl border border-white/10 bg-[#0c1629]/95 py-1 shadow-[0_16px_48px_rgba(0,0,0,0.55)] backdrop-blur-xl";
-
 function NavMenuDropdown({
   label,
   triggerClassName,
   align,
   items,
   pathname,
+  dropdownClass,
 }: {
   label: string;
   triggerClassName?: string;
   align: "left" | "right";
   items: NavItem[];
   pathname: string;
+  dropdownClass: string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -197,7 +196,8 @@ function NavMenuDropdown({
         aria-label={label}
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          "flex items-center gap-1 rounded-lg px-2 py-1.5 font-body text-sm font-medium text-slate-400 transition-colors hover:bg-white/5 hover:text-indigo-100 sm:px-3",
+          "flex items-center gap-1 rounded-lg px-2 py-1.5 font-body text-sm font-medium transition-colors sm:px-3",
+          "text-slate-400 hover:bg-white/5 hover:text-indigo-100",
           triggerClassName
         )}
       >
@@ -206,7 +206,7 @@ function NavMenuDropdown({
       </button>
       {open && (
         <div
-          className={cn(dropdownPanelClass, align === "right" ? "right-0" : "left-0")}
+          className={cn(dropdownClass, align === "right" ? "right-0" : "left-0")}
           role="menu"
         >
           {items.map((item) => (
@@ -244,7 +244,10 @@ function DropdownNavLink({
       className={cn(
         "flex items-center justify-between gap-2 px-3 py-2.5 font-body text-sm transition-colors",
         item.className,
-        !item.className && (active ? "bg-indigo-500/15 text-indigo-200" : "text-slate-300 hover:bg-white/5 hover:text-indigo-100")
+        !item.className &&
+          (active
+            ? "bg-indigo-500/15 text-indigo-200"
+            : "text-slate-300 hover:bg-white/5 hover:text-indigo-100")
       )}
     >
       <span className="flex items-center gap-2">
@@ -345,6 +348,9 @@ export function Navbar() {
     return () => window.removeEventListener("keydown", onKey);
   }, [accountOpen]);
 
+  const dropdownPanelClass =
+    "absolute z-[60] mt-1.5 min-w-[12.5rem] rounded-xl border border-white/10 bg-[#1a273e]/95 py-1 shadow-[0_16px_48px_rgba(0,8,24,0.5)] backdrop-blur-xl";
+
   const isCompany = user?.user_type === "company";
   const isAdmin = Boolean(user?.is_admin);
   const profileHref = isAdmin ? "/admin" : isCompany ? "/company/profile" : "/profile";
@@ -373,8 +379,10 @@ export function Navbar() {
   return (
     <header
       className={cn(
-        "fixed top-0 z-50 w-full border-b border-white/[0.06] shadow-[0_20px_40px_rgba(0,0,0,0.45)] transition-[background,backdrop-filter] duration-300",
-        scrolled ? "bg-[#0b1326]/92" : "bg-[#0b1326]/65"
+        "fixed top-0 z-50 w-full border-b transition-[background,border-color,backdrop-filter] duration-300",
+        scrolled
+          ? "border-white/[0.06] bg-[#0e182c]/92 shadow-[0_20px_40px_rgba(0,0,0,0.4)]"
+          : "border-white/[0.06] bg-[#0e182c]/68",
       )}
       style={{
         backdropFilter: "blur(20px) saturate(1.15)",
@@ -396,7 +404,7 @@ export function Navbar() {
                 pendingRequestsCount={!isCompany ? pendingRequestsCount : 0}
               />
               {more.length > 0 && (
-                <NavMenuDropdown label="More" align="left" items={more} pathname={pathname} />
+                <NavMenuDropdown label="More" align="left" items={more} pathname={pathname} dropdownClass={dropdownPanelClass} />
               )}
             </>
           )}

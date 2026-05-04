@@ -68,7 +68,7 @@ export default function HomePage() {
   return (
     <div className="aurora-bg relative min-h-screen overflow-hidden pb-16">
       {/* SECTION 1 — HERO (Stitch: primary → primary-container, on-surface copy) */}
-      <section className="relative pt-28 pb-16">
+      <section className="hero-section relative pt-28 pb-16">
         <div className="absolute -right-20 -top-40 h-96 w-96 rounded-full bg-v-primary/10 blur-[120px]" aria-hidden />
         <div className="relative mx-auto max-w-7xl px-6">
           <div className="grid items-center gap-12 lg:grid-cols-12">
@@ -410,25 +410,48 @@ export default function HomePage() {
                 Ready to find your match?
               </h2>
               <p className="mx-auto mt-3 max-w-md text-pretty text-v-onSurfaceVariant">
-                Join Vertex today—free to start, no credit card required.
+                {isLoggedIn
+                  ? "Head to your dashboard to manage matches, alerts, and profile."
+                  : "Join Vertex today—free to start, no credit card required."}
               </p>
-              <button
-                type="button"
-                onClick={() => router.push("/auth/register")}
-                className="btn-stitch-primary mx-auto mt-8 inline-flex items-center gap-2 px-8 py-3.5"
-              >
-                Create free account
-                <ArrowRight className="h-4 w-4" />
-              </button>
+              {isLoggedIn ? (
+                <button
+                  type="button"
+                  onClick={() => router.push(dashboardHref)}
+                  className="btn-stitch-primary mx-auto mt-8 inline-flex items-center gap-2 px-8 py-3.5"
+                >
+                  Go to Dashboard
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => router.push("/auth/register")}
+                  className="btn-stitch-primary mx-auto mt-8 inline-flex items-center gap-2 px-8 py-3.5"
+                >
+                  Create free account
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              )}
               <p className="mt-8 text-sm text-v-onSurfaceVariant">
-                Already have an account?{" "}
-                <Link href="/auth/login" className="font-semibold text-v-primary transition hover:text-v-primaryContainer">
-                  Sign in
-                </Link>{" "}
-                ·{" "}
-                <Link href="/about" className="font-semibold text-v-primary transition hover:text-v-primaryContainer">
-                  About
-                </Link>
+                {isLoggedIn ? (
+                  <>
+                    <Link href="/about" className="font-semibold text-v-primary transition hover:text-v-primaryContainer">
+                      About
+                    </Link>
+                  </>
+                ) : (
+                  <>
+                    Already have an account?{" "}
+                    <Link href="/auth/login" className="font-semibold text-v-primary transition hover:text-v-primaryContainer">
+                      Sign in
+                    </Link>{" "}
+                    ·{" "}
+                    <Link href="/about" className="font-semibold text-v-primary transition hover:text-v-primaryContainer">
+                      About
+                    </Link>
+                  </>
+                )}
               </p>
             </div>
           </div>

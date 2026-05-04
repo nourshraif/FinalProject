@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
 
@@ -13,18 +15,21 @@ const footerLinks = [
 
 export function Footer() {
   return (
-    <footer className="relative z-10 w-full border-t border-indigo-500/10 bg-[#131b2e] py-14">
+    <footer className="relative z-10 w-full border-t border-indigo-500/10 bg-[#152238] py-14">
       <div
         className="pointer-events-none absolute inset-x-0 top-0 h-px opacity-80"
         style={{
-          background: "linear-gradient(90deg, transparent, rgba(192,193,255,0.25) 45%, transparent)",
+          background:
+            "linear-gradient(90deg, transparent, rgba(192,193,255,0.25) 45%, transparent)",
         }}
         aria-hidden
       />
       <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-8 px-8 md:flex-row">
         <div className="flex flex-col items-center gap-2 md:items-start">
           <Logo size="sm" href="/" />
-          <p className="font-body text-sm text-slate-400">© {new Date().getFullYear()} Vertex Celestial Systems</p>
+          <p className="font-body text-sm text-slate-400">
+            © {new Date().getFullYear()} Vertex
+          </p>
         </div>
         <div className="flex flex-wrap justify-center gap-8">
           {footerLinks.map((l) => (

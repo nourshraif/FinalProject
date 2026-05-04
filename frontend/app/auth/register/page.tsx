@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { User, Building2, Loader2 } from "lucide-react";
@@ -28,9 +28,14 @@ function getPasswordStrength(password: string): { level: "weak" | "medium" | "st
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+function loggedInDashboardPath(u: AuthUser): string {
+  if (u.is_admin) return "/admin";
+  return u.user_type === "company" ? "/dashboard/company" : "/dashboard/jobseeker";
+}
+
 export default function RegisterPage() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, isLoggedIn, user: authUser } = useAuth();
   const { showToast } = useToast();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -42,6 +47,20 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
 
   const strength = getPasswordStrength(password);
+
+  useEffect(() => {
+    if (!isLoggedIn || !authUser) return;
+    router.replace(loggedInDashboardPath(authUser));
+  }, [isLoggedIn, authUser, router]);
+
+  if (isLoggedIn && authUser) {
+    return (
+      <div className="flex min-h-[calc(100dvh-6rem)] w-full flex-col items-center justify-center px-4 pb-16 pt-24">
+        <Loader2 className="h-8 w-8 animate-spin text-indigo-400" aria-hidden />
+        <p className="mt-4 text-sm text-vertex-muted">Redirecting…</p>
+      </div>
+    );
+  }
 
   async function handleRegister() {
     setError("");
@@ -95,11 +114,7 @@ export default function RegisterPage() {
       };
       login(res.access_token, user);
       showToast("Account created successfully", "success");
-      if (user.user_type === "jobseeker") {
-        router.push("/dashboard/jobseeker");
-      } else {
-        router.push("/dashboard/company");
-      }
+      router.push(loggedInDashboardPath(user));
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Registration failed";
       setError(msg);
@@ -110,8 +125,8 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-8rem)] flex-col items-center justify-center px-4 py-12">
-      <div className="glass-card w-full max-w-[480px] rounded-2xl p-10">
+    <div className="flex min-h-[calc(100dvh-6rem)] w-full flex-col items-center justify-center px-4 pb-16 pt-24">
+      <div className="glass-card w-full max-w-xl rounded-2xl p-8 sm:p-10">
         <div className="mb-2 flex justify-center">
           <Logo size="lg" href="/" />
         </div>
@@ -130,7 +145,7 @@ export default function RegisterPage() {
               onClick={() => setUserType("jobseeker")}
               className="glass-card flex flex-col items-center gap-1 rounded-xl p-4 text-left transition-colors cursor-pointer border-2"
               style={{
-                borderColor: userType === "jobseeker" ? "#6366f1" : "#2a2a3d",
+                borderColor: userType === "jobseeker" ? "#6366f1" : "var(--border-subtle)",
                 background: userType === "jobseeker" ? "rgba(99,102,241,0.1)" : undefined,
               }}
             >
@@ -143,7 +158,7 @@ export default function RegisterPage() {
               onClick={() => setUserType("company")}
               className="glass-card flex flex-col items-center gap-1 rounded-xl p-4 text-left transition-colors cursor-pointer border-2"
               style={{
-                borderColor: userType === "company" ? "#6366f1" : "#2a2a3d",
+                borderColor: userType === "company" ? "#6366f1" : "var(--border-subtle)",
                 background: userType === "company" ? "rgba(99,102,241,0.1)" : undefined,
               }}
             >
@@ -165,73 +180,110 @@ export default function RegisterPage() {
           <div className="h-px flex-1 bg-vertex-border" />
         </div>
 
+        <form
+          className="space-y-0"
+          autoComplete="off"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void handleRegister();
+          }}
+        >
         <div>
-          <label className="mb-1 block text-xs text-vertex-muted">Full Name</label>
+          <label htmlFor="register-name" className="mb-1 block text-xs text-vertex-muted">
+            Full Name
+          </label>
           <input
+            id="register-name"
+            name="fullName"
             type="text"
-            placeholder="John Smith"
+            placeholder="Your full name"
             className="vertex-input w-full"
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
             disabled={loading}
+            autoComplete="name"
           />
         </div>
 
         <div className="mt-4">
-          <label className="mb-1 block text-xs text-vertex-muted">Email</label>
+          <label htmlFor="register-email" className="mb-1 block text-xs text-vertex-muted">
+            Email
+          </label>
           <input
+            id="register-email"
+            name="email"
             type="email"
             placeholder="you@example.com"
             className="vertex-input w-full"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             disabled={loading}
+            autoComplete="email"
           />
         </div>
 
         <div className="mt-4">
-          <label className="mb-1 block text-xs text-vertex-muted">Password</label>
+          <label htmlFor="register-password" className="mb-1 block text-xs text-vertex-muted">
+            Password
+          </label>
           <input
+            id="register-password"
+            name="password"
             type="password"
             placeholder="••••••••"
             className="vertex-input w-full"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             disabled={loading}
+            autoComplete="new-password"
           />
-          <div className="mt-1.5 h-1 w-full overflow-hidden rounded-sm" style={{ background: "#2a2a3d" }}>
-            <div
-              className="h-full rounded-sm transition-all duration-200"
-              style={{ width: `${strength.width}%`, background: strength.color }}
-            />
-          </div>
-          <p className="mt-0.5 text-xs" style={{ color: strength.color }}>
-            {strength.label}
-          </p>
+          {password.length > 0 && (
+            <>
+              <div className="mt-1.5 h-1 w-full overflow-hidden rounded-sm" style={{ background: "var(--border-subtle)" }}>
+                <div
+                  className="h-full rounded-sm transition-all duration-200"
+                  style={{ width: `${strength.width}%`, background: strength.color }}
+                />
+              </div>
+              <p className="mt-0.5 text-xs" style={{ color: strength.color }}>
+                {strength.label}
+              </p>
+            </>
+          )}
         </div>
 
         <div className="mt-4">
-          <label className="mb-1 block text-xs text-vertex-muted">Confirm Password</label>
+          <label htmlFor="register-password-confirm" className="mb-1 block text-xs text-vertex-muted">
+            Confirm Password
+          </label>
           <input
+            id="register-password-confirm"
+            name="confirmPassword"
             type="password"
             placeholder="••••••••"
             className="vertex-input w-full"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             disabled={loading}
+            autoComplete="new-password"
           />
         </div>
 
         {userType === "company" && (
           <div className="mt-4 overflow-hidden transition-all duration-300">
-            <label className="mb-1 block text-xs text-vertex-muted">Company Name</label>
+            <label htmlFor="register-company" className="mb-1 block text-xs text-vertex-muted">
+              Company Name
+            </label>
             <input
+              id="register-company"
+              name="companyName"
               type="text"
               placeholder="Acme Corp"
               className="vertex-input w-full"
               value={companyName}
               onChange={(e) => setCompanyName(e.target.value)}
               disabled={loading}
+              autoComplete="organization"
             />
           </div>
         )}
@@ -250,8 +302,7 @@ export default function RegisterPage() {
         )}
 
         <button
-          type="button"
-          onClick={handleRegister}
+          type="submit"
           disabled={loading}
           className="glow-button mt-6 flex h-12 w-full items-center justify-center gap-2 text-sm font-medium text-white disabled:opacity-70"
         >
@@ -264,6 +315,7 @@ export default function RegisterPage() {
             "Create Account"
           )}
         </button>
+        </form>
 
         <p className="mt-4 text-center text-xs text-vertex-muted">
           By creating an account you agree to our{" "}

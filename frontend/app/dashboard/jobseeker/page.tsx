@@ -102,7 +102,6 @@ function JobseekerDashboardContent() {
     loadData();
   }, [loadData]);
 
-  const displayName = user?.full_name ?? "there";
   const profileLabel =
     profileComplete !== null ? `Profile ${profileComplete}%` : "Profile —";
 
@@ -114,7 +113,7 @@ function JobseekerDashboardContent() {
           <div className="space-y-1">
             <p className="font-label text-xs font-medium uppercase tracking-widest text-v-primary">Overview</p>
             <h1 className="font-headline text-4xl font-extrabold tracking-tight text-indigo-50">
-              Welcome back, {displayName}.
+               Dashboard
             </h1>
             <p className="mt-1 max-w-lg flex flex-wrap items-center gap-2 text-sm text-v-onSurfaceVariant">
               Here&apos;s your job search snapshot

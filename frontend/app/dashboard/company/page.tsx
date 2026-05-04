@@ -7,7 +7,6 @@ import { Building2, Users, Search, Bookmark, Eye } from "lucide-react";
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { useAuth } from "@/context/AuthContext";
-import { useToast } from "@/context/ToastContext";
 import {
   getCandidateCount,
   getCompanyProfile,
@@ -45,7 +44,6 @@ function profileCompleteness(p: CompanyProfile | null): number {
 
 function CompanyDashboardContent() {
   const { user, token } = useAuth();
-  const { showToast } = useToast();
   const router = useRouter();
   const [candidateCount, setCandidateCount] = useState<number | null>(null);
   const [savedCandidates, setSavedCandidates] = useState<SavedCandidate[]>([]);
@@ -74,16 +72,10 @@ function CompanyDashboardContent() {
         .catch(() => setProfileComplete(0));
       getSavedCandidates(token)
         .then((data) => setSavedCandidates(Array.isArray(data) ? data : []))
-        .catch((e) => {
-          setSavedCandidates([]);
-          showToast(e instanceof Error ? e.message : "Failed to load saved candidates", "error");
-        });
+        .catch(() => setSavedCandidates([]));
       getSearchHistory(token)
         .then((data) => setSearchHistory(Array.isArray(data) ? data : []))
-        .catch((e) => {
-          setSearchHistory([]);
-          showToast(e instanceof Error ? e.message : "Failed to load search history", "error");
-        });
+        .catch(() => setSearchHistory([]));
       getSentRequests(token)
         .then((data) => setSentRequests(Array.isArray(data) ? data : []))
         .catch(() => setSentRequests([]));

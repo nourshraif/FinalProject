@@ -1,6 +1,10 @@
-import resend
+import logging
 import os
 from typing import Optional
+
+import resend
+
+logger = logging.getLogger(__name__)
 
 resend.api_key = os.getenv("RESEND_API_KEY")
 FROM_EMAIL = os.getenv(
@@ -158,8 +162,8 @@ def send_welcome_email(
             "html": body
         })
         return True
-    except Exception as e:
-        print(f"Email error: {e}")
+    except Exception:
+        logger.exception("send_welcome_email failed")
         return False
 
 
@@ -273,8 +277,8 @@ def send_job_alert_email(
       """
         })
         return True
-    except Exception as e:
-        print(f"Email error: {e}")
+    except Exception:
+        logger.exception("send_job_alert_email failed")
         return False
 
 
@@ -357,8 +361,8 @@ def send_contact_request_email(
       """
         })
         return True
-    except Exception as e:
-        print(f"Email error: {e}")
+    except Exception:
+        logger.exception("send_contact_request_email failed")
         return False
 
 
@@ -421,8 +425,8 @@ def send_acceptance_email(
       """
         })
         return True
-    except Exception as e:
-        print(f"Email error: {e}")
+    except Exception:
+        logger.exception("send_acceptance_email failed")
         return False
 
 
@@ -431,6 +435,11 @@ def send_password_reset_email(
     full_name: str,
     reset_token: str
 ) -> bool:
+    if not resend.api_key:
+        logger.error(
+            "RESEND_API_KEY is not set; password reset email was not sent."
+        )
+        return False
     try:
         reset_url = f"{APP_URL}/auth/reset-password?token={reset_token}"
         resend.Emails.send({
@@ -492,8 +501,8 @@ def send_password_reset_email(
       """
         })
         return True
-    except Exception as e:
-        print(f"Email error: {e}")
+    except Exception:
+        logger.exception("send_password_reset_email failed")
         return False
 
 
@@ -556,6 +565,6 @@ def send_support_reply_email(
       """
         })
         return True
-    except Exception as e:
-        print(f"Email error: {e}")
+    except Exception:
+        logger.exception("send_support_reply_email failed")
         return False

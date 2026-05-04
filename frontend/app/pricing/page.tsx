@@ -149,7 +149,7 @@ export default function PricingPage() {
           </h1>
           <p
             className="mx-auto mt-3 max-w-[500px] text-center text-base"
-            style={{ color: "#94a3b8" }}
+            style={{ color: "var(--text-secondary)" }}
           >
             Start free. Upgrade when you need more. No hidden fees. No surprises.
           </p>
@@ -161,7 +161,7 @@ export default function PricingPage() {
               style={
                 billingCycle === "monthly"
                   ? { background: "#6366f1", color: "white" }
-                  : { color: "#94a3b8" }
+                  : { color: "var(--text-secondary)" }
               }
             >
               Monthly
@@ -174,7 +174,7 @@ export default function PricingPage() {
                 style={
                   billingCycle === "annually"
                     ? { background: "#6366f1", color: "white" }
-                    : { color: "#94a3b8" }
+                    : { color: "var(--text-secondary)" }
               }
               >
                 Annually
@@ -200,7 +200,7 @@ export default function PricingPage() {
             style={
               planType === "jobseekers"
                 ? { background: "#6366f1", color: "white" }
-                : { color: "#94a3b8" }
+                : { color: "var(--text-secondary)" }
             }
           >
             For Job Seekers
@@ -212,7 +212,7 @@ export default function PricingPage() {
             style={
               planType === "companies"
                 ? { background: "#6366f1", color: "white" }
-                : { color: "#94a3b8" }
+                : { color: "var(--text-secondary)" }
             }
           >
             For Companies
@@ -224,19 +224,19 @@ export default function PricingPage() {
           {/* CARD 1 — Free */}
           <div className="glass-card rounded-2xl p-8">
             <h3 className="text-xl font-bold text-white">Free</h3>
-            <p className="mt-1 text-sm" style={{ color: "#94a3b8" }}>
+            <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
               Perfect for getting started
             </p>
             <div className="my-6">
               <span className="text-5xl font-bold text-white">$0</span>
-              <span className="ml-1 text-base" style={{ color: "#94a3b8" }}>
+              <span className="ml-1 text-base" style={{ color: "var(--text-secondary)" }}>
                 /month
               </span>
-              <p className="mt-1 text-xs" style={{ color: "#64748b" }}>
+              <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
                 Forever free
               </p>
             </div>
-            <div className="h-px" style={{ background: "#2a2a3d" }} />
+            <div className="h-px" style={{ background: "var(--border-subtle)" }} />
             <ul className="mt-6 space-y-3">
               {(planType === "jobseekers"
                 ? freeFeaturesJobSeekers
@@ -253,7 +253,7 @@ export default function PricingPage() {
                     )}
                     <span
                       className="text-sm"
-                      style={included ? { color: "#e2e8f0" } : { color: "#64748b" }}
+                      style={included ? { color: "var(--text-primary)" } : { color: "var(--text-muted)" }}
                     >
                       {text}
                     </span>
@@ -272,7 +272,7 @@ export default function PricingPage() {
 
           {/* CARD 2 — Pro / Growth */}
           <div
-            className="glass-card relative rounded-2xl p-8"
+            className="pricing-popular glass-card relative rounded-2xl p-8"
             style={{
               border: "1px solid rgba(99,102,241,0.5)",
               boxShadow: "0 0 40px rgba(124,58,237,0.15)",
@@ -289,30 +289,30 @@ export default function PricingPage() {
             <h3 className="gradient-text text-xl font-bold">
               {planType === "jobseekers" ? "Pro" : "Growth"}
             </h3>
-            <p className="mt-1 text-sm" style={{ color: "#94a3b8" }}>
+            <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
               {planType === "jobseekers"
                 ? "For serious job seekers"
                 : "For growing teams"}
             </p>
             <div className="my-6">
               {billingCycle === "annually" && planType === "jobseekers" && (
-                <span className="text-base font-medium line-through" style={{ color: "#64748b" }}>
+                <span className="text-base font-medium line-through" style={{ color: "var(--text-muted)" }}>
                   $12
                 </span>
               )}
               <span className="text-5xl font-bold text-white">
                 ${planType === "jobseekers" ? proPrice : "29"}
               </span>
-              <span className="ml-1 text-base" style={{ color: "#94a3b8" }}>
+              <span className="ml-1 text-base" style={{ color: "var(--text-secondary)" }}>
                 /month
               </span>
               {billingCycle === "annually" && planType === "jobseekers" && (
-                <p className="mt-1 text-xs" style={{ color: "#64748b" }}>
+                <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
                   Billed $120/year
                 </p>
               )}
             </div>
-            <div className="h-px" style={{ background: "#2a2a3d" }} />
+            <div className="h-px" style={{ background: "var(--border-subtle)" }} />
             <ul className="mt-6 space-y-3">
               {(planType === "jobseekers"
                 ? proFeaturesJobSeekers
@@ -329,7 +329,7 @@ export default function PricingPage() {
                       )}
                       <span
                         className="text-sm"
-                        style={item.included ? { color: "#e2e8f0" } : { color: "#64748b" }}
+                        style={item.included ? { color: "var(--text-primary)" } : { color: "var(--text-muted)" }}
                       >
                         {item.text}
                       </span>
@@ -339,7 +339,7 @@ export default function PricingPage() {
                 return (
                   <li key={i} className="flex items-center gap-2">
                     <Check className="h-5 w-5 shrink-0" style={{ color: "#22c55e" }} />
-                    <span className="text-sm text-white">{String(f)}</span>
+                    <span className="text-sm text-vertex-white">{String(f)}</span>
                   </li>
                 );
               })}
@@ -365,21 +365,21 @@ export default function PricingPage() {
             style={{ border: "1px solid rgba(6,182,212,0.2)" }}
           >
             <h3 className="text-xl font-bold text-white">Business</h3>
-            <p className="mt-1 text-sm" style={{ color: "#94a3b8" }}>
+            <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
               For hiring teams
             </p>
             <div className="my-6">
               <span className="text-5xl font-bold text-white">${businessPrice}</span>
-              <span className="ml-1 text-base" style={{ color: "#94a3b8" }}>
+              <span className="ml-1 text-base" style={{ color: "var(--text-secondary)" }}>
                 /month
               </span>
               {billingCycle === "annually" && (
-                <p className="mt-1 text-xs" style={{ color: "#64748b" }}>
+                <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
                   Billed ${businessAnnual * 12}/year
                 </p>
               )}
             </div>
-            <div className="h-px" style={{ background: "#2a2a3d" }} />
+            <div className="h-px" style={{ background: "var(--border-subtle)" }} />
             <ul className="mt-6 space-y-3">
               {businessFeaturesCompanies.map((f, i) => {
                 if (typeof f === "object" && "included" in f) {
@@ -393,7 +393,7 @@ export default function PricingPage() {
                       )}
                       <span
                         className="text-sm"
-                        style={item.included ? { color: "#e2e8f0" } : { color: "#64748b" }}
+                        style={item.included ? { color: "var(--text-primary)" } : { color: "var(--text-muted)" }}
                       >
                         {item.text}
                       </span>
@@ -403,7 +403,7 @@ export default function PricingPage() {
                 return (
                   <li key={i} className="flex items-center gap-2">
                     <Check className="h-5 w-5 shrink-0" style={{ color: "#22c55e" }} />
-                    <span className="text-sm text-white">{String(f)}</span>
+                    <span className="text-sm text-vertex-white">{String(f)}</span>
                   </li>
                 );
               })}
@@ -415,7 +415,7 @@ export default function PricingPage() {
               className="mt-8 flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-70"
               style={{
                 border: "1px solid rgba(6,182,212,0.4)",
-                color: "#06b6d4",
+                color: "var(--accent-cyan)",
                 background: "transparent",
               }}
             >
@@ -435,8 +435,8 @@ export default function PricingPage() {
           <div className="glass-card overflow-x-auto rounded-xl">
             <table className="w-full min-w-[600px] border-collapse text-left">
               <thead>
-                <tr style={{ background: "#13131f" }}>
-                  <th className="p-3 text-sm font-medium" style={{ color: "#94a3b8" }}>
+                <tr style={{ background: "var(--bg-card-solid)" }}>
+                  <th className="p-3 text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
                     Feature
                   </th>
                   <th className="p-3 text-center text-sm font-bold text-white">Free</th>
@@ -448,25 +448,25 @@ export default function PricingPage() {
               </thead>
               <tbody className="text-sm">
                 <tr style={{ background: "rgba(255,255,255,0.02)" }}>
-                  <td className="p-3 font-medium" style={{ color: "#94a3b8" }}>CV Uploads</td>
+                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>CV Uploads</td>
                   <td className="p-3 text-center text-white">1</td>
                   <td className="p-3 text-center text-white">Unlimited</td>
                   <td className="p-3 text-center text-white">Unlimited</td>
                 </tr>
                 <tr>
-                  <td className="p-3 font-medium" style={{ color: "#94a3b8" }}>Job Matches Shown</td>
+                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Job Matches Shown</td>
                   <td className="p-3 text-center text-white">Top 10</td>
                   <td className="p-3 text-center text-white">Unlimited</td>
                   <td className="p-3 text-center text-white">Unlimited</td>
                 </tr>
                 <tr style={{ background: "rgba(255,255,255,0.02)" }}>
-                  <td className="p-3 font-medium" style={{ color: "#94a3b8" }}>Match Algorithm</td>
+                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Match Algorithm</td>
                   <td className="p-3 text-center text-white">Basic</td>
                   <td className="p-3 text-center text-white">Priority</td>
                   <td className="p-3 text-center text-white">Priority</td>
                 </tr>
                 <tr>
-                  <td className="p-3 font-medium" style={{ color: "#94a3b8" }}>Job Alerts</td>
+                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Job Alerts</td>
                   <td className="p-3 text-center">
                     <X className="inline h-4 w-4" style={{ color: "#ef4444" }} />
                   </td>
@@ -478,13 +478,13 @@ export default function PricingPage() {
                   </td>
                 </tr>
                 <tr style={{ background: "rgba(255,255,255,0.02)" }}>
-                  <td className="p-3 font-medium" style={{ color: "#94a3b8" }}>Profile Page</td>
+                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Profile Page</td>
                   <td className="p-3 text-center text-white">Basic</td>
                   <td className="p-3 text-center text-white">Advanced</td>
                   <td className="p-3 text-center text-white">Advanced</td>
                 </tr>
                 <tr>
-                  <td className="p-3 font-medium" style={{ color: "#94a3b8" }}>Profile Boost</td>
+                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Profile Boost</td>
                   <td className="p-3 text-center">
                     <X className="inline h-4 w-4" style={{ color: "#ef4444" }} />
                   </td>
@@ -496,7 +496,7 @@ export default function PricingPage() {
                   </td>
                 </tr>
                 <tr style={{ background: "rgba(255,255,255,0.02)" }}>
-                  <td className="p-3 font-medium" style={{ color: "#94a3b8" }}>Skills Management</td>
+                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Skills Management</td>
                   <td className="p-3 text-center">
                     <Check className="inline h-4 w-4" style={{ color: "#22c55e" }} />
                   </td>
@@ -508,7 +508,7 @@ export default function PricingPage() {
                   </td>
                 </tr>
                 <tr>
-                  <td className="p-3 font-medium" style={{ color: "#94a3b8" }}>Application Tracker</td>
+                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Application Tracker</td>
                   <td className="p-3 text-center">
                     <Check className="inline h-4 w-4" style={{ color: "#22c55e" }} />
                   </td>
@@ -520,13 +520,13 @@ export default function PricingPage() {
                   </td>
                 </tr>
                 <tr>
-                  <td className="p-3 font-medium" style={{ color: "#94a3b8" }}>Saved Jobs</td>
+                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Saved Jobs</td>
                   <td className="p-3 text-center text-white">10</td>
                   <td className="p-3 text-center text-white">Unlimited</td>
                   <td className="p-3 text-center text-white">Unlimited</td>
                 </tr>
                 <tr style={{ background: "rgba(255,255,255,0.02)" }}>
-                  <td className="p-3 font-medium" style={{ color: "#94a3b8" }}>Match Reports</td>
+                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Match Reports</td>
                   <td className="p-3 text-center">
                     <X className="inline h-4 w-4" style={{ color: "#ef4444" }} />
                   </td>
@@ -538,19 +538,19 @@ export default function PricingPage() {
                   </td>
                 </tr>
                 <tr>
-                  <td className="p-3 font-medium" style={{ color: "#94a3b8" }}>Candidate Searches</td>
+                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Candidate Searches</td>
                   <td className="p-3 text-center text-white">10/mo</td>
                   <td className="p-3 text-center text-white">—</td>
                   <td className="p-3 text-center text-white">Unlimited</td>
                 </tr>
                 <tr>
-                  <td className="p-3 font-medium" style={{ color: "#94a3b8" }}>Contact Requests</td>
+                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Contact Requests</td>
                   <td className="p-3 text-center text-white">3/mo</td>
                   <td className="p-3 text-center text-white">—</td>
                   <td className="p-3 text-center text-white">Unlimited</td>
                 </tr>
                 <tr style={{ background: "rgba(255,255,255,0.02)" }}>
-                  <td className="p-3 font-medium" style={{ color: "#94a3b8" }}>Search History</td>
+                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Search History</td>
                   <td className="p-3 text-center">
                     <X className="inline h-4 w-4" style={{ color: "#ef4444" }} />
                   </td>
@@ -560,19 +560,19 @@ export default function PricingPage() {
                   </td>
                 </tr>
                 <tr>
-                  <td className="p-3 font-medium" style={{ color: "#94a3b8" }}>Team Members</td>
+                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Team Members</td>
                   <td className="p-3 text-center text-white">1</td>
                   <td className="p-3 text-center text-white">—</td>
                   <td className="p-3 text-center text-white">5</td>
                 </tr>
                 <tr style={{ background: "rgba(255,255,255,0.02)" }}>
-                  <td className="p-3 font-medium" style={{ color: "#94a3b8" }}>Support</td>
+                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Support</td>
                   <td className="p-3 text-center text-white">Community</td>
                   <td className="p-3 text-center text-white">Email</td>
                   <td className="p-3 text-center text-white">Priority</td>
                 </tr>
                 <tr>
-                  <td className="p-3 font-medium" style={{ color: "#94a3b8" }}>Response Time</td>
+                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Response Time</td>
                   <td className="p-3 text-center text-white">—</td>
                   <td className="p-3 text-center text-white">48hrs</td>
                   <td className="p-3 text-center text-white">24hrs</td>
@@ -602,7 +602,7 @@ export default function PricingPage() {
                     opacity: openFaq === i ? 1 : 0,
                   }}
                 >
-                  <p className="mt-2 text-sm leading-relaxed" style={{ color: "#94a3b8" }}>
+                  <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
                     {faq.a}
                   </p>
                 </div>
@@ -622,7 +622,7 @@ export default function PricingPage() {
             }}
           >
             <h2 className="mb-4 text-3xl font-bold text-white">Ready to get started?</h2>
-            <p className="mb-8 text-base" style={{ color: "#94a3b8" }}>
+            <p className="mb-8 text-base" style={{ color: "var(--text-secondary)" }}>
               Join thousands of professionals on Vertex
             </p>
             <div className="flex flex-wrap items-center justify-center gap-4">

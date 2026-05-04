@@ -190,12 +190,17 @@ export default function MatchPage() {
 
   return (
     <div className="min-h-screen pt-24 pb-12">
-      <div className="container py-8">
+      <div className="container mx-auto max-w-7xl px-4 py-8 sm:px-6">
         <PlanGate feature="view_matches" requiredPlan="pro" soft>
-          <h1 className="mb-6 text-2xl font-bold text-white">Match Jobs</h1>
+          <div className="mx-auto mb-8 max-w-2xl text-center">
+            <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">Match Jobs</h1>
+            <p className="mt-3 text-sm text-slate-400">
+              Upload your CV and we&apos;ll match you to roles using your skills.
+            </p>
+          </div>
 
           {!token && (
-            <div id="cv-upload-zone" className="mb-8 scroll-mt-4">
+            <div id="cv-upload-zone" className="mx-auto mb-8 max-w-2xl scroll-mt-4">
               <CVUploader
                 onMatchComplete={handleMatchComplete}
                 onSkillsExtracted={() => setError(null)}
@@ -206,14 +211,14 @@ export default function MatchPage() {
           )}
 
           {token && profileLoading && (
-            <div className="glass-card mb-8 h-36 animate-pulse rounded-2xl border border-white/[0.06] bg-white/[0.04]" />
+            <div className="glass-card mx-auto mb-8 h-36 max-w-4xl animate-pulse rounded-2xl border border-white/[0.06] bg-white/[0.04]" />
           )}
 
           {token && !profileLoading && savedReady && (
             <>
               <div
                 className={cn(
-                  "glass-card mb-6 rounded-2xl border border-white/[0.06] p-6",
+                  "glass-card mx-auto mb-6 max-w-4xl rounded-2xl border border-white/[0.06] p-6",
                   "shadow-[0_16px_40px_rgba(0,0,0,0.25)]"
                 )}
               >
@@ -259,7 +264,7 @@ export default function MatchPage() {
               <button
                 type="button"
                 onClick={() => setShowOneOffUpload((o) => !o)}
-                className="mb-6 block text-left text-xs text-indigo-300 underline-offset-2 hover:text-indigo-200 hover:underline"
+                className="mx-auto mb-6 block text-center text-xs text-indigo-300 underline-offset-2 hover:text-indigo-200 hover:underline"
               >
                 {showOneOffUpload
                   ? "Use saved profile for this search"
@@ -267,8 +272,8 @@ export default function MatchPage() {
               </button>
 
               {showOneOffUpload && (
-                <div id="cv-upload-zone" className="mb-8 scroll-mt-4">
-                  <p className="mb-3 text-xs text-slate-400">
+                <div id="cv-upload-zone" className="mx-auto mb-8 max-w-2xl scroll-mt-4">
+                  <p className="mb-3 text-center text-xs text-slate-400">
                     This upload is only used for this search and does not replace your saved profile.
                   </p>
                   <CVUploader
@@ -285,7 +290,7 @@ export default function MatchPage() {
           )}
 
           {token && !profileLoading && !savedReady && (
-            <div id="cv-upload-zone" className="mb-8 scroll-mt-4">
+            <div id="cv-upload-zone" className="mx-auto mb-8 max-w-2xl scroll-mt-4">
               <CVUploader
                 token={token}
                 persistToProfile
@@ -298,11 +303,13 @@ export default function MatchPage() {
             </div>
           )}
 
-          {error && <p className="mb-4 text-sm text-vertex-danger">{error}</p>}
+          {error && (
+            <p className="mx-auto mb-4 max-w-2xl text-center text-sm text-vertex-danger">{error}</p>
+          )}
 
           {hasSearched && jobs.length > 0 && (
-            <div className="mb-6 space-y-3">
-              <div className="flex flex-wrap items-end gap-4">
+            <div className="mx-auto mb-6 max-w-5xl space-y-3">
+              <div className="flex flex-wrap items-end justify-center gap-4">
                 <div className="min-w-[200px] flex-1">
                   <label className="mb-1 block text-xs font-medium text-slate-400">Search</label>
                   <input
@@ -360,11 +367,11 @@ export default function MatchPage() {
                   Filter
                 </button>
               </div>
-              <p className="text-sm text-slate-400">
+              <p className="text-center text-sm text-slate-400">
                 Showing {filteredJobs.length} of {jobs.length} matches
               </p>
               {showFilterEmpty && (
-                <p className="text-sm text-slate-400">
+                <p className="text-center text-sm text-slate-400">
                   No matches found for your filters.{" "}
                   <button type="button" onClick={clearFilters} className="font-medium text-indigo-400 hover:text-indigo-300">
                     Clear filters
@@ -374,9 +381,9 @@ export default function MatchPage() {
             </div>
           )}
 
-          <div className="min-w-0">
+          <div className="mx-auto min-w-0 max-w-7xl">
             {awaitingSavedSearch && (
-              <p className="mb-4 text-sm text-slate-400">
+              <p className="mx-auto mb-4 max-w-2xl text-center text-sm text-slate-400">
                 Run a match with your saved skills using &quot;Find Matching Jobs&quot; above, or upload a one-off CV for this search only.
               </p>
             )}

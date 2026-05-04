@@ -155,14 +155,14 @@ export function CVUploader({
       </div>
 
       {file && !loading && (
-        <div className="flex items-center gap-2 rounded-md border border-vertex-border bg-vertex-card/50 px-3 py-2 text-sm">
+        <div className="mx-auto flex max-w-md items-center justify-center gap-2 rounded-md border border-vertex-border bg-vertex-card/50 px-3 py-2 text-sm">
           <FileText className="h-4 w-4 shrink-0 text-vertex-muted" />
           <span className="truncate">{file.name}</span>
         </div>
       )}
 
       {skills.length > 0 && !loading && (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center justify-center gap-2">
           <span className="text-sm text-vertex-muted">Extracted skills:</span>
           {skills.map((s) => (
             <span key={s} className="rounded-md bg-vertex-card px-2 py-1 text-sm">
@@ -172,12 +172,16 @@ export function CVUploader({
         </div>
       )}
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && (
+        <p className="text-center text-sm text-destructive">{error}</p>
+      )}
 
       {canSubmit && (
-        <Button onClick={handleSubmit} disabled={loading} className="gap-2">
-          Find Matching Jobs
-        </Button>
+        <div className="flex justify-center pt-1">
+          <Button onClick={handleSubmit} disabled={loading} className="gap-2">
+            Find Matching Jobs
+          </Button>
+        </div>
       )}
     </div>
   );

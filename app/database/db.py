@@ -513,7 +513,7 @@ def _row_to_dict(cur, row):
 
 
 def get_user_by_email(email: str) -> Optional[dict]:
-    """Query users table by email. Return all fields as dict or None if not found."""
+    """Query users table by email (case-insensitive). Return all fields as dict or None if not found."""
     conn = get_connection()
     cur = conn.cursor()
     try:
@@ -522,7 +522,7 @@ def get_user_by_email(email: str) -> Optional[dict]:
             SELECT id, email, full_name, hashed_password, user_type, is_verified, is_active, is_admin,
                    COALESCE(NULLIF(TRIM(plan), ''), 'free') AS plan,
                    created_at, updated_at
-            FROM users WHERE email = %s;
+            FROM users WHERE LOWER(TRIM(email)) = LOWER(TRIM(%s));
             """,
             (email,),
         )

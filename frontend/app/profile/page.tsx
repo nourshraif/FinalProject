@@ -389,14 +389,14 @@ function ProfileContent() {
                     {fullName || "Your Name"}
                   </h1>
                   <p
-                    style={{ color: "#94a3b8" }}
+                    style={{ color: "var(--text-secondary)" }}
                     className="mt-1 text-base"
                   >
                     {headline || "Add a headline"}
                   </p>
                   {location && (
                     <p
-                      style={{ color: "#64748b" }}
+                      style={{ color: "var(--text-muted)" }}
                       className="mt-1 text-sm"
                     >
                       📍 {location}
@@ -415,7 +415,7 @@ function ProfileContent() {
                   )}
                   {bio && (
                     <p
-                      style={{ color: "#94a3b8" }}
+                      style={{ color: "var(--text-secondary)" }}
                       className="mt-3 max-w-lg leading-relaxed text-sm"
                     >
                       {bio}
@@ -430,7 +430,7 @@ function ProfileContent() {
                           className="rounded-full px-3 py-1 text-xs"
                           style={{
                             background: "#1e1e3a",
-                            color: "#94a3b8",
+                            color: "var(--text-secondary)",
                             border: "1px solid #2a2a3d",
                           }}
                         >
@@ -439,7 +439,7 @@ function ProfileContent() {
                       ))}
                       {skills.length > 8 && (
                         <span
-                          style={{ color: "#64748b" }}
+                          style={{ color: "var(--text-muted)" }}
                           className="py-1 text-xs"
                         >
                           +{skills.length - 8} more
@@ -464,7 +464,7 @@ function ProfileContent() {
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <label
-                    style={{ color: "#94a3b8" }}
+                    style={{ color: "var(--text-secondary)" }}
                     className="mb-1 block text-xs"
                   >
                     Full Name
@@ -478,7 +478,7 @@ function ProfileContent() {
                 </div>
                 <div>
                   <label
-                    style={{ color: "#94a3b8" }}
+                    style={{ color: "var(--text-secondary)" }}
                     className="mb-1 block text-xs"
                   >
                     Headline
@@ -492,7 +492,7 @@ function ProfileContent() {
                 </div>
                 <div>
                   <label
-                    style={{ color: "#94a3b8" }}
+                    style={{ color: "var(--text-secondary)" }}
                     className="mb-1 block text-xs"
                   >
                     Location
@@ -506,7 +506,7 @@ function ProfileContent() {
                 </div>
                 <div>
                   <label
-                    style={{ color: "#94a3b8" }}
+                    style={{ color: "var(--text-secondary)" }}
                     className="mb-1 block text-xs"
                   >
                     Years of Experience
@@ -524,7 +524,7 @@ function ProfileContent() {
                 </div>
                 <div className="col-span-2">
                   <label
-                    style={{ color: "#94a3b8" }}
+                    style={{ color: "var(--text-secondary)" }}
                     className="mb-1 block text-xs"
                   >
                     LinkedIn URL
@@ -538,7 +538,7 @@ function ProfileContent() {
                 </div>
                 <div className="col-span-2">
                   <label
-                    style={{ color: "#94a3b8" }}
+                    style={{ color: "var(--text-secondary)" }}
                     className="mb-1 block text-xs"
                   >
                     Bio
@@ -593,7 +593,7 @@ function ProfileContent() {
                     className="rounded-full px-3 py-1 text-xs"
                     style={{
                       background: "#1e1e3a",
-                      color: "#94a3b8",
+                      color: "var(--text-secondary)",
                       border: "1px solid #2a2a3d",
                     }}
                   >
@@ -602,7 +602,7 @@ function ProfileContent() {
                 ))
               ) : (
                 <p
-                  style={{ color: "#64748b" }}
+                  style={{ color: "var(--text-muted)" }}
                   className="text-sm"
                 >
                   No skills added yet. Upload your CV or add
@@ -657,7 +657,7 @@ function ProfileContent() {
               {/* Quick add */}
               <div className="mb-4">
                 <p
-                  style={{ color: "#64748b" }}
+                  style={{ color: "var(--text-muted)" }}
                   className="mb-2 text-xs"
                 >
                   Quick add:
@@ -678,7 +678,7 @@ function ProfileContent() {
                           : "#1e1e3a",
                         color: skills.includes(skill)
                           ? "#a5b4fc"
-                          : "#94a3b8",
+                          : "var(--text-secondary)",
                         border: skills.includes(skill)
                           ? "1px solid rgba(99,102,241,0.4)"
                           : "1px solid #2a2a3d",
@@ -709,7 +709,7 @@ function ProfileContent() {
               </h2>
               <p
                 className="mt-1 text-xs"
-                style={{ color: "#94a3b8" }}
+                style={{ color: "var(--text-secondary)" }}
               >
                 Upload your CV to get matched to jobs and appear in company searches
               </p>
@@ -729,7 +729,7 @@ function ProfileContent() {
                 <p className="text-sm font-medium" style={{ color: "#22c55e" }}>
                   CV Uploaded
                 </p>
-                <p className="text-xs" style={{ color: "#64748b" }}>
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>
                   {profile.cv_filename as string}
                 </p>
               </div>
@@ -751,7 +751,7 @@ function ProfileContent() {
                 border: "1px solid rgba(239,68,68,0.15)",
               }}
             >
-              <p className="text-sm" style={{ color: "#94a3b8" }}>
+              <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
                 ⚠️ No CV uploaded yet. Upload your CV to get job matches and appear in company searches.
               </p>
             </div>
@@ -793,7 +793,7 @@ function ProfileContent() {
                   className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent"
                   aria-hidden
                 />
-                <p className="text-sm" style={{ color: "#94a3b8" }}>
+                <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
                   Uploading and extracting skills...
                 </p>
               </div>
@@ -803,10 +803,10 @@ function ProfileContent() {
                 <p className="text-sm font-medium text-white">
                   {profile?.cv_filename ? "Upload a new CV" : "Upload your CV"}
                 </p>
-                <p className="text-xs" style={{ color: "#64748b" }}>
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>
                   Drag and drop or click to browse
                 </p>
-                <p className="text-xs" style={{ color: "#64748b" }}>
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>
                   PDF only · Max 10MB
                 </p>
               </div>
@@ -824,7 +824,7 @@ function ProfileContent() {
               <p className="text-sm font-medium" style={{ color: "#22c55e" }}>
                 ✓ CV uploaded successfully!
               </p>
-              <p className="mt-1 text-xs" style={{ color: "#94a3b8" }}>
+              <p className="mt-1 text-xs" style={{ color: "var(--text-secondary)" }}>
                 Extracted {uploadResult.skills_count} skills from your CV
               </p>
               {uploadResult.skills_extracted?.length > 0 && (
@@ -893,7 +893,7 @@ function ProfileContent() {
               >
                 <span
                   style={{
-                    color: item.done ? "#22c55e" : "#64748b",
+                    color: item.done ? "#22c55e" : "var(--text-muted)",
                   }}
                 >
                   {item.done ? "✓" : "○"}
@@ -902,8 +902,8 @@ function ProfileContent() {
                   className="text-sm"
                   style={{
                     color: item.done
-                      ? "#e2e8f0"
-                      : "#64748b",
+                      ? "var(--text-secondary)"
+                      : "var(--text-muted)",
                   }}
                 >
                   {item.label}
@@ -914,7 +914,7 @@ function ProfileContent() {
           {completeness < 100 && (
             <p
               className="mt-4 text-xs"
-              style={{ color: "#64748b" }}
+              style={{ color: "var(--text-muted)" }}
             >
               💡 Complete your profile to appear higher in
               company searches

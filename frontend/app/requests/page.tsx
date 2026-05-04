@@ -214,7 +214,7 @@ function RequestsContent() {
                   <div
                     className="mt-4 rounded-lg border-l-4 p-4"
                     style={{
-                      background: "#0d0d1a",
+                      background: "#152238",
                       borderLeftColor: "#6366f1",
                     }}
                   >

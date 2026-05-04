@@ -7,12 +7,12 @@ export function StitchBackdrop() {
       className="pointer-events-none fixed inset-0 z-0 overflow-hidden"
       aria-hidden
     >
-      {/* Primary glows */}
-      <div className="absolute right-0 top-0 h-[min(520px,85vw)] w-[min(520px,85vw)] animate-aurora-drift aurora-glow opacity-[0.55]" />
-      <div className="absolute bottom-0 left-0 h-[min(640px,95vw)] w-[min(640px,95vw)] animate-aurora-drift-slow aurora-glow opacity-35 [animation-delay:-8s]" />
+      {/* Primary glows — see globals.css .aurora-glow */}
+      <div className="stitch-backdrop-blob-tr absolute right-0 top-0 h-[min(520px,85vw)] w-[min(520px,85vw)] animate-aurora-drift aurora-glow opacity-[0.55]" />
+      <div className="stitch-backdrop-blob-bl absolute bottom-0 left-0 h-[min(640px,95vw)] w-[min(640px,95vw)] animate-aurora-drift-slow aurora-glow opacity-35 [animation-delay:-8s]" />
       {/* Center lift — draws the eye toward content */}
       <div
-        className="absolute left-1/2 top-[18%] h-[min(420px,60vh)] w-[min(900px,120vw)] -translate-x-1/2 opacity-[0.12]"
+        className="stitch-backdrop-lift absolute left-1/2 top-[18%] h-[min(420px,60vh)] w-[min(900px,120vw)] -translate-x-1/2 opacity-[0.12]"
         style={{
           background:
             "radial-gradient(ellipse 80% 60% at 50% 40%, rgba(192, 193, 255, 0.35) 0%, transparent 65%)",
