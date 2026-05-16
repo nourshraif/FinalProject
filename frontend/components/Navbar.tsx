@@ -21,12 +21,10 @@ function getInitials(fullName: string): string {
 
 const publicNav = [
   { href: "/", label: "Home" },
-  { href: "/match", label: "Features" },
   { href: "/jobs", label: "Vertex Jobs" },
   { href: "/find-jobs", label: "Job Boards" },
   { href: "/pricing", label: "Pricing" },
-  { href: "/company", label: "For Companies" },
-  { href: "/contact", label: "Contact" },
+  { href: "/contact", label: "Contact us" },
   { href: "/about", label: "About" },
 ];
 
@@ -51,7 +49,7 @@ const jobseekerMore: NavItem[] = [
   { href: "/search", label: "All Jobs" },
   { href: "/analytics", label: "Analytics" },
   { href: "/about", label: "About" },
-  { href: "/contact", label: "Contact" },
+  { href: "/contact", label: "Contact us" },
   { href: "/pricing", label: "Pricing" },
 ];
 
@@ -75,7 +73,7 @@ const companyMore: NavItem[] = [
   { href: "/analytics", label: "Analytics" },
   { href: "/company/profile", label: "Profile" },
   { href: "/about", label: "About" },
-  { href: "/contact", label: "Contact" },
+  { href: "/contact", label: "Contact us" },
   { href: "/pricing", label: "Pricing" },
 ];
 

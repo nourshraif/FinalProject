@@ -102,7 +102,12 @@ export function CVUploader({
       const matchResult = await matchJobs(extractedSkills);
       onMatchComplete?.(matchResult);
       const n = matchResult.jobs?.length ?? 0;
-      toast.success(`Loaded ${n} matching job${n !== 1 ? "s" : ""}`);
+      const total = matchResult.total_matched ?? n;
+      if (matchResult.upgrade_message && total > n) {
+        toast.success(`You matched ${total} jobs — upgrade to see them all`);
+      } else {
+        toast.success(`Loaded ${n} matching job${n !== 1 ? "s" : ""}`);
+      }
     } catch (e) {
       const message = e instanceof Error ? e.message : "Something went wrong";
       setError(message);

@@ -1328,7 +1328,11 @@ async def match_jobs(
         viewer = current_user if current_user is not None else {"plan": "free", "user_type": "jobseeker"}
         if check_plan_access(viewer, "view_matches"):
             return MatchJobsResponse(jobs=full, total_matched=total, upgrade_message=None)
-        upgrade_message = "Upgrade to see all matches" if total > 3 else None
+        upgrade_message = (
+            f"You matched {total} jobs — upgrade to see them all."
+            if total > 3
+            else None
+        )
         return MatchJobsResponse(jobs=full[:3], total_matched=total, upgrade_message=upgrade_message)
     except HTTPException:
         raise
