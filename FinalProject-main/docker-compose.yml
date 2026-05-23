@@ -1,0 +1,27 @@
+# Postgres with pgvector only. Run scraper and Streamlit locally.
+# Start DB:  docker compose up -d
+# Then:      python -m scripts.scheduled_scraper
+#            streamlit run scripts/integrated_job_matcher_app.py
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: postgres-vector
+    environment:
+      POSTGRES_DB: ${DB_NAME:-jobs_db}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-202211217nour}
+    ports:
+      - "${DB_PORT:-5433}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+    driver: local

@@ -1,0 +1,35 @@
+# Base image: Python runtime + system deps + all pip dependencies.
+# Build once (or when requirements.txt changes). Rebuild with:
+#   docker build -f Dockerfile.base -t finalproject-base .
+# Requires BuildKit for cache mounts (faster rebuilds):
+#   DOCKER_BUILDKIT=1 docker build -f Dockerfile.base -t finalproject-base .
+
+# syntax=docker/dockerfile:1
+# ---
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# System dependencies (apt cache mount speeds up repeated base rebuilds)
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+
+RUN pip install --upgrade pip setuptools wheel
+
+# Install CPU-only PyTorch first (much smaller/faster than default CUDA build)
+# sentence-transformers will use this and not pull the huge CUDA wheel
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir --default-timeout=100 --retries=5 \
+    torch --index-url https://download.pytorch.org/whl/cpu
+
+# Pip cache mount: downloaded wheels reused across rebuilds (much faster)
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir --default-timeout=100 --retries=5 -r requirements.txt
+
+# No application code here — that goes in the app image.
