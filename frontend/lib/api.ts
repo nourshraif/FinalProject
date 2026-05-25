@@ -76,7 +76,11 @@ export async function matchJobs(skills: Skill[]): Promise<MatchJobsResult> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ skills }),
   });
-  return handleResponse<MatchJobsResult>(res);
+  const data = await handleResponse<MatchJobsResult>(res);
+  return {
+    ...data,
+    jobs: Array.isArray(data.jobs) ? data.jobs : [],
+  };
 }
 
 /** Match jobs using saved profile skills; sends bearer token (same JSON body as matchJobs). */
@@ -92,7 +96,11 @@ export async function matchJobsWithSkills(
     },
     body: JSON.stringify({ skills }),
   });
-  return handleResponse<MatchJobsResult>(res);
+  const data = await handleResponse<MatchJobsResult>(res);
+  return {
+    ...data,
+    jobs: Array.isArray(data.jobs) ? data.jobs : [],
+  };
 }
 
 /** Get jobs dashboard stats */

@@ -54,6 +54,11 @@ function JobseekerDashboardContent() {
 
   if (user?.is_admin) return null;
 
+  const userPlan = (user?.plan || "free").toLowerCase();
+  const isProOrBusiness = userPlan === "pro" || userPlan === "business";
+  const canUseApplicationTracker = user?.user_type === "jobseeker" && isProOrBusiness;
+  const canUseJobAlerts = user?.user_type === "jobseeker" && isProOrBusiness;
+
   const loadData = useCallback(() => {
     getStats()
       .then((s) => setTotalJobs(s.total_jobs))
@@ -62,9 +67,15 @@ function JobseekerDashboardContent() {
       getProfile(token)
         .then((p) => setProfileComplete(profileCompleteness(p)))
         .catch(() => setProfileComplete(0));
-      getApplications(token)
-        .then((list) => setApplicationsCount(list.length))
-        .catch(() => setApplicationsCount(0));
+
+      if (canUseApplicationTracker) {
+        getApplications(token)
+          .then((list) => setApplicationsCount(list.length))
+          .catch(() => setApplicationsCount(0));
+      } else {
+        setApplicationsCount(0);
+      }
+
       getSavedJobs(token)
         .then(setSavedJobs)
         .catch(() => setSavedJobs([]));
@@ -78,11 +89,16 @@ function JobseekerDashboardContent() {
           setApplicationsChartData(last7.length > 0 ? last7 : []);
         })
         .catch(() => setApplicationsChartData([]));
-      getAlertSettings(token)
-        .then((s) => setAlertsEnabled(s.is_enabled ?? false))
-        .catch(() => setAlertsEnabled(false));
+
+      if (canUseJobAlerts) {
+        getAlertSettings(token)
+          .then((s) => setAlertsEnabled(s.is_enabled ?? false))
+          .catch(() => setAlertsEnabled(false));
+      } else {
+        setAlertsEnabled(false);
+      }
     }
-  }, [token]);
+  }, [token, canUseApplicationTracker, canUseJobAlerts]);
 
   const handleRespond = (requestId: number, status: "accepted" | "declined") => {
     if (!token) return;

@@ -37,7 +37,9 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from jose import JWTError, jwt
 import bcrypt
+#from fastapi import FastAPI
 
+from app.routes.admin_scrapers import router as scraper_router
 from app.database.db import (
     get_user_by_email,
     get_user_by_id,
@@ -192,6 +194,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# include routers AFTER app is created
+app.include_router(scraper_router)
+
+# Debug: print registered routes to help troubleshoot 404s
+import logging as _logging
+_log = _logging.getLogger("uvicorn.error")
+_log.info("Registered FastAPI routes:")
+for _r in app.routes:
+    try:
+        _log.info(f"{_r.path}  {getattr(_r, 'methods', '')}")
+    except Exception:
+        _log.info(str(_r))
 
 
 # ---------------------------------------------------------------------------
@@ -1207,8 +1222,25 @@ def _extract_skills_from_pdf_bytes(content: bytes) -> Tuple[List[str], bool]:
     return skills, used_fallback
 
 
+def _normalize_matching_job(j: dict) -> JobMatchResponse:
+    score = j.get("match_percentage") or (j.get("similarity_score", 0) * 100)
+    tags = []
+    st = j.get("skills_text") or ""
+    if st:
+        tags = [t.strip() for t in st.split(",") if t.strip()][:15]
+    return JobMatchResponse(
+        id=j.get("job_id", 0),
+        title=j.get("title") or "",
+        company=j.get("company") or "",
+        location=j.get("location") or "Remote",
+        description=(j.get("description") or "")[:2000] or None,
+        url=j.get("url") or "",
+        match_score=round(float(score), 1),
+        tags=tags,
+        source=j.get("source"),
+    )
+
 def _match_jobs_from_skills(skills: List[str]) -> List[JobMatchResponse]:
-    """Run hybrid vector/keyword matching for a skill list."""
     skills = [s for s in (skills or []) if s and str(s).strip()]
     if not skills:
         return []
@@ -1218,33 +1250,18 @@ def _match_jobs_from_skills(skills: List[str]) -> List[JobMatchResponse]:
     try:
         jobs = matcher.find_matching_jobs_hybrid(
             cv_skills=skills,
-            top_k=20,
-            vector_weight=0.7,
-            keyword_weight=0.3,
+            top_k=50,
+            vector_weight=0.6,
+            keyword_weight=0.4,
         )
+        print(f"DEBUG: matcher returned {len(jobs)} jobs")   # ← add this
+        if jobs:
+            print(f"DEBUG: first job keys: {jobs[0].keys()}")  # ← add this
     finally:
         matcher.close()
-    result: List[JobMatchResponse] = []
-    for j in jobs:
-        score = j.get("match_percentage") or (j.get("similarity_score", 0) * 100)
-        tags = []
-        st = j.get("skills_text") or ""
-        if st:
-            tags = [t.strip() for t in st.split(",") if t.strip()][:15]
-        result.append(
-            JobMatchResponse(
-                id=j.get("job_id", 0),
-                title=j.get("title") or "",
-                company=j.get("company") or "",
-                location=j.get("location") or "Remote",
-                description=(j.get("description") or "")[:2000] or None,
-                url=j.get("url") or "",
-                match_score=round(float(score), 1),
-                tags=tags,
-                source=j.get("source"),
-            )
-        )
-    return result
+    normalized = [_normalize_matching_job(j) for j in jobs]
+    print(f"DEBUG: normalized {len(normalized)} jobs")        # ← add this
+    return normalized
 
 
 # ---------------------------------------------------------------------------
@@ -1328,11 +1345,7 @@ async def match_jobs(
         viewer = current_user if current_user is not None else {"plan": "free", "user_type": "jobseeker"}
         if check_plan_access(viewer, "view_matches"):
             return MatchJobsResponse(jobs=full, total_matched=total, upgrade_message=None)
-        upgrade_message = (
-            f"You matched {total} jobs — upgrade to see them all."
-            if total > 3
-            else None
-        )
+        upgrade_message = "Upgrade to see all matches" if total > 3 else None
         return MatchJobsResponse(jobs=full[:3], total_matched=total, upgrade_message=upgrade_message)
     except HTTPException:
         raise

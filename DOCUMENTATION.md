@@ -187,11 +187,14 @@ The codebase includes **Lebanon-oriented scrapers** (`HireLebanese`, `CareersAnd
 | **python-jose** | JWT | HS256 encode/decode | `api/main.py` |
 | **bcrypt** | Password hashing | Industry practice | `api/main.py` (`hash_password` / `verify_password`) — *requirements also list `passlib[bcrypt]` but runtime uses `bcrypt` directly* |
 | **APScheduler** | Cron-like jobs | Daily/weekly alerts | `api/job_alerts_scheduler.py`, app lifespan |
-| **Stripe** | Billing | Checkout + webhooks | `api/main.py` |
+| **httpx** | HTTP client | OAuth and external API calls | `api/main.py` |
 | **Resend** | Email API | Transactional mail | `api/email_service.py` |
+| **Stripe** | Billing | Checkout + webhooks | `api/main.py` |
+| **Streamlit** | Optional UI | Legacy demo scripts | `scripts/integrated_job_matcher_app.py`, `scripts/company_portal.py` |
+| **pandas / NumPy / SciPy** | Data processing | Analytics + helper pipelines | `scripts/integrated_job_matcher_app.py`, `app/services/*` |
 | **BeautifulSoup / requests** | HTML scraping | Job ingestion | `app/services/Scrapers/*` |
 | **pypdf** | PDF text | CV upload | `app/utils/pdf_utils.py` |
-| **httpx** | HTTP client | OAuth-related HTTP | `requirements` + imports as used |
+| **httpx** | HTTP client | OAuth-related HTTP | `api/main.py` |
 
 ### Frontend
 
@@ -790,7 +793,9 @@ FinalProject/
 │   ├── services/        # Scrapers, matching, embeddings, CV pipeline
 │   └── utils/pdf_utils.py
 ├── frontend/            # Next.js 14 app
-├── scripts/             # scheduled_scraper, setup_vector_tables, etc.
+├── scripts/             # scheduled_scraper, setup_vector_tables, demo scripts
+├── logs/                # Scraper + scheduler runtime status files
+├── uploads/             # CV uploads and user file storage
 ├── docker-compose.yml
 ├── requirements.txt
 ├── env.example

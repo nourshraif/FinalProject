@@ -32,7 +32,7 @@ import {
 } from "@/lib/api";
 import { AdminForbidden } from "./AdminForbidden";
 import { useToast } from "@/context/ToastContext";
-
+import { useRouter } from "next/navigation";
 const PAGE_SIZE = 50;
 
 function getInitials(fullName: string): string {
@@ -73,6 +73,7 @@ function formatDate(iso: string): string {
 }
 
 export default function AdminPage() {
+  const router = useRouter();
   const { user, token, isLoggedIn } = useAuth();
   const { showToast } = useToast();
   const [stats, setStats] = useState<AdminStatsType | null>(null);
@@ -88,6 +89,8 @@ export default function AdminPage() {
   const [cleanupInactiveLoading, setCleanupInactiveLoading] = useState(false);
   const [lastScraperRun, setLastScraperRun] = useState<string | null>(null);
   const [emailConfigured, setEmailConfigured] = useState<boolean>(false);
+  const [showModal, setShowModal] = useState(false);
+const [editingSource, setEditingSource] = useState<any | null>(null);
 
   const loadStats = useCallback(() => {
     if (!token) return;
@@ -277,6 +280,12 @@ export default function AdminPage() {
             {scraperLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {scraperLoading ? "Running..." : "Run Scraper"}
           </button>
+          <button
+  onClick={() => router.push("/admin/sources")}
+  className="glow-button inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm text-white"
+>
+  Add Sources
+</button>
         </div>
       </div>
 

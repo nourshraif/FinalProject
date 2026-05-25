@@ -5,7 +5,7 @@ import psycopg2
 import os
 from pathlib import Path
 from typing import Optional, Tuple
-
+#from .db import get_db, get_connection
 # Load .env from project root (folder containing app/)
 if getattr(os, "_db_env_loaded", None) is None:
     try:
@@ -23,7 +23,7 @@ def get_connection():
         host=os.getenv('DB_HOST', 'localhost'),
         database=os.getenv('DB_NAME', 'jobs_db'),
         user=os.getenv('DB_USER', 'postgres'),
-        password=os.getenv('DB_PASSWORD', '202211217nour'),
+        password=os.getenv('DB_PASSWORD', 'AliTlais@2004'),
         port=int(os.getenv('DB_PORT', '5433'))  # 5433 = Docker Postgres
     )
 

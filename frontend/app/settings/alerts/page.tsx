@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
+import { PlanGate } from "@/components/PlanGate";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import {
   getAlertSettings,
@@ -262,7 +263,9 @@ function AlertsContent() {
 export default function AlertsSettingsPage() {
   return (
     <ProtectedRoute requiredRole="jobseeker">
-      <AlertsContent />
+      <PlanGate feature="job_alerts">
+        <AlertsContent />
+      </PlanGate>
     </ProtectedRoute>
   );
 }

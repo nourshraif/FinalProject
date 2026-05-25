@@ -9,7 +9,7 @@ extractor is used so the app still returns skills.
 
 import os
 import re
-from typing import Any, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from dotenv import load_dotenv
 
@@ -32,7 +32,7 @@ load_dotenv()
 _MAX_SKILLS_OUT = 60
 
 # Lowercase alias → canonical display label (dedupe is case-insensitive on canonical).
-_ALIAS_TO_CANONICAL: dict[str, str] = {
+_ALIAS_TO_CANONICAL: Dict[str, str] = {
     "js": "JavaScript",
     "javascript": "JavaScript",
     "ts": "TypeScript",
@@ -442,7 +442,7 @@ _LANGUAGE_KEYWORDS = [
 ]
 
 # Display overrides for domain fallback phrases (lowercase key).
-_DOMAIN_PHRASE_LABEL: dict[str, str] = {
+_DOMAIN_PHRASE_LABEL: Dict[str, str] = {
     "gbv": "GBV",
     "m&e": "M&E",
     "crm": "CRM",

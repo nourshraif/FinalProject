@@ -12,6 +12,7 @@ export type PlanGateFeature =
   | "skills_gap"
   | "save_jobs"
   | "application_tracker"
+  | "job_alerts"
   | "search_candidates"
   | "contact_requests";
 
@@ -41,6 +42,12 @@ const FEATURE_COPY: Record<
     title: "Pro feature",
     description:
       "Upgrade to Pro to track all your job applications in one place.",
+    requiredPlan: "pro",
+  },
+  job_alerts: {
+    title: "Pro feature",
+    description:
+      "Upgrade to Pro to receive email alerts for matching jobs.",
     requiredPlan: "pro",
   },
   search_candidates: {

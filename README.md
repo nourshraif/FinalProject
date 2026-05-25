@@ -69,6 +69,12 @@ npm run dev
 ```bash
 http://localhost:3000
 ```
+ 
+ ### 10. Optional: seed jobs and build embeddings
+ ```bash
+ python -m scripts.scheduled_scraper
+ python -m scripts.setup_vector_tables
+ ```
 
 ---
 
@@ -138,8 +144,13 @@ http://localhost:3000
 | **bcrypt (passlib)** | Password hashing |
 | **Hugging Face API** | CV skill extraction |
 | **BeautifulSoup4 / Requests** | Job scraping |
+| **httpx** | HTTP client for OAuth + external API calls |
+| **Resend** | Transactional email delivery |
+| **Stripe** | Subscription billing + webhook handling |
+| **OpenAI** | Hugging Face router / AI assistant client |
+| **Streamlit** | Optional legacy dashboard + demo scripts |
+| **pandas / NumPy / SciPy** | Data processing and analytics |
 | **PyPDF** | PDF text extraction |
-| **pandas, NumPy, scikit-learn** | Data processing & ML utilities |
 
 ### Frontend
 
@@ -409,10 +420,12 @@ FinalProject/
 │   └── tailwind.config.ts
 ├── scripts/
 │   ├── scheduled_scraper.py    # Scrape jobs → DB + embeddings
-│   ├── setup_vector_tables.py  # Create jobs + job_embeddings (if used)
+│   ├── setup_vector_tables.py  # Create job_embeddings tables and schema
 │   ├── integrated_job_matcher_app.py  # Legacy Streamlit UI (optional)
-│   ├── company_portal.py
-│   └── dev.sh                  # Start backend + frontend (Unix)
+│   ├── company_portal.py        # Legacy Streamlit company demo portal
+│   └── dev.sh                   # Start backend + frontend (Unix)
+├── logs/                        # Scraper and scheduler status JSON logs
+├── uploads/                     # Uploaded CVs and file storage
 ├── docker-compose.yml          # PostgreSQL + pgvector
 ├── requirements.txt
 ├── env.example

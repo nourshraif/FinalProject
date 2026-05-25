@@ -5,19 +5,16 @@ import Link from "next/link";
 import type { Job, MatchJobsResult, UserProfile } from "@/types";
 import { CVUploader } from "@/components/CVUploader";
 import { JobCardFromJob } from "@/components/JobCard";
-import { BlurredMatchCard } from "@/components/BlurredMatchCard";
 import { SkeletonJobCard } from "@/components/SkeletonJobCard";
 import { EmptyState } from "@/components/EmptyState";
 import { PlanGate } from "@/components/PlanGate";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Lock } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { getProfile, matchJobsWithSkills } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const SKELETON_COUNT = 6;
-const FREE_MATCH_PREVIEW = 3;
-const MAX_BLURRED_PLACEHOLDERS = 6;
 
 const LOCATION_OPTIONS = [
   { value: "", label: "All Locations" },
@@ -51,6 +48,40 @@ function hasProfileCvAndSkills(p: UserProfile | null): boolean {
 
 function normalizeSource(s: string | null | undefined): string {
   return (s || "").toLowerCase().replace(/[\s_-]+/g, "");
+}
+
+function normalizeJobArray(value: unknown): Job[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+      const raw = item as Record<string, unknown>;
+      const url = (raw.url as string) || (raw.job_url as string) || "";
+      const id = typeof raw.id === "number" ? raw.id : Number(raw.job_id ?? raw.id ?? -1);
+      const tags = Array.isArray(raw.tags)
+        ? raw.tags.filter((tag): tag is string => typeof tag === "string")
+        : typeof raw.tags === "string"
+        ? [raw.tags]
+        : [];
+
+      return {
+        id,
+        title: String(raw.title ?? ""),
+        company: String(raw.company ?? ""),
+        location: String(raw.location ?? ""),
+        description: (raw.description as string) ?? null,
+        url,
+        match_score: Number(raw.match_score ?? raw.combined_score ?? raw.similarity_score ?? 0),
+        tags,
+        source: (raw.source as string) ?? null,
+      } as Job;
+    })
+    .filter((job): job is Job => job !== null && Number.isFinite(job.id));
 }
 
 export default function MatchPage() {
@@ -97,10 +128,13 @@ export default function MatchPage() {
   }, [loadProfile]);
 
   const savedReady = Boolean(token) && !profileLoading && hasProfileCvAndSkills(profile);
-
-  const handleMatchComplete = useCallback((result: MatchJobsResult) => {
-    setJobs(result.jobs ?? []);
-    setMatchTotal(typeof result.total_matched === "number" ? result.total_matched : (result.jobs?.length ?? 0));
+const handleMatchComplete = useCallback((result: MatchJobsResult) => {
+    console.log("raw result:", result)        // ← add this
+    console.log("first job:", result.jobs?.[0]) // ← check keys
+    const jobsResult = normalizeJobArray(result.jobs)
+    // ...
+    setJobs(jobsResult);
+    setMatchTotal(typeof result.total_matched === "number" ? result.total_matched : jobsResult.length);
     setMatchUpgradeMessage(result.upgrade_message ?? null);
     setError(null);
     setHasSearched(true);
@@ -123,12 +157,7 @@ export default function MatchPage() {
       const result = await matchJobsWithSkills(token, profile.skills);
       handleMatchComplete(result);
       const n = result.jobs?.length ?? 0;
-      const total = result.total_matched ?? n;
-      if (result.upgrade_message && total > n) {
-        toast.success(`You matched ${total} jobs — upgrade to see them all`);
-      } else {
-        toast.success(`Loaded ${n} matching job${n !== 1 ? "s" : ""} from your profile`);
-      }
+      toast.success(`Loaded ${n} matching job${n !== 1 ? "s" : ""} from your profile`);
     } catch (e) {
       const message = e instanceof Error ? e.message : "Could not load matches";
       handleMatchError(message);
@@ -142,7 +171,8 @@ export default function MatchPage() {
     const loc = appliedLocation.trim().toLowerCase();
     const srcNorm = appliedSource.trim().toLowerCase();
 
-    let list = (jobs || []).filter((job) => {
+    const jobsList = Array.isArray(jobs) ? jobs : [];
+    let list = jobsList.filter((job) => {
       const matchesSearch =
         !q ||
         (job.title || "").toLowerCase().includes(q) ||
@@ -195,17 +225,6 @@ export default function MatchPage() {
   const awaitingSavedSearch =
     savedReady && !showOneOffUpload && !hasSearched && !jobsLoading && jobs.length === 0 && !error;
   const showFilterEmpty = filteredJobs.length === 0 && jobs.length > 0;
-
-  const isProOrAdmin =
-    Boolean(user?.is_admin) || user?.plan === "pro" || user?.plan === "business";
-  const isMatchPreviewLimited =
-    hasSearched &&
-    !isProOrAdmin &&
-    matchTotal > jobs.length &&
-    Boolean(matchUpgradeMessage);
-  const hiddenMatchCount = isMatchPreviewLimited ? matchTotal - jobs.length : 0;
-  const blurredPlaceholderCount = Math.min(hiddenMatchCount, MAX_BLURRED_PLACEHOLDERS);
-  const remainingLockedBeyondBlur = hiddenMatchCount - blurredPlaceholderCount;
 
   return (
     <div className="min-h-screen pt-24 pb-12">
@@ -326,26 +345,6 @@ export default function MatchPage() {
             <p className="mx-auto mb-4 max-w-2xl text-center text-sm text-vertex-danger">{error}</p>
           )}
 
-          {isMatchPreviewLimited && (
-            <div
-              className="mx-auto mb-8 max-w-3xl rounded-2xl border border-indigo-500/35 bg-gradient-to-br from-indigo-950/80 via-slate-900/90 to-slate-950/90 p-6 text-center shadow-[0_20px_50px_rgba(79,70,229,0.15)] sm:p-8"
-              role="status"
-            >
-              <p className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
-                You matched {matchTotal.toLocaleString()} job{matchTotal !== 1 ? "s" : ""}
-              </p>
-              <p className="mt-2 text-sm text-indigo-200/90 sm:text-base">
-                Upgrade to Pro to see them all — previewing your top {FREE_MATCH_PREVIEW} below
-              </p>
-              <Link
-                href="/pricing"
-                className="glow-button mt-5 inline-flex items-center justify-center rounded-lg px-6 py-2.5 text-sm font-semibold text-white"
-              >
-                Upgrade to Pro
-              </Link>
-            </div>
-          )}
-
           {hasSearched && jobs.length > 0 && (
             <div className="mx-auto mb-6 max-w-5xl space-y-3">
               <div className="flex flex-wrap items-end justify-center gap-4">
@@ -407,9 +406,7 @@ export default function MatchPage() {
                 </button>
               </div>
               <p className="text-center text-sm text-slate-400">
-                {isMatchPreviewLimited
-                  ? `Showing ${filteredJobs.length} of ${matchTotal.toLocaleString()} matches (${jobs.length} unlocked)`
-                  : `Showing ${filteredJobs.length} of ${jobs.length} matches`}
+                Showing {filteredJobs.length} of {jobs.length} matches
               </p>
               {showFilterEmpty && (
                 <p className="text-center text-sm text-slate-400">
@@ -437,29 +434,34 @@ export default function MatchPage() {
             ) : jobs.length > 0 ? (
               <>
                 <div className="relative grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {filteredJobs.map((job) => (
+                  {filteredJobs.map((job, index) => (
                     <JobCardFromJob
-                      key={job.id}
+                      key={`match-${job.id ?? index}-${index}`}
                       job={job}
                       token={token}
                       initialSaved={false}
                       showAnalyzeGap={user?.user_type === "jobseeker"}
-                      isProUser={isProOrAdmin}
+                      isProUser={user?.plan === "pro" || user?.plan === "business"}
                     />
                   ))}
-                  {isMatchPreviewLimited &&
-                    Array.from({ length: blurredPlaceholderCount }).map((_, i) => (
-                      <BlurredMatchCard key={`locked-${i}`} />
-                    ))}
                 </div>
-                {isMatchPreviewLimited && remainingLockedBeyondBlur > 0 && (
-                  <p className="mt-4 text-center text-sm text-slate-400">
-                    +{remainingLockedBeyondBlur.toLocaleString()} more match
-                    {remainingLockedBeyondBlur !== 1 ? "es" : ""} locked —{" "}
-                    <Link href="/pricing" className="font-medium text-indigo-400 hover:text-indigo-300">
-                      upgrade to unlock
+                {matchUpgradeMessage && !user?.is_admin && (
+                  <div className="glass-card relative mt-6 flex flex-col items-center gap-4 overflow-hidden rounded-2xl border border-indigo-500/25 bg-indigo-950/40 p-8 text-center md:flex-row md:text-left">
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-indigo-600/20 to-transparent" aria-hidden />
+                    <Lock className="relative h-10 w-10 shrink-0 text-indigo-300" aria-hidden />
+                    <div className="relative flex-1">
+                      <p className="text-sm font-semibold text-white">
+                        You are seeing {jobs.length} of {matchTotal} matches
+                      </p>
+                      <p className="mt-1 text-sm text-slate-400">{matchUpgradeMessage}</p>
+                    </div>
+                    <Link
+                      href="/pricing"
+                      className="relative glow-button shrink-0 rounded-lg px-5 py-2.5 text-sm font-semibold text-white"
+                    >
+                      Upgrade to Pro
                     </Link>
-                  </p>
+                  </div>
                 )}
               </>
             ) : noCVYet ? (
