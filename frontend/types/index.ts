@@ -296,3 +296,66 @@ export interface SkillsGapResult {
   priority_learning_path: string[];
   strengths: string[];
 }
+
+export interface AdminUserDetail extends User {
+  is_active?: boolean;
+  plan?: string;
+  updated_at?: string;
+  headline?: string;
+  bio?: string;
+  location?: string;
+  skills?: string[];
+  cv_filename?: string;
+  cv_text?: string;
+  years_experience?: number;
+  linkedin_url?: string;
+  company_name?: string;
+  website?: string;
+  industry?: string;
+  company_size?: string;
+  company_description?: string;
+  stripe_subscription_id?: string;
+  subscription_status?: string;
+  current_period_end?: string;
+  applications_count?: number;
+  saved_jobs_count?: number;
+  requests_count?: number;
+}
+
+export type AdminJobListingKind = "job_board" | "vertex";
+
+export interface AdminJobRow {
+  id: number;
+  listing_kind: AdminJobListingKind;
+  source: string;
+  job_title: string;
+  company: string;
+  location: string | null;
+  description: string | null;
+  is_active: boolean;
+  listed_at: string | null;
+  job_url?: string;
+  job_type?: string | null;
+  experience_level?: string | null;
+}
+
+export interface Announcement {
+  id: number;
+  title: string;
+  message: string;
+  target: string;
+  sent_at: string;
+  recipients_count: number;
+}
+
+export interface PlatformSettings {
+  pro_monthly_price: number;
+  pro_annual_price: number;
+  business_monthly_price: number;
+  business_annual_price: number;
+  free_job_matches_limit: number;
+  free_saved_jobs_limit: number;
+  free_contact_requests_limit: number;
+  free_job_postings_limit: number;
+  _updated_at?: string;
+}

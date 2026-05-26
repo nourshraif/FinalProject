@@ -46,17 +46,22 @@ def calculate_match_score(user_skills: list, job: dict) -> float:
 # =========================================================
 
 def run_batch_scraper_job():
-    """Scheduler wrapper for batch scraper"""
-    logger.info("[SCHEDULER] Triggering batch job scraper...")
+    """Run full scrape pipeline: fetch, validate, dedupe, save to DB, embeddings."""
+    logger.info("[SCHEDULER] Starting nightly batch job scraper...")
 
     try:
-        from app.services.dynamic_scraper_loader import run_active_scrapers
+        from app.services.scraper_service import scrape_jobs
 
-        jobs = run_active_scrapers()
-        logger.info(f"[SCHEDULER] Batch scraper collected {len(jobs)} jobs")
-
+        results = scrape_jobs()
+        logger.info(
+            "[SCHEDULER] Batch scraper finished — fetched=%s saved=%s duplicates=%s errors=%s",
+            results.get("collected", 0),
+            results.get("saved", 0),
+            results.get("duplicates", 0),
+            results.get("errors", 0),
+        )
     except Exception as e:
-        logger.error(f"[SCHEDULER] Error: {e}", exc_info=True)
+        logger.error(f"[SCHEDULER] Batch scraper failed: {e}", exc_info=True)
 
 
 # =========================================================

@@ -20,6 +20,10 @@ import type {
   PostedJob,
   ScrapedJob,
   SkillsGapResult,
+  AdminUserDetail,
+  AdminJobRow,
+  Announcement,
+  PlatformSettings,
 } from "@/types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -316,6 +320,43 @@ export async function getAdminStats(token: string): Promise<AdminStats> {
   return handleResponse<AdminStats>(res);
 }
 
+export interface AdminAnalytics {
+  period_days: number;
+  revenue: {
+    estimated_mrr: number;
+    estimated_arr: number;
+    pro_monthly_price: number;
+    business_monthly_price: number;
+    paid_users: number;
+    active_subscriptions: number;
+    disclaimer: string;
+  };
+  plans: { free: number; pro: number; business: number };
+  plan_distribution: { plan: string; count: number; color: string }[];
+  subscription_status: { status: string; count: number }[];
+  users_over_time: { date: string; count: number }[];
+  signups_by_type_over_time: {
+    date: string;
+    count: number;
+    jobseekers: number;
+    companies: number;
+  }[];
+  jobs_over_time: { date: string; count: number }[];
+  applications_over_time: { date: string; count: number }[];
+  contact_requests_over_time: { date: string; count: number }[];
+  user_types: { type: string; count: number }[];
+}
+
+export async function getAdminAnalytics(
+  token: string,
+  days = 30
+): Promise<AdminAnalytics> {
+  const res = await fetch(`${API_BASE}/api/admin/analytics?days=${days}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return handleResponse<AdminAnalytics>(res);
+}
+
 export async function getAdminScraperLastRun(
   token: string
 ): Promise<AdminScraperLastRunResponse> {
@@ -344,19 +385,40 @@ export interface AdminUserRow {
   created_at: string;
 }
 
+export type AdminUserTypeFilter = "" | "jobseeker" | "company" | "admin";
+export type AdminUserStatusFilter = "" | "active" | "inactive";
+
+export interface AdminUserCounts {
+  all: number;
+  jobseekers: number;
+  companies: number;
+  admins: number;
+}
+
 export async function getAdminUsers(
   token: string,
-  opts?: { limit?: number; offset?: number; search?: string }
-): Promise<{ users: AdminUserRow[]; total: number }> {
+  opts?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    user_type?: AdminUserTypeFilter;
+    status?: AdminUserStatusFilter;
+    joined_from?: string;
+    joined_to?: string;
+  }
+): Promise<{ users: AdminUserRow[]; total: number; counts: AdminUserCounts }> {
   const limit = opts?.limit ?? 50;
   const offset = opts?.offset ?? 0;
-  const search = opts?.search ?? "";
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
-  if (search) params.set("search", search);
+  if (opts?.search) params.set("search", opts.search);
+  if (opts?.user_type) params.set("user_type", opts.user_type);
+  if (opts?.status) params.set("status", opts.status);
+  if (opts?.joined_from) params.set("joined_from", opts.joined_from);
+  if (opts?.joined_to) params.set("joined_to", opts.joined_to);
   const res = await fetch(`${API_BASE}/api/admin/users?${params}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  return handleResponse<{ users: AdminUserRow[]; total: number }>(res);
+  return handleResponse<{ users: AdminUserRow[]; total: number; counts: AdminUserCounts }>(res);
 }
 
 export async function toggleUserActive(
@@ -388,9 +450,11 @@ export interface AdminActivityItem {
 }
 
 export async function getAdminActivity(
-  token: string
+  token: string,
+  limit = 10
 ): Promise<AdminActivityItem[]> {
-  const res = await fetch(`${API_BASE}/api/admin/activity`, {
+  const q = new URLSearchParams({ limit: String(limit) });
+  const res = await fetch(`${API_BASE}/api/admin/activity?${q}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   return handleResponse<AdminActivityItem[]>(res);
@@ -403,6 +467,178 @@ export async function runAdminScraper(token: string): Promise<{ message: string 
     headers: { Authorization: `Bearer ${token}` },
   });
   return handleResponse<{ message: string }>(res);
+}
+
+export async function adminGetUserDetails(
+  token: string,
+  userId: number
+): Promise<AdminUserDetail> {
+  const res = await fetch(`${API_BASE}/api/admin/users/${userId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return handleResponse<AdminUserDetail>(res);
+}
+
+export async function adminDeleteUser(
+  token: string,
+  userId: number
+): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(`${API_BASE}/api/admin/users/${userId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return handleResponse<{ success: boolean; message: string }>(res);
+}
+
+export async function adminUpdateUserPlan(
+  token: string,
+  userId: number,
+  plan: string
+): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/api/admin/users/${userId}/plan`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ plan }),
+  });
+  return handleResponse<{ success: boolean }>(res);
+}
+
+export type AdminJobListingType = "all" | "job_boards" | "vertex";
+
+export async function adminGetJobs(
+  token: string,
+  params?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    source?: string;
+    listing_type?: AdminJobListingType;
+  }
+): Promise<{ jobs: AdminJobRow[]; total: number }> {
+  const q = new URLSearchParams();
+  if (params?.limit != null) q.set("limit", String(params.limit));
+  if (params?.offset != null) q.set("offset", String(params.offset));
+  if (params?.search) q.set("search", params.search);
+  if (params?.source) q.set("source", params.source);
+  if (params?.listing_type) q.set("listing_type", params.listing_type);
+  const res = await fetch(`${API_BASE}/api/admin/jobs?${q}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return handleResponse<{ jobs: AdminJobRow[]; total: number }>(res);
+}
+
+export async function adminDeleteJob(
+  token: string,
+  jobId: number
+): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/api/admin/jobs/${jobId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return handleResponse<{ success: boolean }>(res);
+}
+
+export async function adminDeletePostedJob(
+  token: string,
+  jobId: number
+): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/api/admin/jobs/posted/${jobId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return handleResponse<{ success: boolean }>(res);
+}
+
+export async function adminSendAnnouncement(
+  token: string,
+  data: {
+    title: string;
+    message: string;
+    target: string;
+    send_email?: boolean;
+    send_notification?: boolean;
+  }
+): Promise<{ success: boolean; recipients_count: number; message: string }> {
+  const res = await fetch(`${API_BASE}/api/admin/announcements`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  });
+  return handleResponse<{ success: boolean; recipients_count: number; message: string }>(
+    res
+  );
+}
+
+export async function adminSendEmail(
+  token: string,
+  data: { user_id: number; subject: string; message: string }
+): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/api/admin/send-email`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  });
+  return handleResponse<{ success: boolean }>(res);
+}
+
+export async function adminGetSettings(token: string): Promise<PlatformSettings> {
+  const res = await fetch(`${API_BASE}/api/admin/settings`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return handleResponse<PlatformSettings>(res);
+}
+
+export async function adminUpdateSettings(
+  token: string,
+  settings: Partial<PlatformSettings>
+): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/api/admin/settings`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(settings),
+  });
+  return handleResponse<{ success: boolean }>(res);
+}
+
+export async function adminGetAnnouncementRecipientCounts(
+  token: string
+): Promise<{ all: number; jobseekers: number; companies: number }> {
+  const res = await fetch(`${API_BASE}/api/admin/announcements/recipient-counts`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return handleResponse<{ all: number; jobseekers: number; companies: number }>(res);
+}
+
+export async function adminGetAnnouncements(
+  token: string
+): Promise<Announcement[]> {
+  const res = await fetch(`${API_BASE}/api/admin/announcements`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return handleResponse<Announcement[]>(res);
+}
+
+export async function adminDeleteAnnouncement(
+  token: string,
+  announcementId: number
+): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/api/admin/announcements/${announcementId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return handleResponse<{ success: boolean }>(res);
 }
 
 export async function cleanupInactiveJobs(

@@ -90,9 +90,26 @@ from app.database.db import (
     remove_inactive_or_expired_jobs as db_remove_inactive_or_expired_jobs,
     get_all_users as db_get_all_users,
     get_all_users_total as db_get_all_users_total,
+    get_admin_user_counts as db_get_admin_user_counts,
+    get_user_by_id as db_get_user_by_id,
     toggle_user_active as db_toggle_user_active,
     make_user_admin as db_make_user_admin,
     get_recent_activity as db_get_recent_activity,
+    delete_user_account as db_delete_user_account,
+    get_full_user_details as db_get_full_user_details,
+    update_user_plan as db_update_user_plan,
+    admin_delete_job as db_admin_delete_job,
+    admin_get_all_jobs as db_admin_get_all_jobs,
+    admin_delete_posted_job as db_admin_delete_posted_job,
+    create_platform_announcement as db_create_platform_announcement,
+    update_announcement_recipients_count as db_update_announcement_recipients_count,
+    get_users_for_announcement as db_get_users_for_announcement,
+    get_announcement_recipient_counts as db_get_announcement_recipient_counts,
+    get_announcements as db_get_announcements,
+    delete_announcement as db_delete_announcement,
+    get_plan_config as db_get_plan_config,
+    update_plan_config as db_update_plan_config,
+    get_admin_analytics as db_get_admin_analytics,
     get_user_subscription as db_get_user_subscription,
     upsert_subscription as db_upsert_subscription,
     cancel_subscription as db_cancel_subscription,
@@ -131,6 +148,8 @@ from api.email_service import (
     send_acceptance_email,
     send_job_alert_email,
     send_support_reply_email,
+    send_announcement_email,
+    send_direct_email,
 )
 from api.job_alerts_scheduler import create_scheduler
 from api.skills_gap_service import analyze_job_specific_gap
@@ -172,8 +191,12 @@ scheduler = create_scheduler()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from app.database.db import ensure_admin_platform_tables
+
+    ensure_admin_platform_tables()
     scheduler.start()
     print("✅ Job alerts scheduler started")
+    print("📅 Nightly scraper: 2:00 AM (full ingest to DB)")
     print("📅 Daily alerts: 8:00 AM")
     print("📅 Weekly alerts: Monday 9:00 AM")
     yield
@@ -1037,6 +1060,35 @@ def auth_me(current_user: dict = Depends(get_current_user)):
     }
 
 
+class AdminPlanUpdate(BaseModel):
+    plan: str
+
+
+class AnnouncementRequest(BaseModel):
+    title: str
+    message: str
+    target: str = "all"
+    send_email: bool = True
+    send_notification: bool = True
+
+
+class DirectEmailRequest(BaseModel):
+    user_id: int
+    subject: str
+    message: str
+
+
+class PlatformSettingsUpdate(BaseModel):
+    pro_monthly_price: Optional[int] = None
+    pro_annual_price: Optional[int] = None
+    business_monthly_price: Optional[int] = None
+    business_annual_price: Optional[int] = None
+    free_job_matches_limit: Optional[int] = None
+    free_saved_jobs_limit: Optional[int] = None
+    free_contact_requests_limit: Optional[int] = None
+    free_job_postings_limit: Optional[int] = None
+
+
 # ---------------------------------------------------------------------------
 # Admin
 # ---------------------------------------------------------------------------
@@ -1045,16 +1097,56 @@ def admin_stats(admin_user: dict = Depends(get_admin_user)):
     return db_get_platform_stats()
 
 
+@app.get("/api/admin/analytics")
+def admin_analytics(
+    days: int = 30,
+    admin_user: dict = Depends(get_admin_user),
+):
+    clamped = max(7, min(days, 90))
+    return db_get_admin_analytics(days=clamped)
+
+
 @app.get("/api/admin/users")
 def admin_users(
     limit: int = 50,
     offset: int = 0,
     search: str = "",
+    user_type: str = "",
+    status: str = "",
+    joined_from: str = "",
+    joined_to: str = "",
     admin_user: dict = Depends(get_admin_user),
 ):
-    users = db_get_all_users(limit=limit, offset=offset, search=search if search else None)
-    total = db_get_all_users_total(search=search if search else None)
-    return {"users": users, "total": total}
+    search_q = search.strip() if search else None
+    type_q = user_type.strip().lower() if user_type else None
+    if type_q and type_q not in ("jobseeker", "company", "admin"):
+        raise HTTPException(status_code=400, detail="Invalid user_type")
+    status_q = status.strip().lower() if status else None
+    if status_q and status_q not in ("active", "inactive"):
+        raise HTTPException(status_code=400, detail="Invalid status")
+    from_q = joined_from.strip() if joined_from else None
+    to_q = joined_to.strip() if joined_to else None
+    users = db_get_all_users(
+        limit=limit,
+        offset=offset,
+        search=search_q,
+        user_type=type_q,
+        status=status_q,
+        joined_from=from_q,
+        joined_to=to_q,
+    )
+    total = db_get_all_users_total(
+        search=search_q,
+        user_type=type_q,
+        status=status_q,
+        joined_from=from_q,
+        joined_to=to_q,
+    )
+    return {
+        "users": users,
+        "total": total,
+        "counts": db_get_admin_user_counts(),
+    }
 
 
 @app.put("/api/admin/users/{user_id}/toggle-active")
@@ -1075,9 +1167,227 @@ def admin_make_user_admin(
     return {"success": True}
 
 
+@app.get("/api/admin/users/{user_id}")
+def admin_get_user_detail(
+    user_id: int,
+    admin_user: dict = Depends(get_admin_user),
+):
+    details = db_get_full_user_details(user_id)
+    if not details:
+        raise HTTPException(status_code=404, detail="User not found")
+    return details
+
+
+@app.delete("/api/admin/users/{user_id}")
+def admin_delete_user(
+    user_id: int,
+    admin_user: dict = Depends(get_admin_user),
+):
+    if user_id == admin_user.get("id"):
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    target = db_get_full_user_details(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.get("is_admin"):
+        raise HTTPException(status_code=400, detail="Cannot delete admin accounts")
+    if not db_delete_user_account(user_id):
+        raise HTTPException(status_code=400, detail="User could not be deleted")
+    return {"success": True, "message": "User deleted"}
+
+
+@app.put("/api/admin/users/{user_id}/plan")
+def admin_update_user_plan(
+    user_id: int,
+    body: AdminPlanUpdate,
+    admin_user: dict = Depends(get_admin_user),
+):
+    plan = (body.plan or "").strip().lower()
+    if plan not in ("free", "pro", "business"):
+        raise HTTPException(status_code=400, detail="Invalid plan")
+    if not db_get_user_by_id(user_id):
+        raise HTTPException(status_code=404, detail="User not found")
+    if not db_update_user_plan(user_id, plan):
+        raise HTTPException(status_code=500, detail="Failed to update plan")
+    db_create_notification(
+        user_id=user_id,
+        type="system",
+        title="Your plan has been updated",
+        message=f"Your plan has been changed to {plan}",
+        link="/settings/billing",
+    )
+    return {"success": True}
+
+
+@app.get("/api/admin/jobs")
+def admin_list_jobs(
+    limit: int = 50,
+    offset: int = 0,
+    search: str = "",
+    source: str = "",
+    listing_type: str = "all",
+    admin_user: dict = Depends(get_admin_user),
+):
+    lt = (listing_type or "all").strip().lower()
+    if lt not in ("all", "job_boards", "vertex"):
+        raise HTTPException(status_code=400, detail="Invalid listing_type")
+    return db_admin_get_all_jobs(
+        limit=limit,
+        offset=offset,
+        search=search if search else None,
+        source=source if source else None,
+        listing_type=lt,
+    )
+
+
+@app.delete("/api/admin/jobs/{job_id}")
+def admin_remove_job(
+    job_id: int,
+    admin_user: dict = Depends(get_admin_user),
+):
+    if not db_admin_delete_job(job_id):
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"success": True}
+
+
+@app.delete("/api/admin/jobs/posted/{job_id}")
+def admin_remove_posted_job(
+    job_id: int,
+    admin_user: dict = Depends(get_admin_user),
+):
+    if not db_admin_delete_posted_job(job_id):
+        raise HTTPException(status_code=404, detail="Posted job not found")
+    return {"success": True}
+
+
+def _send_announcement_emails(recipients: list, title: str, message: str) -> None:
+    for r in recipients:
+        try:
+            send_announcement_email(
+                r["email"],
+                r.get("full_name") or r["email"],
+                title,
+                message,
+            )
+        except Exception:
+            logger.exception("announcement email failed for %s", r.get("email"))
+
+
+@app.post("/api/admin/announcements")
+def admin_create_announcement(
+    body: AnnouncementRequest,
+    background_tasks: BackgroundTasks,
+    admin_user: dict = Depends(get_admin_user),
+):
+    title = (body.title or "").strip()
+    message = (body.message or "").strip()
+    target = (body.target or "all").strip().lower()
+    if not title:
+        raise HTTPException(status_code=400, detail="Title is required")
+    if not message:
+        raise HTTPException(status_code=400, detail="Message is required")
+    if target not in ("all", "jobseekers", "companies"):
+        raise HTTPException(status_code=400, detail="Invalid target")
+    recipients = db_get_users_for_announcement(target)
+    ann_id = db_create_platform_announcement(
+        title, message, target, admin_user["id"]
+    )
+    if body.send_notification:
+        snippet = message[:200]
+        for r in recipients:
+            try:
+                db_create_notification(
+                    user_id=r["id"],
+                    type="system",
+                    title=title,
+                    message=snippet,
+                    link="/",
+                    announcement_id=ann_id,
+                )
+            except Exception:
+                logger.exception("announcement notification failed")
+    if body.send_email and recipients:
+        background_tasks.add_task(
+            _send_announcement_emails, recipients, title, message
+        )
+    db_update_announcement_recipients_count(ann_id, len(recipients))
+    return {
+        "success": True,
+        "recipients_count": len(recipients),
+        "message": f"Announcement sent to {len(recipients)} users",
+    }
+
+
+@app.get("/api/admin/announcements/recipient-counts")
+def admin_announcement_recipient_counts(
+    admin_user: dict = Depends(get_admin_user),
+):
+    return db_get_announcement_recipient_counts()
+
+
+@app.get("/api/admin/announcements")
+def admin_list_announcements(admin_user: dict = Depends(get_admin_user)):
+    return db_get_announcements(limit=20)
+
+
+@app.delete("/api/admin/announcements/{announcement_id}")
+def admin_delete_announcement(
+    announcement_id: int,
+    admin_user: dict = Depends(get_admin_user),
+):
+    if not db_delete_announcement(announcement_id):
+        raise HTTPException(status_code=404, detail="Announcement not found")
+    return {"success": True}
+
+
+@app.post("/api/admin/send-email")
+def admin_send_direct_email(
+    body: DirectEmailRequest,
+    admin_user: dict = Depends(get_admin_user),
+):
+    user = db_get_user_by_id(body.user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    subject = (body.subject or "").strip()
+    message = (body.message or "").strip()
+    if not subject or not message:
+        raise HTTPException(status_code=400, detail="Subject and message are required")
+    ok = send_direct_email(
+        user["email"],
+        user.get("full_name") or user["email"],
+        subject,
+        message,
+    )
+    if not ok:
+        raise HTTPException(status_code=500, detail="Failed to send email")
+    return {"success": True}
+
+
+@app.get("/api/admin/settings")
+def admin_get_settings(admin_user: dict = Depends(get_admin_user)):
+    return db_get_plan_config()
+
+
+@app.put("/api/admin/settings")
+def admin_put_settings(
+    body: PlatformSettingsUpdate,
+    admin_user: dict = Depends(get_admin_user),
+):
+    data = body.model_dump(exclude_unset=True)
+    for key, val in data.items():
+        if val is None or (isinstance(val, (int, float)) and val < 0):
+            raise HTTPException(status_code=400, detail=f"Invalid value for {key}")
+    if not db_update_plan_config(data):
+        raise HTTPException(status_code=500, detail="Failed to save settings")
+    return {"success": True}
+
+
 @app.get("/api/admin/activity")
-def admin_activity(admin_user: dict = Depends(get_admin_user)):
-    return db_get_recent_activity()
+def admin_activity(
+    limit: int = 10,
+    admin_user: dict = Depends(get_admin_user),
+):
+    clamped = max(5, min(limit, 10))
+    return db_get_recent_activity(limit=clamped)
 
 
 @app.post("/api/admin/scraper/run")

@@ -28,6 +28,49 @@ def get_connection():
     )
 
 
+def ensure_admin_platform_tables() -> None:
+    """Create admin tables added after initial deploy (safe to run on every API start)."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS announcements (
+                id SERIAL PRIMARY KEY,
+                title VARCHAR(255) NOT NULL,
+                message TEXT NOT NULL,
+                target VARCHAR(20) DEFAULT 'all',
+                sent_by INTEGER REFERENCES users(id),
+                sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                recipients_count INTEGER DEFAULT 0
+            );
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS platform_settings (
+                id SERIAL PRIMARY KEY,
+                key VARCHAR(100) UNIQUE NOT NULL,
+                value VARCHAR(255) NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        cur.execute("""
+            ALTER TABLE notifications
+            ADD COLUMN IF NOT EXISTS announcement_id INTEGER
+            REFERENCES announcements(id) ON DELETE CASCADE
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_notifications_announcement
+            ON notifications(announcement_id)
+            WHERE announcement_id IS NOT NULL
+        """)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
 def init_database():
     """Initialize database with required tables."""
     conn = get_connection()
@@ -465,6 +508,37 @@ def init_database():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_posted_jobs_company ON posted_jobs(company_user_id);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_posted_jobs_active ON posted_jobs(is_active);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_posted_jobs_created ON posted_jobs(created_at DESC);")
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS announcements (
+                id SERIAL PRIMARY KEY,
+                title VARCHAR(255) NOT NULL,
+                message TEXT NOT NULL,
+                target VARCHAR(20) DEFAULT 'all',
+                sent_by INTEGER REFERENCES users(id),
+                sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                recipients_count INTEGER DEFAULT 0
+            );
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS platform_settings (
+                id SERIAL PRIMARY KEY,
+                key VARCHAR(100) UNIQUE NOT NULL,
+                value VARCHAR(255) NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        cur.execute("""
+            ALTER TABLE notifications
+            ADD COLUMN IF NOT EXISTS announcement_id INTEGER
+            REFERENCES announcements(id) ON DELETE CASCADE
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_notifications_announcement
+            ON notifications(announcement_id)
+            WHERE announcement_id IS NOT NULL
+        """)
         
         conn.commit()
         print("Database initialized successfully")
@@ -1734,6 +1808,7 @@ def create_notification(
     title: str,
     message: str,
     link: str = None,
+    announcement_id: Optional[int] = None,
 ) -> int:
     """Insert notification and return new id."""
     conn = get_connection()
@@ -1742,11 +1817,11 @@ def create_notification(
         cur.execute(
             """
             INSERT INTO notifications
-            (user_id, type, title, message, link)
-            VALUES (%s, %s, %s, %s, %s)
+            (user_id, type, title, message, link, announcement_id)
+            VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
-            (user_id, type, title, message, link),
+            (user_id, type, title, message, link, announcement_id),
         )
         notification_id = cur.fetchone()[0]
         conn.commit()
@@ -2018,6 +2093,193 @@ def get_platform_stats() -> dict:
         conn.close()
 
 
+def _date_key(value) -> str:
+    if value is None:
+        return ""
+    if hasattr(value, "isoformat"):
+        return value.isoformat()[:10]
+    return str(value)[:10]
+
+
+def _fill_daily_counts(rows: list, days: int = 30) -> list:
+    """Fill missing days with zero counts for chart continuity."""
+    from datetime import date, timedelta
+
+    by_date: dict[str, int] = {}
+    for row in rows:
+        d = row.get("date")
+        if d:
+            by_date[str(d)[:10]] = int(row.get("count") or 0)
+    today = date.today()
+    start = today - timedelta(days=days - 1)
+    out = []
+    cur = start
+    while cur <= today:
+        key = cur.isoformat()
+        out.append({"date": key, "count": by_date.get(key, 0)})
+        cur += timedelta(days=1)
+    return out
+
+
+def get_admin_analytics(days: int = 30) -> dict:
+    """Platform analytics for admin: growth series, plans, estimated revenue."""
+    days = max(7, min(int(days), 90))
+    config = get_plan_config()
+    pro_price = float(config.get("pro_monthly_price") or 0)
+    business_price = float(config.get("business_monthly_price") or 0)
+
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT COALESCE(NULLIF(TRIM(plan), ''), 'free') AS plan, COUNT(*)
+            FROM users
+            WHERE is_active = TRUE
+            GROUP BY 1
+            ORDER BY 1
+            """
+        )
+        plan_counts = {row[0]: row[1] for row in cur.fetchall()}
+        free_count = plan_counts.get("free", 0)
+        pro_count = plan_counts.get("pro", 0)
+        business_count = plan_counts.get("business", 0)
+        paid_count = pro_count + business_count
+
+        cur.execute(
+            """
+            SELECT status, COUNT(*) FROM subscriptions
+            WHERE status IS NOT NULL
+            GROUP BY status
+            """
+        )
+        sub_status = {row[0]: row[1] for row in cur.fetchall()}
+        active_subs = sub_status.get("active", 0)
+
+        estimated_mrr = pro_count * pro_price + business_count * business_price
+
+        cur.execute(
+            f"""
+            SELECT DATE(created_at) AS d, COUNT(*)
+            FROM users
+            WHERE created_at >= CURRENT_DATE - INTERVAL '{days - 1} days'
+            GROUP BY DATE(created_at)
+            ORDER BY d ASC
+            """
+        )
+        users_rows = [{"date": _date_key(d), "count": c} for d, c in cur.fetchall()]
+
+        cur.execute(
+            f"""
+            SELECT DATE(created_at) AS d, user_type, COUNT(*)
+            FROM users
+            WHERE created_at >= CURRENT_DATE - INTERVAL '{days - 1} days'
+            GROUP BY DATE(created_at), user_type
+            ORDER BY d ASC
+            """
+        )
+        signups_by_day: dict[str, dict] = {}
+        for d, utype, c in cur.fetchall():
+            key = _date_key(d)
+            if key not in signups_by_day:
+                signups_by_day[key] = {"jobseekers": 0, "companies": 0}
+            if utype == "company":
+                signups_by_day[key]["companies"] = c
+            else:
+                signups_by_day[key]["jobseekers"] = c
+        from datetime import date as date_cls, timedelta
+
+        signups_stacked = []
+        today_d = date_cls.today()
+        start_d = today_d - timedelta(days=days - 1)
+        cur_d = start_d
+        while cur_d <= today_d:
+            key = cur_d.isoformat()
+            bucket = signups_by_day.get(key, {"jobseekers": 0, "companies": 0})
+            js = bucket["jobseekers"]
+            co = bucket["companies"]
+            signups_stacked.append(
+                {"date": key, "jobseekers": js, "companies": co, "count": js + co}
+            )
+            cur_d += timedelta(days=1)
+
+        cur.execute(
+            f"""
+            SELECT DATE(scraped_at) AS d, COUNT(*)
+            FROM jobs
+            WHERE scraped_at >= CURRENT_DATE - INTERVAL '{days - 1} days'
+            GROUP BY DATE(scraped_at)
+            ORDER BY d ASC
+            """
+        )
+        jobs_rows = [{"date": _date_key(d), "count": c} for d, c in cur.fetchall()]
+
+        cur.execute(
+            f"""
+            SELECT DATE(applied_at) AS d, COUNT(*)
+            FROM job_applications
+            WHERE applied_at >= CURRENT_DATE - INTERVAL '{days - 1} days'
+            GROUP BY DATE(applied_at)
+            ORDER BY d ASC
+            """
+        )
+        apps_rows = [{"date": _date_key(d), "count": c} for d, c in cur.fetchall()]
+
+        cur.execute(
+            f"""
+            SELECT DATE(created_at) AS d, COUNT(*)
+            FROM contact_requests
+            WHERE created_at >= CURRENT_DATE - INTERVAL '{days - 1} days'
+            GROUP BY DATE(created_at)
+            ORDER BY d ASC
+            """
+        )
+        contacts_rows = [{"date": _date_key(d), "count": c} for d, c in cur.fetchall()]
+
+        cur.execute(
+            "SELECT user_type, COUNT(*) FROM users WHERE is_active = TRUE GROUP BY user_type"
+        )
+        user_types = [
+            {"type": row[0] or "unknown", "count": row[1]}
+            for row in cur.fetchall()
+        ]
+
+        return {
+            "period_days": days,
+            "revenue": {
+                "estimated_mrr": round(estimated_mrr, 2),
+                "estimated_arr": round(estimated_mrr * 12, 2),
+                "pro_monthly_price": pro_price,
+                "business_monthly_price": business_price,
+                "paid_users": paid_count,
+                "active_subscriptions": active_subs,
+                "disclaimer": "Estimated from active user plans and admin pricing — not Stripe payout data.",
+            },
+            "plans": {
+                "free": free_count,
+                "pro": pro_count,
+                "business": business_count,
+            },
+            "plan_distribution": [
+                {"plan": "Free", "count": free_count, "color": "#64748b"},
+                {"plan": "Pro", "count": pro_count, "color": "#6366f1"},
+                {"plan": "Business", "count": business_count, "color": "#22c55e"},
+            ],
+            "subscription_status": [
+                {"status": k, "count": v} for k, v in sub_status.items()
+            ],
+            "users_over_time": _fill_daily_counts(users_rows, days),
+            "signups_by_type_over_time": signups_stacked,
+            "jobs_over_time": _fill_daily_counts(jobs_rows, days),
+            "applications_over_time": _fill_daily_counts(apps_rows, days),
+            "contact_requests_over_time": _fill_daily_counts(contacts_rows, days),
+            "user_types": user_types,
+        }
+    finally:
+        cur.close()
+        conn.close()
+
+
 def remove_duplicate_jobs() -> int:
     conn = get_connection()
     cur = conn.cursor()
@@ -2105,33 +2367,69 @@ def remove_inactive_or_expired_jobs() -> dict:
         conn.close()
 
 
-def get_all_users(limit: int = 50, offset: int = 0, search: Optional[str] = None) -> list:
-    """Return users for admin list. If search is set, filter by email or full_name ILIKE."""
+def _admin_users_where(
+    search: Optional[str] = None,
+    user_type: Optional[str] = None,
+    status: Optional[str] = None,
+    joined_from: Optional[str] = None,
+    joined_to: Optional[str] = None,
+) -> tuple[str, list]:
+    """Build WHERE clause and params for admin user list filters."""
+    where = ["1=1"]
+    params: list = []
+    if search and search.strip():
+        pattern = f"%{search.strip()}%"
+        where.append("(email ILIKE %s OR full_name ILIKE %s)")
+        params.extend([pattern, pattern])
+    ut = (user_type or "").strip().lower()
+    if ut == "jobseeker":
+        where.append("user_type = %s")
+        params.append("jobseeker")
+    elif ut == "company":
+        where.append("user_type = %s")
+        params.append("company")
+    elif ut == "admin":
+        where.append("is_admin = TRUE")
+    st = (status or "").strip().lower()
+    if st == "active":
+        where.append("is_active = TRUE")
+    elif st == "inactive":
+        where.append("is_active = FALSE")
+    if joined_from and joined_from.strip():
+        where.append("created_at >= %s::date")
+        params.append(joined_from.strip()[:10])
+    if joined_to and joined_to.strip():
+        where.append("created_at < (%s::date + INTERVAL '1 day')")
+        params.append(joined_to.strip()[:10])
+    return " AND ".join(where), params
+
+
+def get_all_users(
+    limit: int = 50,
+    offset: int = 0,
+    search: Optional[str] = None,
+    user_type: Optional[str] = None,
+    status: Optional[str] = None,
+    joined_from: Optional[str] = None,
+    joined_to: Optional[str] = None,
+) -> list:
+    """Return users for admin list with optional filters."""
+    clause, params = _admin_users_where(
+        search, user_type, status, joined_from, joined_to
+    )
     conn = get_connection()
     cur = conn.cursor()
     try:
-        if search and search.strip():
-            pattern = f"%{search.strip()}%"
-            cur.execute(
-                """
-                SELECT id, email, full_name, user_type, is_active, is_admin, created_at
-                FROM users
-                WHERE email ILIKE %s OR full_name ILIKE %s
-                ORDER BY created_at DESC
-                LIMIT %s OFFSET %s
-                """,
-                (pattern, pattern, limit, offset),
-            )
-        else:
-            cur.execute(
-                """
-                SELECT id, email, full_name, user_type, is_active, is_admin, created_at
-                FROM users
-                ORDER BY created_at DESC
-                LIMIT %s OFFSET %s
-                """,
-                (limit, offset),
-            )
+        cur.execute(
+            f"""
+            SELECT id, email, full_name, user_type, is_active, is_admin, created_at
+            FROM users
+            WHERE {clause}
+            ORDER BY created_at DESC
+            LIMIT %s OFFSET %s
+            """,
+            tuple(params + [limit, offset]),
+        )
         rows = cur.fetchall()
         cols = ["id", "email", "full_name", "user_type", "is_active", "is_admin", "created_at"]
         out = []
@@ -2146,20 +2444,50 @@ def get_all_users(limit: int = 50, offset: int = 0, search: Optional[str] = None
         conn.close()
 
 
-def get_all_users_total(search: Optional[str] = None) -> int:
-    """Return total count of users (for pagination). If search set, filter by email or full_name."""
+def get_all_users_total(
+    search: Optional[str] = None,
+    user_type: Optional[str] = None,
+    status: Optional[str] = None,
+    joined_from: Optional[str] = None,
+    joined_to: Optional[str] = None,
+) -> int:
+    """Return total count of users matching admin list filters."""
+    clause, params = _admin_users_where(
+        search, user_type, status, joined_from, joined_to
+    )
     conn = get_connection()
     cur = conn.cursor()
     try:
-        if search and search.strip():
-            pattern = f"%{search.strip()}%"
-            cur.execute(
-                "SELECT COUNT(*) FROM users WHERE email ILIKE %s OR full_name ILIKE %s",
-                (pattern, pattern),
-            )
-        else:
-            cur.execute("SELECT COUNT(*) FROM users")
-        return cur.fetchone()[0]
+        cur.execute(f"SELECT COUNT(*) FROM users WHERE {clause}", tuple(params))
+        return cur.fetchone()[0] or 0
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_admin_user_counts() -> dict:
+    """Counts for job seekers, companies, and admins (unfiltered)."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT COUNT(*) FROM users WHERE user_type = 'jobseeker' AND is_admin = FALSE"
+        )
+        jobseekers = cur.fetchone()[0] or 0
+        cur.execute(
+            "SELECT COUNT(*) FROM users WHERE user_type = 'company' AND is_admin = FALSE"
+        )
+        companies = cur.fetchone()[0] or 0
+        cur.execute("SELECT COUNT(*) FROM users WHERE is_admin = TRUE")
+        admins = cur.fetchone()[0] or 0
+        cur.execute("SELECT COUNT(*) FROM users")
+        total = cur.fetchone()[0] or 0
+        return {
+            "all": total,
+            "jobseekers": jobseekers,
+            "companies": companies,
+            "admins": admins,
+        }
     finally:
         cur.close()
         conn.close()
@@ -2200,8 +2528,9 @@ def make_user_admin(user_id: int) -> bool:
         conn.close()
 
 
-def get_recent_activity() -> list:
-    """Return last 20 activities: registrations, contact_requests, job_applications. Sorted by created_at DESC."""
+def get_recent_activity(limit: int = 10) -> list:
+    """Return last N activities (default 10): registrations, contact_requests, job_applications."""
+    limit = max(5, min(int(limit), 10))
     conn = get_connection()
     cur = conn.cursor()
     try:
@@ -2211,8 +2540,9 @@ def get_recent_activity() -> list:
             SELECT full_name, user_type, created_at
             FROM users
             ORDER BY created_at DESC
-            LIMIT 20
-            """
+            LIMIT %s
+            """,
+            (limit,),
         )
         for row in cur.fetchall():
             name, utype, created_at = row
@@ -2225,8 +2555,9 @@ def get_recent_activity() -> list:
             """
             SELECT id, created_at FROM contact_requests
             ORDER BY created_at DESC
-            LIMIT 20
-            """
+            LIMIT %s
+            """,
+            (limit,),
         )
         for row in cur.fetchall():
             activities.append({
@@ -2238,8 +2569,9 @@ def get_recent_activity() -> list:
             """
             SELECT id, applied_at FROM job_applications
             ORDER BY applied_at DESC
-            LIMIT 20
-            """
+            LIMIT %s
+            """,
+            (limit,),
         )
         for row in cur.fetchall():
             activities.append({
@@ -2251,7 +2583,7 @@ def get_recent_activity() -> list:
             if a.get("created_at") and hasattr(a["created_at"], "isoformat"):
                 a["created_at"] = a["created_at"].isoformat()
         activities.sort(key=lambda x: x.get("created_at") or "", reverse=True)
-        return activities[:20]
+        return activities[:limit]
     finally:
         cur.close()
         conn.close()
@@ -3303,6 +3635,574 @@ def delete_posted_job(job_id: int, company_user_id: int) -> bool:
         )
         conn.commit()
         return cur.rowcount > 0
+    except Exception:
+        conn.rollback()
+        return False
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Admin platform management
+# ---------------------------------------------------------------------------
+
+def _admin_iso_dict(row, cols) -> Optional[dict]:
+    if row is None:
+        return None
+    out = dict(zip(cols, row))
+    for k, v in list(out.items()):
+        if hasattr(v, "isoformat"):
+            out[k] = v.isoformat()
+    return out
+
+
+def delete_user_account(user_id: int) -> bool:
+    """Delete a non-admin user. Returns True if a row was deleted."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "DELETE FROM users WHERE id = %s AND is_admin = FALSE",
+            (user_id,),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    except Exception:
+        conn.rollback()
+        return False
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_full_user_details(user_id: int) -> Optional[dict]:
+    """Full user record for admin detail view."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT
+                u.id, u.email, u.full_name, u.user_type,
+                u.is_active, u.is_admin,
+                COALESCE(NULLIF(TRIM(u.plan), ''), 'free') AS plan,
+                u.created_at, u.updated_at,
+                up.headline, up.bio, up.location,
+                up.skills, up.cv_filename, up.cv_text,
+                up.years_experience, up.linkedin_url,
+                cp.company_name, cp.website,
+                cp.industry, cp.company_size,
+                cp.description AS company_description,
+                s.stripe_subscription_id,
+                s.status AS subscription_status,
+                s.current_period_end,
+                (SELECT COUNT(*) FROM job_applications WHERE user_id = u.id) AS applications_count,
+                (SELECT COUNT(*) FROM saved_jobs WHERE user_id = u.id) AS saved_jobs_count,
+                (SELECT COUNT(*) FROM contact_requests
+                 WHERE candidate_user_id = u.id OR company_user_id = u.id) AS requests_count
+            FROM users u
+            LEFT JOIN user_profiles up ON up.email = u.email
+            LEFT JOIN company_profiles cp ON cp.user_id = u.id
+            LEFT JOIN subscriptions s ON s.user_id = u.id
+            WHERE u.id = %s
+            """,
+            (user_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        cols = [d[0] for d in cur.description]
+        return _admin_iso_dict(row, cols)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def update_user_plan(user_id: int, plan: str) -> bool:
+    """Set user plan and upsert subscription row."""
+    if plan not in ("free", "pro", "business"):
+        return False
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("UPDATE users SET plan = %s, updated_at = NOW() WHERE id = %s", (plan, user_id))
+        cur.execute(
+            """
+            INSERT INTO subscriptions (user_id, plan, status, updated_at)
+            VALUES (%s, %s, 'active', NOW())
+            ON CONFLICT (user_id) DO UPDATE SET
+                plan = EXCLUDED.plan,
+                status = 'active',
+                updated_at = NOW()
+            """,
+            (user_id, plan),
+        )
+        conn.commit()
+        return True
+    except Exception:
+        conn.rollback()
+        return False
+    finally:
+        cur.close()
+        conn.close()
+
+
+def admin_delete_job(job_id: int) -> bool:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM job_embeddings WHERE job_id = %s", (job_id,))
+        cur.execute("DELETE FROM jobs WHERE id = %s", (job_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    except Exception:
+        conn.rollback()
+        return False
+    finally:
+        cur.close()
+        conn.close()
+
+
+def admin_update_job(job_id: int, data: dict) -> bool:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            UPDATE jobs SET
+                job_title = %s,
+                company = %s,
+                location = %s,
+                description = %s,
+                is_active = %s
+            WHERE id = %s
+            """,
+            (
+                data.get("job_title"),
+                data.get("company"),
+                data.get("location"),
+                data.get("description"),
+                data.get("is_active", True),
+                job_id,
+            ),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    except Exception:
+        conn.rollback()
+        return False
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _admin_scraped_jobs_where(
+    search: Optional[str] = None,
+    source: Optional[str] = None,
+) -> tuple[str, list]:
+    where = ["1=1"]
+    params: list = []
+    if search and search.strip():
+        pattern = f"%{search.strip()}%"
+        where.append(
+            "(job_title ILIKE %s OR company ILIKE %s OR COALESCE(description, '') ILIKE %s)"
+        )
+        params.extend([pattern, pattern, pattern])
+    if source and source.strip():
+        where.append("source = %s")
+        params.append(source.strip())
+    return " AND ".join(where), params
+
+
+def _admin_posted_jobs_where(search: Optional[str] = None) -> tuple[str, list]:
+    where = ["1=1"]
+    params: list = []
+    if search and search.strip():
+        pattern = f"%{search.strip()}%"
+        where.append(
+            "(title ILIKE %s OR company_name ILIKE %s OR COALESCE(description, '') ILIKE %s)"
+        )
+        params.extend([pattern, pattern, pattern])
+    return " AND ".join(where), params
+
+
+_ADMIN_JOB_SELECT_SCRAPED = """
+    SELECT
+        id,
+        'job_board'::text AS listing_kind,
+        source,
+        job_title,
+        company,
+        location,
+        description,
+        is_active,
+        scraped_at AS listed_at,
+        job_url,
+        NULL::varchar AS job_type,
+        NULL::varchar AS experience_level
+    FROM jobs
+"""
+
+_ADMIN_JOB_SELECT_POSTED = """
+    SELECT
+        id,
+        'vertex'::text AS listing_kind,
+        'vertex'::text AS source,
+        title AS job_title,
+        company_name AS company,
+        location,
+        description,
+        is_active,
+        created_at AS listed_at,
+        COALESCE(application_url, '') AS job_url,
+        job_type,
+        experience_level
+    FROM posted_jobs
+"""
+
+
+def admin_get_all_jobs(
+    limit: int = 50,
+    offset: int = 0,
+    search: Optional[str] = None,
+    source: Optional[str] = None,
+    listing_type: Optional[str] = None,
+) -> dict:
+    """Admin job list: scraped job boards, Vertex posted jobs, or both."""
+    lt = (listing_type or "all").strip().lower()
+    if lt not in ("all", "job_boards", "vertex"):
+        lt = "all"
+
+    scraped_clause, scraped_params = _admin_scraped_jobs_where(search, source)
+    posted_clause, posted_params = _admin_posted_jobs_where(search)
+
+    cols = [
+        "id",
+        "listing_kind",
+        "source",
+        "job_title",
+        "company",
+        "location",
+        "description",
+        "is_active",
+        "listed_at",
+        "job_url",
+        "job_type",
+        "experience_level",
+    ]
+
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        if lt == "job_boards":
+            cur.execute(
+                f"SELECT COUNT(*) FROM jobs WHERE {scraped_clause}",
+                tuple(scraped_params),
+            )
+            total = cur.fetchone()[0] or 0
+            cur.execute(
+                f"""
+                {_ADMIN_JOB_SELECT_SCRAPED}
+                WHERE {scraped_clause}
+                ORDER BY scraped_at DESC NULLS LAST
+                LIMIT %s OFFSET %s
+                """,
+                tuple(scraped_params + [limit, offset]),
+            )
+        elif lt == "vertex":
+            cur.execute(
+                f"SELECT COUNT(*) FROM posted_jobs WHERE {posted_clause}",
+                tuple(posted_params),
+            )
+            total = cur.fetchone()[0] or 0
+            cur.execute(
+                f"""
+                {_ADMIN_JOB_SELECT_POSTED}
+                WHERE {posted_clause}
+                ORDER BY created_at DESC NULLS LAST
+                LIMIT %s OFFSET %s
+                """,
+                tuple(posted_params + [limit, offset]),
+            )
+        else:
+            cur.execute(
+                f"SELECT COUNT(*) FROM jobs WHERE {scraped_clause}",
+                tuple(scraped_params),
+            )
+            scraped_total = cur.fetchone()[0] or 0
+            cur.execute(
+                f"SELECT COUNT(*) FROM posted_jobs WHERE {posted_clause}",
+                tuple(posted_params),
+            )
+            posted_total = cur.fetchone()[0] or 0
+            total = scraped_total + posted_total
+            cur.execute(
+                f"""
+                SELECT * FROM (
+                    ({_ADMIN_JOB_SELECT_SCRAPED} WHERE {scraped_clause})
+                    UNION ALL
+                    ({_ADMIN_JOB_SELECT_POSTED} WHERE {posted_clause})
+                ) combined
+                ORDER BY listed_at DESC NULLS LAST
+                LIMIT %s OFFSET %s
+                """,
+                tuple(scraped_params + posted_params + [limit, offset]),
+            )
+
+        jobs = [_admin_iso_dict(r, cols) for r in cur.fetchall()]
+        return {"jobs": jobs, "total": total, "listing_type": lt}
+    finally:
+        cur.close()
+        conn.close()
+
+
+def admin_delete_posted_job(job_id: int) -> bool:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM posted_jobs WHERE id = %s", (job_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    except Exception:
+        conn.rollback()
+        return False
+    finally:
+        cur.close()
+        conn.close()
+
+
+def admin_update_posted_job(job_id: int, data: dict) -> bool:
+    """Admin can update any posted job without company ownership check."""
+    allowed = (
+        "title", "company_name", "location", "description", "is_active",
+        "job_type", "experience_level", "application_url", "application_email",
+    )
+    updates = []
+    values = []
+    for k in allowed:
+        if k not in data:
+            continue
+        updates.append(f"{k} = %s")
+        values.append(data[k])
+    if not updates:
+        return True
+    updates.append("updated_at = NOW()")
+    values.append(job_id)
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            f"UPDATE posted_jobs SET {', '.join(updates)} WHERE id = %s",
+            tuple(values),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    except Exception:
+        conn.rollback()
+        return False
+    finally:
+        cur.close()
+        conn.close()
+
+
+def create_platform_announcement(
+    title: str,
+    message: str,
+    target: str,
+    admin_id: int,
+) -> int:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            INSERT INTO announcements (title, message, target, sent_by)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id
+            """,
+            (title, message, target, admin_id),
+        )
+        ann_id = cur.fetchone()[0]
+        conn.commit()
+        return ann_id
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
+def update_announcement_recipients_count(announcement_id: int, count: int) -> None:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "UPDATE announcements SET recipients_count = %s WHERE id = %s",
+            (count, announcement_id),
+        )
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_users_for_announcement(target: str) -> list:
+    """Active non-admin users eligible for announcement notifications and email."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        base = (
+            "SELECT id, email, full_name FROM users "
+            "WHERE is_active = TRUE AND is_admin = FALSE"
+        )
+        if target == "jobseekers":
+            cur.execute(base + " AND user_type = 'jobseeker'")
+        elif target == "companies":
+            cur.execute(base + " AND user_type = 'company'")
+        else:
+            cur.execute(base)
+        cols = ["id", "email", "full_name"]
+        return [dict(zip(cols, row)) for row in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_announcement_recipient_counts() -> dict:
+    """Counts of active non-admin users per announcement target."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        base = "FROM users WHERE is_active = TRUE AND is_admin = FALSE"
+        cur.execute(f"SELECT COUNT(*) {base}")
+        all_count = cur.fetchone()[0] or 0
+        cur.execute(f"SELECT COUNT(*) {base} AND user_type = 'jobseeker'")
+        jobseekers = cur.fetchone()[0] or 0
+        cur.execute(f"SELECT COUNT(*) {base} AND user_type = 'company'")
+        companies = cur.fetchone()[0] or 0
+        return {"all": all_count, "jobseekers": jobseekers, "companies": companies}
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_announcements(limit: int = 20) -> list:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT id, title, message, target, sent_at, recipients_count
+            FROM announcements
+            ORDER BY sent_at DESC
+            LIMIT %s
+            """,
+            (limit,),
+        )
+        cols = [d[0] for d in cur.description]
+        return [_admin_iso_dict(r, cols) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+
+
+def delete_announcement(announcement_id: int) -> bool:
+    """Delete announcement and linked in-app notifications (plus legacy matches)."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT title, message FROM announcements WHERE id = %s",
+            (announcement_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return False
+        title, message = row
+        snippet = (message or "")[:200]
+        # Older rows sent before announcement_id was stored
+        cur.execute(
+            """
+            DELETE FROM notifications
+            WHERE announcement_id IS NULL
+              AND type = 'system'
+              AND title = %s
+              AND message = %s
+              AND COALESCE(link, '') = '/'
+            """,
+            (title, snippet),
+        )
+        cur.execute("DELETE FROM announcements WHERE id = %s", (announcement_id,))
+        deleted = cur.rowcount > 0
+        conn.commit()
+        return deleted
+    except Exception:
+        conn.rollback()
+        return False
+    finally:
+        cur.close()
+        conn.close()
+
+
+DEFAULT_PLAN_CONFIG = {
+    "pro_monthly_price": 12,
+    "pro_annual_price": 10,
+    "business_monthly_price": 49,
+    "business_annual_price": 39,
+    "free_job_matches_limit": 3,
+    "free_saved_jobs_limit": 5,
+    "free_contact_requests_limit": 3,
+    "free_job_postings_limit": 1,
+}
+
+
+def get_plan_config() -> dict:
+    conn = get_connection()
+    cur = conn.cursor()
+    config = dict(DEFAULT_PLAN_CONFIG)
+    try:
+        cur.execute("SELECT key, value, updated_at FROM platform_settings")
+        rows = cur.fetchall()
+        latest = None
+        for key, value, updated_at in rows:
+            if key in config:
+                try:
+                    config[key] = int(value) if "." not in str(value) else float(value)
+                except ValueError:
+                    config[key] = value
+            if updated_at and (latest is None or updated_at > latest):
+                latest = updated_at
+        if latest and hasattr(latest, "isoformat"):
+            config["_updated_at"] = latest.isoformat()
+        return config
+    except Exception:
+        return dict(DEFAULT_PLAN_CONFIG)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def update_plan_config(config: dict) -> bool:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        for key, value in config.items():
+            if key.startswith("_"):
+                continue
+            cur.execute(
+                """
+                INSERT INTO platform_settings (key, value)
+                VALUES (%s, %s)
+                ON CONFLICT (key) DO UPDATE SET
+                    value = EXCLUDED.value,
+                    updated_at = NOW()
+                """,
+                (key, str(value)),
+            )
+        conn.commit()
+        return True
     except Exception:
         conn.rollback()
         return False

@@ -568,3 +568,96 @@ def send_support_reply_email(
     except Exception:
         logger.exception("send_support_reply_email failed")
         return False
+
+
+def send_announcement_email(
+    to_email: str,
+    full_name: str,
+    title: str,
+    message: str,
+) -> bool:
+    try:
+        resend.Emails.send({
+            "from": FROM_EMAIL,
+            "to": to_email,
+            "subject": f"📢 {title} — Vertex",
+            "html": f"""
+            <div style="font-family: Arial, sans-serif;
+                        max-width: 600px; margin: 0 auto;
+                        background: #0a0a0f; color: white;
+                        padding: 40px; border-radius: 12px;">
+                <div style="text-align: center; margin-bottom: 24px;">
+                    <h1 style="font-size: 28px; margin: 0;">
+                        <span style="color: white;">Vert</span>
+                        <span style="color: #6366f1;">ex</span>
+                    </h1>
+                </div>
+                <div style="background: rgba(99,102,241,0.1);
+                            border: 1px solid rgba(99,102,241,0.3);
+                            border-radius: 8px; padding: 8px 16px;
+                            display: inline-block; margin-bottom: 20px;">
+                    <span style="color: #6366f1; font-size: 12px; font-weight: bold;">
+                        📢 ANNOUNCEMENT
+                    </span>
+                </div>
+                <h2 style="color: white; font-size: 22px;">{title}</h2>
+                <div style="color: #94a3b8; line-height: 1.8; font-size: 15px; white-space: pre-line;">
+                    {message}
+                </div>
+                <div style="text-align: center; margin: 32px 0;">
+                    <a href="{APP_URL}"
+                       style="background: #6366f1; color: white;
+                              padding: 14px 32px; border-radius: 8px;
+                              text-decoration: none; font-weight: bold;">
+                        Visit Vertex →
+                    </a>
+                </div>
+                <p style="color: #64748b; font-size: 12px; text-align: center;">
+                    © 2026 Vertex. All rights reserved.
+                </p>
+            </div>
+            """,
+        })
+        return True
+    except Exception as e:
+        print(f"Announcement email error: {e}")
+        return False
+
+
+def send_direct_email(
+    to_email: str,
+    full_name: str,
+    subject: str,
+    message: str,
+) -> bool:
+    try:
+        resend.Emails.send({
+            "from": FROM_EMAIL,
+            "to": to_email,
+            "subject": subject,
+            "html": f"""
+            <div style="font-family: Arial, sans-serif;
+                        max-width: 600px; margin: 0 auto;
+                        background: #0a0a0f; color: white;
+                        padding: 40px; border-radius: 12px;">
+                <div style="text-align: center; margin-bottom: 24px;">
+                    <h1 style="font-size: 28px; margin: 0;">
+                        <span style="color: white;">Vert</span>
+                        <span style="color: #6366f1;">ex</span>
+                    </h1>
+                </div>
+                <h2 style="color: white; font-size: 20px;">Hi {full_name},</h2>
+                <div style="color: #94a3b8; line-height: 1.8; font-size: 15px; white-space: pre-line;">
+                    {message}
+                </div>
+                <hr style="border: none; border-top: 1px solid #2a2a3d; margin: 24px 0;" />
+                <p style="color: #64748b; font-size: 12px; text-align: center;">
+                    This email was sent by Vertex Admin. © 2026 Vertex.
+                </p>
+            </div>
+            """,
+        })
+        return True
+    except Exception as e:
+        print(f"Direct email error: {e}")
+        return False

@@ -40,7 +40,7 @@ function RolesStatBar({ count }: { count: string }) {
               {count}
             </span>
             <span className="bg-gradient-to-r from-v-primary via-indigo-300 to-v-primaryContainer bg-clip-text font-label text-base font-bold uppercase tracking-[0.2em] text-transparent sm:text-lg">
-              roles
+              JOBS
             </span>
           </div>
         </div>
@@ -66,7 +66,7 @@ function CandidateTeaser() {
 
       <Link href="/match" className={TEASER_BTN_CLASS}>
         Match my CV
-        <ArrowRight className="h-4 w-4 shrink-0" />
+        <ArrowRight className="h-4 w-4 shrink-0" aria-hidden />
       </Link>
     </div>
   );

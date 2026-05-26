@@ -10,6 +10,7 @@ import { useAuth } from "@/context/AuthContext";
 import { getReceivedRequests, getSubscription, getUnreadCount } from "@/lib/api";
 import type { Subscription } from "@/types";
 import { Menu, X, ChevronDown, ChevronRight, type LucideIcon } from "lucide-react";
+import { publicNav } from "@/lib/public-nav";
 
 function getInitials(fullName: string): string {
   const parts = (fullName || "").trim().split(/\s+/);
@@ -18,17 +19,6 @@ function getInitials(fullName: string): string {
   }
   return (fullName || "?").slice(0, 2).toUpperCase();
 }
-
-const publicNav = [
-  { href: "/", label: "Home" },
-  { href: "/match", label: "Features" },
-  { href: "/jobs", label: "Vertex Jobs" },
-  { href: "/find-jobs", label: "Job Boards" },
-  { href: "/pricing", label: "Pricing" },
-  { href: "/company", label: "For Companies" },
-  { href: "/contact", label: "Contact" },
-  { href: "/about", label: "About" },
-];
 
 export type NavItem = {
   href: string;
@@ -84,13 +74,6 @@ const companyAccount: NavItem[] = [
   { href: "/notifications", label: "All notifications" },
 ];
 
-const adminPrimary: NavItem[] = [
-  { href: "/admin", label: "Admin Panel" },
-  { href: "/analytics", label: "Analytics" },
-  { href: "/admin#users-section", label: "Users" },
-  { href: "/pricing", label: "Pricing" },
-];
-
 function isLinkActive(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
   if (href === "/company") return pathname === "/company";
@@ -127,8 +110,8 @@ function NavLinks({
                 linkClass,
                 !linkClass &&
                   (active
-                    ? "border-b-2 border-indigo-400 px-1 py-1 text-indigo-300"
-                    : "rounded-lg px-3 py-1.5 text-slate-400 hover:bg-white/5 hover:text-indigo-100")
+                    ? "border-b-2 border-white px-1 pb-0.5 pt-1 text-white"
+                    : "rounded-lg px-3 py-1.5 text-slate-400 hover:bg-white/5 hover:text-white")
               )}
             >
               {ItemIcon && <ItemIcon className="h-3.5 w-3.5 shrink-0" />}
@@ -353,14 +336,17 @@ export function Navbar() {
 
   const isCompany = user?.user_type === "company";
   const isAdmin = Boolean(user?.is_admin);
+  const isAdminRoute = pathname.startsWith("/admin");
   const profileHref = isAdmin ? "/admin" : isCompany ? "/company/profile" : "/profile";
-  const primary = !isLoggedIn
-    ? publicNav
-    : isAdmin
-      ? adminPrimary
-      : isCompany
-        ? companyPrimary
-        : jobseekerPrimary;
+  // Admins use in-panel tabs only — no Home / Vertex Jobs / Job Boards in the header
+  const primary =
+    isAdminRoute || (isLoggedIn && isAdmin)
+      ? []
+      : !isLoggedIn
+        ? publicNav
+        : isCompany
+          ? companyPrimary
+          : jobseekerPrimary;
   const more = isLoggedIn
     ? isAdmin
       ? []
@@ -549,6 +535,7 @@ export function Navbar() {
             </nav>
           ) : (
             <nav className="flex flex-col gap-3">
+              {primary.length > 0 && (
               <div>
                 <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                   Main
@@ -577,6 +564,7 @@ export function Navbar() {
                   })}
                 </div>
               </div>
+              )}
               {more.length > 0 && (
                 <div>
                   <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
