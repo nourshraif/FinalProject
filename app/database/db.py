@@ -574,6 +574,7 @@ def get_user_by_id(user_id: int) -> Optional[dict]:
         cur.close()
         conn.close()
 
+        
 
 def get_user_profile(user_id: int) -> Optional[dict]:
     """
@@ -633,6 +634,7 @@ def get_user_profile(user_id: int) -> Optional[dict]:
         conn.close()
 
 
+
 def upsert_user_profile(user_id: int, data: dict) -> bool:
     """
     INSERT or UPDATE user_profiles for this user_id.
@@ -688,6 +690,7 @@ def upsert_user_profile(user_id: int, data: dict) -> bool:
     finally:
         cur.close()
         conn.close()
+
 
 
 def update_user_skills(user_id: int, skills: list) -> bool:
