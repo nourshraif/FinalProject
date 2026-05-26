@@ -1,0 +1,105 @@
+# ===========================
+# SENSITIVE - NEVER COMMIT
+# ===========================
+.env
+*.env
+.env.local
+.env.development
+.env.production
+.env.test
+
+# ===========================
+# PYTHON
+# ===========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+venv/
+env/
+.venv/
+ENV/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ===========================
+# NODE / NEXT.JS
+# ===========================
+node_modules/
+frontend/node_modules/
+.next/
+frontend/.next/
+out/
+frontend/out/
+.vercel
+.turbo/
+.npm/
+*.tsbuildinfo
+next-env.d.ts
+
+# ===========================
+# DATABASE
+# ===========================
+*.sql
+*.dump
+*.db
+*.sqlite
+
+# ===========================
+# UPLOADS (user files)
+# ===========================
+uploads/
+*.pdf
+
+# ===========================
+# OS FILES
+# ===========================
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ===========================
+# IDE
+# ===========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+.vs/
+
+# ===========================
+# LOGS
+# ===========================
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ===========================
+# MISC
+# ===========================
+*.zip
+*.tar.gz
+*.rar
+.cache/
+.pytest_cache/
+.mypy_cache/
+coverage/
+.coverage
+htmlcov/
