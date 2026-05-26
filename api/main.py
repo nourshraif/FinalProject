@@ -140,6 +140,7 @@ from app.database.db import (
     mark_notification_read as db_mark_notification_read,
     mark_all_notifications_read as db_mark_all_notifications_read,
     delete_notification as db_delete_notification,
+    search_jobs_with_company_priority as db_search_jobs_with_company_priority,
 )
 from api.email_service import (
     send_welcome_email,
@@ -1750,6 +1751,7 @@ def jobs_stats():
 # ---------------------------------------------------------------------------
 # GET /api/jobs/search
 # ---------------------------------------------------------------------------
+
 @app.get("/api/jobs/search")
 def jobs_search(
     q: Optional[str] = None,
@@ -1761,10 +1763,14 @@ def jobs_search(
     limit: int = 20,
     offset: int = 0,
 ):
-    """Search scraped jobs. No auth required. Returns jobs, total, page, total_pages."""
+    """
+    Search jobs - returns both company-posted AND scraped jobs.
+    Company-posted jobs appear first.
+    If a company is registered AND posts a job, their job is shown (not the scraped version).
+    """
     import math
     try:
-        jobs_list, total = db_search_jobs(
+        jobs_list, total = db_search_jobs_with_company_priority(
             q=q,
             source=source,
             location=location,
@@ -1783,8 +1789,6 @@ def jobs_search(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
 # ---------------------------------------------------------------------------
 # GET /api/jobs/sources
 # ---------------------------------------------------------------------------

@@ -648,6 +648,7 @@ def get_user_by_id(user_id: int) -> Optional[dict]:
         cur.close()
         conn.close()
 
+        
 
 def get_user_profile(user_id: int) -> Optional[dict]:
     """
@@ -707,6 +708,7 @@ def get_user_profile(user_id: int) -> Optional[dict]:
         conn.close()
 
 
+
 def upsert_user_profile(user_id: int, data: dict) -> bool:
     """
     INSERT or UPDATE user_profiles for this user_id.
@@ -762,6 +764,7 @@ def upsert_user_profile(user_id: int, data: dict) -> bool:
     finally:
         cur.close()
         conn.close()
+
 
 
 def update_user_skills(user_id: int, skills: list) -> bool:
@@ -3073,6 +3076,162 @@ def search_jobs(
         cur.close()
         conn.close()
 
+def search_jobs_with_company_priority(
+    q: Optional[str] = None,
+    source: Optional[str] = None,
+    location: Optional[str] = None,
+    date_posted: Optional[str] = None,
+    sort_by: str = "recent",
+    limit: int = 20,
+    offset: int = 0,
+) -> Tuple[list, int]:
+    """
+    Search jobs combining POSTED JOBS and SCRAPED JOBS.
+    - POSTED JOBS from registered companies appear first
+    - SCRAPED JOBS from external sources appear second
+    - Avoids showing same job twice if company is registered
+    
+    Returns: (list of combined jobs, total count)
+    """
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        # Step 1: Get all registered company names
+        cur.execute("""
+            SELECT LOWER(TRIM(company_name)) as company_lower
+            FROM company_profiles
+            WHERE company_name IS NOT NULL AND TRIM(company_name) != ''
+        """)
+        registered_companies = {row[0] for row in cur.fetchall()}
+        
+        # Step 2: Build WHERE clause for common filters
+        where_scraped = ["is_active = TRUE"]
+        where_posted = ["is_active = TRUE"]
+        params_scraped = []
+        params_posted = []
+        
+        if q and q.strip():
+            t = f"%{q.strip()}%"
+            where_scraped.append("(job_title ILIKE %s OR company ILIKE %s OR description ILIKE %s)")
+            where_posted.append("(title ILIKE %s OR company_name ILIKE %s OR description ILIKE %s)")
+            params_scraped.extend([t, t, t])
+            params_posted.extend([t, t, t])
+            
+        if location and location.strip():
+            t = f"%{location.strip()}%"
+            where_scraped.append("location ILIKE %s")
+            where_posted.append("location ILIKE %s")
+            params_scraped.append(t)
+            params_posted.append(t)
+            
+        if date_posted == "24h":
+            where_scraped.append("scraped_at > NOW() - INTERVAL '24 hours'")
+            where_posted.append("created_at > NOW() - INTERVAL '24 hours'")
+        elif date_posted == "7d":
+            where_scraped.append("scraped_at > NOW() - INTERVAL '7 days'")
+            where_posted.append("created_at > NOW() - INTERVAL '7 days'")
+        elif date_posted == "30d":
+            where_scraped.append("scraped_at > NOW() - INTERVAL '30 days'")
+            where_posted.append("created_at > NOW() - INTERVAL '30 days'")
+        
+        where_sql_scraped = " AND ".join(where_scraped)
+        where_sql_posted = " AND ".join(where_posted)
+        
+        order_posted = "created_at DESC" if sort_by == "recent" else "title ASC"
+        order_scraped = "scraped_at DESC" if sort_by == "recent" else "job_title ASC"
+        
+        # Step 3: Get POSTED JOBS (from registered companies)
+        cur.execute(
+            f"""
+            SELECT 
+                id, 
+                'Posted' as source,
+                title as job_title,
+                company_name as company,
+                location,
+                description,
+                application_url as job_url,
+                created_at as scraped_at,
+                created_at,
+                TRUE as is_company_posted
+            FROM posted_jobs
+            WHERE {where_sql_posted}
+            ORDER BY {order_posted}
+            """,
+            tuple(params_posted),
+        )
+        posted_rows = cur.fetchall()
+        posted_companies = set()
+        posted_jobs_list = []
+        
+        cols_posted = ["id", "source", "job_title", "company", "location", "description", "job_url", "scraped_at", "created_at", "is_company_posted"]
+        
+        for row in posted_rows:
+            d = dict(zip(cols_posted, row))
+            company_lower = d.get("company", "").lower().strip()
+            posted_companies.add(company_lower)
+            
+            if d.get("scraped_at") and hasattr(d["scraped_at"], "isoformat"):
+                d["scraped_at"] = d["scraped_at"].isoformat()
+            d["source_type"] = "direct"
+            d["id"] = f"posted_{d['id']}"  # Prefix to avoid ID conflicts
+            posted_jobs_list.append(d)
+        
+        # Step 4: Get SCRAPED JOBS (but skip if company is registered)
+        cur.execute(
+            f"""
+            SELECT 
+                id, 
+                source,
+                job_title,
+                company,
+                location,
+                description,
+                job_url,
+                scraped_at,
+                created_at
+            FROM jobs
+            WHERE {where_sql_scraped}
+            ORDER BY {order_scraped}
+            """,
+            tuple(params_scraped),
+        )
+        scraped_rows = cur.fetchall()
+        scraped_jobs_list = []
+        
+        cols_scraped = ["id", "source", "job_title", "company", "location", "description", "job_url", "scraped_at", "created_at"]
+        
+        for row in scraped_rows:
+            d = dict(zip(cols_scraped, row))
+            company_lower = d.get("company", "").lower().strip()
+            
+            # SKIP if this company is registered (we already have their posted job)
+            if company_lower in registered_companies:
+                continue
+            
+            if d.get("scraped_at") and hasattr(d["scraped_at"], "isoformat"):
+                d["scraped_at"] = d["scraped_at"].isoformat()
+            d["is_company_posted"] = False
+            d["source_type"] = "scraped"
+            d["id"] = f"scraped_{d['id']}"  # Prefix to avoid ID conflicts
+            scraped_jobs_list.append(d)
+        
+        # Step 5: Combine lists (Posted jobs first, then scraped)
+        combined_jobs = posted_jobs_list + scraped_jobs_list
+        total_count = len(combined_jobs)
+        
+        # Step 6: Apply pagination
+        paginated_jobs = combined_jobs[offset:offset + limit]
+        
+        return paginated_jobs, total_count
+        
+    except Exception as e:
+        print(f"Error in search_jobs_with_company_priority: {e}")
+        return [], 0
+    finally:
+        cur.close()
+        conn.close()
+        
 
 def get_job_sources() -> list:
     """Return distinct active job sources, ordered."""
