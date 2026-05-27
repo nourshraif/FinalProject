@@ -195,6 +195,17 @@ async def lifespan(app: FastAPI):
     from app.database.db import ensure_admin_platform_tables
 
     ensure_admin_platform_tables()
+
+    # ── Initialize vector tables (creates posted_job_embeddings etc.) ────
+    try:
+        from app.services.vector_matching_service import VectorSkillMatcher
+        _matcher = VectorSkillMatcher()
+        _matcher.close()
+        print("✓ Vector tables and indexes created")
+    except Exception as e:
+        print(f"Warning: Vector service init failed: {e}")
+    # ─────────────────────────────────────────────────────────────────────
+
     scheduler.start()
     print("✅ Job alerts scheduler started")
     print("📅 Nightly scraper: 2:00 AM (full ingest to DB)")
@@ -1916,6 +1927,25 @@ def post_posted_job(
     try:
         new_job_id = db_create_posted_job(current_user["id"], data)
 
+        # ── Auto-generate embedding so this job appears in CV matching ──────
+        try:
+            from app.services.vector_matching_service import VectorSkillMatcher
+            matcher = VectorSkillMatcher()
+            try:
+                matcher.embed_posted_job(
+                    posted_job_id=new_job_id,
+                    title=title,
+                    company=company_name,
+                    location=(body.location or ""),
+                    description=description,
+                    skills=list(body.skills_required or []),
+                )
+            finally:
+                matcher.close()
+        except Exception as emb_err:
+            print(f"Warning: Could not generate embedding for posted job {new_job_id}: {emb_err}")
+        # ─────────────────────────────────────────────────────────────────────
+
         try:
             from app.database.db import (
                 create_notification,
@@ -1998,6 +2028,28 @@ def put_posted_job(
     ok = db_update_posted_job(job_id, current_user["id"], data)
     if not ok:
         raise HTTPException(status_code=404, detail="Job not found or access denied")
+
+    # ── Re-generate embedding so updated content reflects in CV matching ─────
+    try:
+        updated = db_get_posted_job_by_id(job_id)
+        if updated:
+            from app.services.vector_matching_service import VectorSkillMatcher
+            matcher = VectorSkillMatcher()
+            try:
+                matcher.embed_posted_job(
+                    posted_job_id=job_id,
+                    title=updated.get("title", ""),
+                    company=updated.get("company_name", ""),
+                    location=updated.get("location", ""),
+                    description=updated.get("description", ""),
+                    skills=list(updated.get("skills_required") or []),
+                )
+            finally:
+                matcher.close()
+    except Exception as emb_err:
+        print(f"Warning: Could not re-generate embedding for posted job {job_id}: {emb_err}")
+    # ─────────────────────────────────────────────────────────────────────────
+
     return {"success": True}
 
 
