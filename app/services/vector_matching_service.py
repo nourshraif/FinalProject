@@ -453,10 +453,32 @@ class VectorSkillMatcher:
                 'cv_skills': cv_skills
             })
         
-        # Sort by combined score
+        # Sort by combined score (best first)
         matching_jobs.sort(key=lambda x: x['combined_score'], reverse=True)
-        
-        return matching_jobs[:top_k]
+
+        # ── Deduplication ────────────────────────────────────────────────────
+        # Remove duplicate jobs that appear from multiple scrapers or from
+        # both a scraper and a company posting.
+        # Strategy: normalize title + company → keep only the highest-scoring one.
+        def _dedup_key(job):
+            title_norm = (job['title'] or '').lower().strip()
+            company_norm = (job['company'] or '').lower().strip()
+            # Remove common noise words so "Software Engineer" == "software engineer"
+            import re
+            title_norm = re.sub(r'[^a-z0-9\s]', '', title_norm).strip()
+            company_norm = re.sub(r'[^a-z0-9\s]', '', company_norm).strip()
+            return (title_norm, company_norm)
+
+        seen_keys = set()
+        deduplicated = []
+        for job in matching_jobs:
+            key = _dedup_key(job)
+            if key not in seen_keys:
+                seen_keys.add(key)
+                deduplicated.append(job)
+        # ─────────────────────────────────────────────────────────────────────
+
+        return deduplicated[:top_k]
     
     def explain_match(self, cv_skills: List[str], job_description: str, 
                      top_n_similar: int = 5) -> Dict:
