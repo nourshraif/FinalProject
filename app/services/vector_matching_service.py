@@ -69,6 +69,24 @@ class VectorSkillMatcher:
                 WITH (lists = 100);
             """)
             
+            # Create posted_job_embeddings table (separate from scraped jobs)
+            self.cur.execute(f"""
+                CREATE TABLE IF NOT EXISTS posted_job_embeddings (
+                    posted_job_id INTEGER PRIMARY KEY REFERENCES posted_jobs(id) ON DELETE CASCADE,
+                    full_text TEXT NOT NULL,
+                    skills_text TEXT,
+                    embedding vector({self.embedding_dim}) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+
+            self.cur.execute("""
+                CREATE INDEX IF NOT EXISTS posted_job_embeddings_idx
+                ON posted_job_embeddings
+                USING ivfflat (embedding vector_cosine_ops)
+                WITH (lists = 10);
+            """)
+
             # Create CV embeddings table
             self.cur.execute(f"""
                 CREATE TABLE IF NOT EXISTS cv_embeddings (
@@ -115,6 +133,36 @@ class VectorSkillMatcher:
         skills_text = "Professional skills: " + ", ".join(skills)
         return self.embed_text(skills_text)
     
+    def embed_posted_job(self, posted_job_id: int, title: str, company: str,
+                         location: str, description: str, skills: list = None):
+        """
+        Generate and save embedding for a single company-posted job.
+        Called automatically when a company creates or updates a job posting.
+        """
+        skills_str = ", ".join(skills) if skills else ""
+        full_text = f"""
+        Job Title: {title}
+        Company: {company}
+        Location: {location or 'Remote'}
+        Skills Required: {skills_str}
+        Description: {(description or '')[:2000]}
+        """.strip()
+
+        embedding = self.embed_text(full_text)
+        skills_text = skills_str or (description or "")[:1000]
+
+        self.cur.execute("""
+            INSERT INTO posted_job_embeddings (posted_job_id, full_text, skills_text, embedding)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (posted_job_id) DO UPDATE
+                SET full_text = EXCLUDED.full_text,
+                    skills_text = EXCLUDED.skills_text,
+                    embedding = EXCLUDED.embedding,
+                    created_at = CURRENT_TIMESTAMP
+        """, (posted_job_id, full_text, skills_text, embedding.tolist()))
+        self.conn.commit()
+        print(f"✓ Embedding saved for posted job {posted_job_id}")
+
     def generate_job_embeddings(self, batch_size: int = 100, force_regenerate: bool = False):
         """
         Generate and store embeddings for all jobs in database.
@@ -328,21 +376,46 @@ class VectorSkillMatcher:
         cv_skills_lower = [s.lower().strip() for s in cv_skills]
         
         self.cur.execute("""
-            SELECT 
-                j.id,
-                j.source,
-                j.job_title,
-                j.company,
-                j.location,
-                j.description,
-                j.job_url,
-                j.scraped_at,
-                je.skills_text,
-                1 - (je.embedding <=> %s::vector) as vector_similarity
-            FROM jobs j
-            JOIN job_embeddings je ON j.id = je.job_id
-            WHERE j.is_active = TRUE
-            ORDER BY je.embedding <=> %s::vector
+            SELECT
+                id, source, job_title, company, location,
+                description, job_url, scraped_at, skills_text,
+                1 - (embedding <=> %s::vector) as vector_similarity
+            FROM (
+                -- Scraped jobs
+                SELECT
+                    j.id,
+                    j.source,
+                    j.job_title,
+                    j.company,
+                    j.location,
+                    j.description,
+                    j.job_url,
+                    j.scraped_at,
+                    je.skills_text,
+                    je.embedding
+                FROM jobs j
+                JOIN job_embeddings je ON j.id = je.job_id
+                WHERE j.is_active = TRUE
+
+                UNION ALL
+
+                -- Company posted jobs
+                SELECT
+                    pj.id * -1 AS id,
+                    'company_posted' AS source,
+                    pj.title AS job_title,
+                    pj.company_name AS company,
+                    pj.location,
+                    pj.description,
+                    COALESCE(pj.application_url, '') AS job_url,
+                    pj.created_at AS scraped_at,
+                    pje.skills_text,
+                    pje.embedding
+                FROM posted_jobs pj
+                JOIN posted_job_embeddings pje ON pj.id = pje.posted_job_id
+                WHERE pj.is_active = TRUE
+            ) combined
+            ORDER BY embedding <=> %s::vector
             LIMIT %s
         """, (cv_embedding.tolist(), cv_embedding.tolist(), top_k * 2))
         
