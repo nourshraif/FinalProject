@@ -35,6 +35,7 @@ const SOURCE_OPTIONS = [
   { value: "remotive", label: "Remotive" },
   { value: "himalayas", label: "Himalayas" },
   { value: "linkedin", label: "LinkedIn" },
+  { value: "company_posted", label: "Posted by Companies" }, 
 ];
 
 function hasProfileCvAndSkills(p: UserProfile | null): boolean {
