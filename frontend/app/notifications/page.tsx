@@ -33,7 +33,12 @@ function relativeTime(iso: string): string {
 }
 
 function isJobType(type: Notification["type"]) {
-  return type === "job_alert" || type === "new_job_match";
+  return (
+    type === "job_alert" ||
+    type === "new_job_match" ||
+    type === "application_status" ||
+    type === "job_application"
+  );
 }
 
 function isRequestType(type: Notification["type"]) {
@@ -55,6 +60,9 @@ function symbolForType(type: Notification["type"]): string {
     case "job_alert":
     case "new_job_match":
       return "work";
+    case "application_status":
+    case "job_application":
+      return "assignment";
     case "profile_view":
       return "visibility";
     case "system":

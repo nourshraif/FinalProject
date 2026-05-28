@@ -28,6 +28,14 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   const googleError = searchParams.get("error");
+  const nextUrl = searchParams.get("next");
+
+  function postLoginPath(u: User): string {
+    if (nextUrl && nextUrl.startsWith("/") && !nextUrl.startsWith("//")) {
+      return nextUrl;
+    }
+    return loggedInDashboardPath(u);
+  }
   useEffect(() => {
     if (googleError === "google_failed") {
       showToast(
@@ -39,8 +47,8 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!isLoggedIn || !authUser) return;
-    router.replace(loggedInDashboardPath(authUser));
-  }, [isLoggedIn, authUser, router]);
+    router.replace(postLoginPath(authUser));
+  }, [isLoggedIn, authUser, router, nextUrl]);
 
   if (isLoggedIn && authUser) {
     return (
@@ -66,7 +74,7 @@ export default function LoginPage() {
       };
       login(res.access_token, user);
       showToast("Signed in successfully", "success");
-      router.push(loggedInDashboardPath(user));
+      router.push(postLoginPath(user));
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Sign in failed";
       setError(msg);

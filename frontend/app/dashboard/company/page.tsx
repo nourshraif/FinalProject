@@ -263,7 +263,7 @@ function CompanyDashboardContent() {
                 postedJobs.slice(0, 5).map((j) => (
                   <Link
                     key={j.id}
-                    href={`/jobs/${j.id}`}
+                    href={`/company/jobs/${j.id}/applicants`}
                     className="group flex cursor-pointer items-center justify-between rounded-xl bg-white/5 p-3 transition-colors hover:bg-white/10"
                   >
                     <div className="flex items-center gap-3">

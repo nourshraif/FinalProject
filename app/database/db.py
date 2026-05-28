@@ -71,6 +71,87 @@ def ensure_admin_platform_tables() -> None:
         conn.close()
 
 
+def ensure_notification_application_types() -> None:
+    """Allow in-app notification types for Vertex application pipeline."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check;"
+        )
+        cur.execute("""
+            ALTER TABLE notifications ADD CONSTRAINT notifications_type_check
+            CHECK (type IN (
+                'contact_request',
+                'request_accepted',
+                'request_declined',
+                'job_alert',
+                'new_job_match',
+                'profile_view',
+                'system',
+                'job_application',
+                'application_status'
+            ));
+        """)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
+def ensure_vertex_application_tables() -> None:
+    """Create Vertex job application pipeline tables (safe on every API start)."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS posted_job_applications (
+                id SERIAL PRIMARY KEY,
+                posted_job_id INTEGER NOT NULL
+                    REFERENCES posted_jobs(id) ON DELETE CASCADE,
+                jobseeker_user_id INTEGER NOT NULL
+                    REFERENCES users(id) ON DELETE CASCADE,
+                status VARCHAR(50) DEFAULT 'applied'
+                    CHECK (status IN (
+                        'applied', 'reviewing', 'interviewing',
+                        'offer', 'rejected', 'withdrawn'
+                    )),
+                cover_message TEXT,
+                applicant_name VARCHAR(255) NOT NULL,
+                applicant_email VARCHAR(255) NOT NULL,
+                headline VARCHAR(255),
+                location VARCHAR(255),
+                years_experience INTEGER DEFAULT 0,
+                skills TEXT[],
+                cv_filename VARCHAR(255),
+                profile_slug VARCHAR(100),
+                company_notes TEXT,
+                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(posted_job_id, jobseeker_user_id)
+            );
+        """)
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pja_job ON posted_job_applications(posted_job_id);"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pja_seeker ON posted_job_applications(jobseeker_user_id);"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pja_status ON posted_job_applications(status);"
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
 def init_database():
     """Initialize database with required tables."""
     conn = get_connection()
@@ -405,7 +486,9 @@ def init_database():
                       'job_alert',
                       'new_job_match',
                       'profile_view',
-                      'system'
+                      'system',
+                      'job_application',
+                      'application_status'
                     )),
                 title VARCHAR(255) NOT NULL,
                 message TEXT NOT NULL,
@@ -508,6 +591,43 @@ def init_database():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_posted_jobs_company ON posted_jobs(company_user_id);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_posted_jobs_active ON posted_jobs(is_active);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_posted_jobs_created ON posted_jobs(created_at DESC);")
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS posted_job_applications (
+                id SERIAL PRIMARY KEY,
+                posted_job_id INTEGER NOT NULL
+                    REFERENCES posted_jobs(id) ON DELETE CASCADE,
+                jobseeker_user_id INTEGER NOT NULL
+                    REFERENCES users(id) ON DELETE CASCADE,
+                status VARCHAR(50) DEFAULT 'applied'
+                    CHECK (status IN (
+                        'applied', 'reviewing', 'interviewing',
+                        'offer', 'rejected', 'withdrawn'
+                    )),
+                cover_message TEXT,
+                applicant_name VARCHAR(255) NOT NULL,
+                applicant_email VARCHAR(255) NOT NULL,
+                headline VARCHAR(255),
+                location VARCHAR(255),
+                years_experience INTEGER DEFAULT 0,
+                skills TEXT[],
+                cv_filename VARCHAR(255),
+                profile_slug VARCHAR(100),
+                company_notes TEXT,
+                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(posted_job_id, jobseeker_user_id)
+            );
+        """)
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pja_job ON posted_job_applications(posted_job_id);"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pja_seeker ON posted_job_applications(jobseeker_user_id);"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pja_status ON posted_job_applications(status);"
+        )
 
         cur.execute("""
             CREATE TABLE IF NOT EXISTS announcements (
@@ -2956,15 +3076,41 @@ def get_users_for_alerts() -> list:
 
 
 def get_recent_jobs(limit: int = 10) -> list:
-    """Return most recent jobs (is_active=True), for test alerts."""
+    """Return most recent jobs across job boards + Vertex posted jobs."""
     conn = get_connection()
     cur = conn.cursor()
     try:
         cur.execute(
             """
             SELECT id, source, job_title, company, location, description, job_url, scraped_at
-            FROM jobs
-            WHERE is_active = TRUE
+            FROM (
+                SELECT
+                    j.id,
+                    j.source,
+                    j.job_title,
+                    j.company,
+                    j.location,
+                    j.description,
+                    j.job_url,
+                    j.scraped_at
+                FROM jobs j
+                WHERE j.is_active = TRUE
+
+                UNION ALL
+
+                SELECT
+                    -pj.id AS id,
+                    'company_posted' AS source,
+                    pj.title AS job_title,
+                    pj.company_name AS company,
+                    pj.location,
+                    pj.description,
+                    COALESCE(pj.application_url, '') AS job_url,
+                    pj.created_at AS scraped_at
+                FROM posted_jobs pj
+                WHERE pj.is_active = TRUE
+                  AND (pj.expires_at IS NULL OR pj.expires_at > NOW())
+            ) combined
             ORDER BY scraped_at DESC NULLS LAST
             LIMIT %s
             """,
@@ -2985,19 +3131,46 @@ def get_recent_jobs(limit: int = 10) -> list:
 
 
 def get_new_jobs_since(since_timestamp) -> list:
-    """Return jobs scraped after since_timestamp, is_active=True, limit 100."""
+    """Return new jobs since timestamp across boards + Vertex posted jobs."""
     conn = get_connection()
     cur = conn.cursor()
     try:
         cur.execute(
             """
             SELECT id, source, job_title, company, location, description, job_url, scraped_at
-            FROM jobs
-            WHERE scraped_at > %s AND is_active = TRUE
+            FROM (
+                SELECT
+                    j.id,
+                    j.source,
+                    j.job_title,
+                    j.company,
+                    j.location,
+                    j.description,
+                    j.job_url,
+                    j.scraped_at
+                FROM jobs j
+                WHERE j.scraped_at > %s AND j.is_active = TRUE
+
+                UNION ALL
+
+                SELECT
+                    -pj.id AS id,
+                    'company_posted' AS source,
+                    pj.title AS job_title,
+                    pj.company_name AS company,
+                    pj.location,
+                    pj.description,
+                    COALESCE(pj.application_url, '') AS job_url,
+                    pj.created_at AS scraped_at
+                FROM posted_jobs pj
+                WHERE pj.created_at > %s
+                  AND pj.is_active = TRUE
+                  AND (pj.expires_at IS NULL OR pj.expires_at > NOW())
+            ) combined
             ORDER BY scraped_at DESC
             LIMIT 100
             """,
-            (since_timestamp,),
+            (since_timestamp, since_timestamp),
         )
         rows = cur.fetchall()
         cols = ["id", "source", "job_title", "company", "location", "description", "job_url", "scraped_at"]
@@ -3792,6 +3965,361 @@ def delete_posted_job(job_id: int, company_user_id: int) -> bool:
             "DELETE FROM posted_jobs WHERE id = %s AND company_user_id = %s",
             (job_id, company_user_id),
         )
+        conn.commit()
+        return cur.rowcount > 0
+    except Exception:
+        conn.rollback()
+        return False
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Vertex posted job applications (company pipeline)
+# ---------------------------------------------------------------------------
+
+_VERTEX_APP_COLS = [
+    "id", "posted_job_id", "jobseeker_user_id", "status", "cover_message",
+    "applicant_name", "applicant_email", "headline", "location",
+    "years_experience", "skills", "cv_filename", "profile_slug",
+    "company_notes", "applied_at", "updated_at",
+]
+
+
+def _row_to_vertex_application(row) -> dict:
+    d = dict(zip(_VERTEX_APP_COLS, row))
+    if d.get("skills") is None:
+        d["skills"] = []
+    for k in ("applied_at", "updated_at"):
+        if d.get(k) and hasattr(d[k], "isoformat"):
+            d[k] = d[k].isoformat()
+    return d
+
+
+def _sync_posted_job_applications_count(cur, posted_job_id: int) -> None:
+    cur.execute(
+        """
+        UPDATE posted_jobs
+        SET applications_count = (
+            SELECT COUNT(*)::int FROM posted_job_applications
+            WHERE posted_job_id = %s AND status != 'withdrawn'
+        ),
+        updated_at = NOW()
+        WHERE id = %s
+        """,
+        (posted_job_id, posted_job_id),
+    )
+
+
+def get_posted_job_company_owner(posted_job_id: int) -> Optional[int]:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT company_user_id FROM posted_jobs WHERE id = %s",
+            (posted_job_id,),
+        )
+        row = cur.fetchone()
+        return row[0] if row else None
+    finally:
+        cur.close()
+        conn.close()
+
+
+def has_posted_job_application(posted_job_id: int, jobseeker_user_id: int) -> bool:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT 1 FROM posted_job_applications
+            WHERE posted_job_id = %s AND jobseeker_user_id = %s
+            """,
+            (posted_job_id, jobseeker_user_id),
+        )
+        return cur.fetchone() is not None
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_posted_job_application_for_user(
+    posted_job_id: int, jobseeker_user_id: int
+) -> Optional[dict]:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            f"""
+            SELECT {", ".join(_VERTEX_APP_COLS)}
+            FROM posted_job_applications
+            WHERE posted_job_id = %s AND jobseeker_user_id = %s
+            """,
+            (posted_job_id, jobseeker_user_id),
+        )
+        row = cur.fetchone()
+        return _row_to_vertex_application(row) if row else None
+    finally:
+        cur.close()
+        conn.close()
+
+
+def create_posted_job_application(
+    posted_job_id: int,
+    jobseeker_user_id: int,
+    data: dict,
+) -> int:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            f"""
+            INSERT INTO posted_job_applications (
+                posted_job_id, jobseeker_user_id, status, cover_message,
+                applicant_name, applicant_email, headline, location,
+                years_experience, skills, cv_filename, profile_slug
+            )
+            VALUES (%s, %s, 'applied', %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (
+                posted_job_id,
+                jobseeker_user_id,
+                (data.get("cover_message") or "").strip() or None,
+                (data.get("applicant_name") or "").strip()[:255],
+                (data.get("applicant_email") or "").strip()[:255],
+                (data.get("headline") or "").strip()[:255] or None,
+                (data.get("location") or "").strip()[:255] or None,
+                int(data.get("years_experience") or 0),
+                list(data.get("skills") or []),
+                (data.get("cv_filename") or "").strip()[:255] or None,
+                (data.get("profile_slug") or "").strip()[:100] or None,
+            ),
+        )
+        app_id = cur.fetchone()[0]
+        _sync_posted_job_applications_count(cur, posted_job_id)
+        conn.commit()
+        return app_id
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_jobseeker_vertex_applications(jobseeker_user_id: int) -> list:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            f"""
+            SELECT
+                a.id, a.posted_job_id, a.jobseeker_user_id, a.status, a.cover_message,
+                a.applicant_name, a.applicant_email, a.headline, a.location,
+                a.years_experience, a.skills, a.cv_filename, a.profile_slug,
+                a.company_notes, a.applied_at, a.updated_at,
+                j.title AS job_title, j.company_name, j.location AS job_location
+            FROM posted_job_applications a
+            JOIN posted_jobs j ON j.id = a.posted_job_id
+            WHERE a.jobseeker_user_id = %s
+            ORDER BY a.updated_at DESC
+            """,
+            (jobseeker_user_id,),
+        )
+        rows = cur.fetchall()
+        out = []
+        for row in rows:
+            d = _row_to_vertex_application(row[:16])
+            d["job_title"] = row[16]
+            d["company_name"] = row[17]
+            d["job_location"] = row[18]
+            out.append(d)
+        return out
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_company_posted_job_applications(
+    company_user_id: int,
+    posted_job_id: Optional[int] = None,
+    status: Optional[str] = None,
+) -> list:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        clauses = ["j.company_user_id = %s"]
+        params: list = [company_user_id]
+        if posted_job_id is not None:
+            clauses.append("a.posted_job_id = %s")
+            params.append(posted_job_id)
+        if status:
+            clauses.append("a.status = %s")
+            params.append(status)
+        where = " AND ".join(clauses)
+        cur.execute(
+            f"""
+            SELECT
+                a.id, a.posted_job_id, a.jobseeker_user_id, a.status, a.cover_message,
+                a.applicant_name, a.applicant_email, a.headline, a.location,
+                a.years_experience, a.skills, a.cv_filename, a.profile_slug,
+                a.company_notes, a.applied_at, a.updated_at,
+                j.title AS job_title, j.company_name
+            FROM posted_job_applications a
+            JOIN posted_jobs j ON j.id = a.posted_job_id
+            WHERE {where}
+            ORDER BY a.applied_at DESC
+            """,
+            tuple(params),
+        )
+        rows = cur.fetchall()
+        out = []
+        for row in rows:
+            d = _row_to_vertex_application(row[:16])
+            d["job_title"] = row[16]
+            d["company_name"] = row[17]
+            out.append(d)
+        return out
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_posted_job_application_by_id(
+    application_id: int,
+    company_user_id: Optional[int] = None,
+) -> Optional[dict]:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        clauses = ["a.id = %s"]
+        params: list = [application_id]
+        if company_user_id is not None:
+            clauses.append("j.company_user_id = %s")
+            params.append(company_user_id)
+        cur.execute(
+            f"""
+            SELECT
+                a.id, a.posted_job_id, a.jobseeker_user_id, a.status, a.cover_message,
+                a.applicant_name, a.applicant_email, a.headline, a.location,
+                a.years_experience, a.skills, a.cv_filename, a.profile_slug,
+                a.company_notes, a.applied_at, a.updated_at,
+                j.title AS job_title, j.company_name, j.company_user_id
+            FROM posted_job_applications a
+            JOIN posted_jobs j ON j.id = a.posted_job_id
+            WHERE {" AND ".join(clauses)}
+            """,
+            tuple(params),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        d = _row_to_vertex_application(row[:16])
+        d["job_title"] = row[16]
+        d["company_name"] = row[17]
+        d["company_user_id"] = row[18]
+        return d
+    finally:
+        cur.close()
+        conn.close()
+
+
+def update_posted_job_application_status(
+    application_id: int,
+    company_user_id: int,
+    status: str,
+    company_notes: Optional[str] = None,
+) -> bool:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT a.posted_job_id
+            FROM posted_job_applications a
+            JOIN posted_jobs j ON j.id = a.posted_job_id
+            WHERE a.id = %s AND j.company_user_id = %s
+            """,
+            (application_id, company_user_id),
+        )
+        row = cur.fetchone()
+        if not row:
+            return False
+        posted_job_id = row[0]
+        if company_notes is not None:
+            cur.execute(
+                """
+                UPDATE posted_job_applications
+                SET status = %s,
+                    company_notes = %s,
+                    updated_at = NOW()
+                WHERE id = %s
+                  AND posted_job_id IN (
+                      SELECT id FROM posted_jobs WHERE company_user_id = %s
+                  )
+                """,
+                (
+                    status,
+                    (company_notes or "").strip() or None,
+                    application_id,
+                    company_user_id,
+                ),
+            )
+        else:
+            cur.execute(
+                """
+                UPDATE posted_job_applications
+                SET status = %s, updated_at = NOW()
+                WHERE id = %s
+                  AND posted_job_id IN (
+                      SELECT id FROM posted_jobs WHERE company_user_id = %s
+                  )
+                """,
+                (status, application_id, company_user_id),
+            )
+        if cur.rowcount == 0:
+            conn.rollback()
+            return False
+        _sync_posted_job_applications_count(cur, posted_job_id)
+        conn.commit()
+        return True
+    except Exception:
+        conn.rollback()
+        return False
+    finally:
+        cur.close()
+        conn.close()
+
+
+def withdraw_posted_job_application(
+    application_id: int,
+    jobseeker_user_id: int,
+) -> bool:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT posted_job_id FROM posted_job_applications
+            WHERE id = %s AND jobseeker_user_id = %s
+            """,
+            (application_id, jobseeker_user_id),
+        )
+        row = cur.fetchone()
+        if not row:
+            return False
+        posted_job_id = row[0]
+        cur.execute(
+            """
+            UPDATE posted_job_applications
+            SET status = 'withdrawn', updated_at = NOW()
+            WHERE id = %s AND jobseeker_user_id = %s
+            """,
+            (application_id, jobseeker_user_id),
+        )
+        _sync_posted_job_applications_count(cur, posted_job_id)
         conn.commit()
         return cur.rowcount > 0
     except Exception:

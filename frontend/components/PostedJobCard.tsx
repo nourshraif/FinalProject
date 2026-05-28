@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { PostedJob } from "@/types";
+import { ApplyOnVertexButton } from "@/components/ApplyOnVertexButton";
 
 function formatSalary(job: PostedJob): string {
   if (job.salary_min != null || job.salary_max != null) {
@@ -107,16 +108,19 @@ export function PostedJobCard({ job, showCompany = true }: PostedJobCardProps) {
       </div>
 
       {/* Bottom: posted date, View Details */}
-      <div className="mt-4 flex items-center justify-between border-t border-vertex-border pt-4">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-vertex-border pt-4">
         <span className="text-xs text-vertex-muted">
           Posted {daysAgo(job.created_at)}
         </span>
-        <Link
-          href={`/jobs/${job.id}`}
-          className="ghost-button rounded-lg px-3 py-1.5 text-sm font-medium"
-        >
-          View Details
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <ApplyOnVertexButton job={job} />
+          <Link
+            href={`/jobs/${job.id}`}
+            className="ghost-button rounded-lg px-3 py-1.5 text-sm font-medium"
+          >
+            View Details
+          </Link>
+        </div>
       </div>
     </div>
   );

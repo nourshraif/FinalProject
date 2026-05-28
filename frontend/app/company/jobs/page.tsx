@@ -209,10 +209,17 @@ function CompanyJobsContent() {
 
               <div className="mt-3 flex flex-wrap items-center gap-x-4 text-xs text-vertex-muted">
                 <span>👁 {job.views_count ?? 0} views</span>
+                <span>📋 {job.applications_count ?? 0} applicants</span>
                 <span>📅 {daysAgo(job.created_at)} posted</span>
               </div>
 
               <div className="mt-4 flex flex-wrap gap-2">
+                <Link
+                  href={`/company/jobs/${job.id}/applicants`}
+                  className="glow-button rounded-lg px-4 py-2 text-sm font-medium text-white"
+                >
+                  View applicants
+                </Link>
                 <Link
                   href={`/company/post-job/${job.id}`}
                   className="ghost-button rounded-lg px-4 py-2 text-sm font-medium"

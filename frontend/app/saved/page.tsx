@@ -11,6 +11,7 @@ import { getProfile, getSavedJobs, unsaveJob } from "@/lib/api";
 import type { SavedJob } from "@/types";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { SkeletonJobCard } from "@/components/Skeleton";
+import { AddApplicationButton } from "@/components/AddApplicationButton";
 
 function relativeTime(iso: string) {
   try {
@@ -45,7 +46,6 @@ function SavedContent() {
   const { showToast } = useToast();
   const [jobs, setJobs] = useState<SavedJob[]>([]);
   const [loading, setLoading] = useState(true);
-  const [plan, setPlan] = useState<string>(user?.plan || "free");
   const [profileSkills, setProfileSkills] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
@@ -156,19 +156,6 @@ function SavedContent() {
           </span>
         </div>
 
-        {plan === "free" && jobs.length >= 5 && !user?.is_admin && (
-          <div className="glass-card mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-4 text-center sm:text-left">
-            <p className="text-sm font-medium text-amber-100">
-              You have reached the 5 job limit on the Free plan.
-            </p>
-            <p className="mt-1 text-sm text-amber-200/80">
-              Upgrade to Pro for unlimited saved jobs.{" "}
-              <Link href="/pricing" className="font-semibold text-indigo-300 underline-offset-2 hover:text-indigo-200 hover:underline">
-                Upgrade
-              </Link>
-            </p>
-          </div>
-        )}
 
         {/* Search / filter */}
         <div className="mb-6 flex flex-wrap gap-3">
@@ -289,7 +276,7 @@ function SavedContent() {
                         type="button"
                         className="ghost-button rounded-lg px-3 py-1.5 text-xs"
                         onClick={() => {
-                          if (plan === "pro" || plan === "business") {
+                          if (user?.plan === "pro" || user?.plan === "business") {
                             router.push(`/skills-gap?job_id=${job.id}`);
                             return;
                           }
@@ -300,6 +287,14 @@ function SavedContent() {
                         📊 Analyze My Gap
                       </button>
                     )}
+                    <AddApplicationButton
+                      prefill={{
+                        job_title: job.job_title,
+                        company: job.company,
+                        location: job.location,
+                        job_url: job.job_url,
+                      }}
+                    />
                     <a
                       href={job.job_url}
                       target="_blank"

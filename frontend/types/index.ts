@@ -225,6 +225,8 @@ export interface Notification {
     | "request_declined"
     | "job_alert"
     | "new_job_match"
+    | "application_status"
+    | "job_application"
     | "profile_view"
     | "system";
   title: string;
@@ -239,6 +241,36 @@ export interface Subscription {
   status: "active" | "canceled" | "past_due" | "trialing";
   stripe_subscription_id?: string;
   current_period_end?: string;
+}
+
+export type VertexApplicationStatus =
+  | "applied"
+  | "reviewing"
+  | "interviewing"
+  | "offer"
+  | "rejected"
+  | "withdrawn";
+
+export interface VertexJobApplication {
+  id: number;
+  posted_job_id: number;
+  jobseeker_user_id: number;
+  status: VertexApplicationStatus;
+  cover_message?: string | null;
+  applicant_name: string;
+  applicant_email: string;
+  headline?: string | null;
+  location?: string | null;
+  years_experience?: number;
+  skills: string[];
+  cv_filename?: string | null;
+  profile_slug?: string | null;
+  company_notes?: string | null;
+  applied_at: string;
+  updated_at: string;
+  job_title?: string;
+  company_name?: string;
+  job_location?: string;
 }
 
 export interface PostedJob {

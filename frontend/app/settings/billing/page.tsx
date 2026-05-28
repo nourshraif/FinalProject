@@ -13,7 +13,7 @@ import { Check } from "lucide-react";
 
 function BillingContent() {
   const router = useRouter();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { showToast } = useToast();
   const [sub, setSub] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
@@ -213,16 +213,18 @@ function BillingContent() {
             <h3 className="text-lg font-bold text-white">
               {sub?.plan === "free"
                 ? "Upgrade"
-                : sub?.plan === "pro"
+                : sub?.plan === "pro" && user?.user_type === "company"
                   ? "Upgrade to Business"
                   : "You're on our best plan"}
             </h3>
             {sub?.plan === "free" && (
               <p className="mt-2 text-sm text-vertex-muted">
-                Pro and Business plans available on the pricing page.
+                {user?.user_type === "company"
+                  ? "Pro and Business plans available on the pricing page."
+                  : "Pro plan is available on the pricing page."}
               </p>
             )}
-            {sub?.plan === "pro" && (
+            {sub?.plan === "pro" && user?.user_type === "company" && (
               <Link
                 href="/pricing"
                 className="mt-4 inline-block rounded-lg bg-cyan-500/20 px-4 py-2.5 text-sm font-medium text-cyan-400 hover:bg-cyan-500/30"

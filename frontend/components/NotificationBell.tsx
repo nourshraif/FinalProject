@@ -148,6 +148,8 @@ export default function NotificationBell() {
       request_declined: "❌",
       job_alert: "🔔",
       new_job_match: "💼",
+      job_application: "📥",
+      application_status: "📋",
       profile_view: "👁",
       system: "🎉",
     };

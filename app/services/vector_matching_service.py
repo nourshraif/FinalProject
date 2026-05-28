@@ -8,6 +8,7 @@ Requires: pgvector extension installed in PostgreSQL
 """
 
 import os
+import re
 from typing import List, Dict, Optional, Tuple
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -348,6 +349,40 @@ class VectorSkillMatcher:
             })
         
         return matching_jobs
+
+    @staticmethod
+    def _is_soft_skill(skill: str) -> bool:
+        soft_keywords = (
+            "communication", "teamwork", "team", "leadership", "problem solving",
+            "critical thinking", "time management", "collaboration", "english",
+            "arabic", "sales", "management", "organized", "organization",
+        )
+        s = (skill or "").lower().strip()
+        return any(k in s for k in soft_keywords)
+
+    @staticmethod
+    def _is_technical_skill(skill: str) -> bool:
+        technical_keywords = (
+            "python", "java", "javascript", "typescript", "c++", "sql", "php",
+            "kotlin", "c#", "html", "css", "react", "node", "django", "flask",
+            "scikit", "pandas", "numpy", "matplotlib", "nlp", "ml", "ai",
+            "tensorflow", "pytorch", "regression", "classification", "k-means",
+            "database", "arduino", "assembly", "tf-idf",
+        )
+        s = (skill or "").lower().strip()
+        return any(k in s for k in technical_keywords)
+
+    @staticmethod
+    def _count_keyword_hits(skills: List[str], text: str) -> int:
+        hits = 0
+        for skill in skills:
+            token = (skill or "").strip().lower()
+            if not token:
+                continue
+            # Word boundaries reduce noisy substring matches.
+            if re.search(rf"\b{re.escape(token)}\b", text):
+                hits += 1
+        return hits
     
     def find_matching_jobs_hybrid(self,
                                   cv_skills: List[str],
@@ -372,8 +407,11 @@ class VectorSkillMatcher:
         # Get vector matches
         cv_embedding = self.embed_skills(cv_skills)
         
-        # Normalize skills for keyword matching
-        cv_skills_lower = [s.lower().strip() for s in cv_skills]
+        # Split CV skills so technical relevance drives ranking more than soft skills.
+        cv_skills_norm = [s.strip() for s in cv_skills if str(s).strip()]
+        tech_skills = [s for s in cv_skills_norm if self._is_technical_skill(s)]
+        soft_skills = [s for s in cv_skills_norm if self._is_soft_skill(s)]
+        other_skills = [s for s in cv_skills_norm if s not in tech_skills and s not in soft_skills]
         
         self.cur.execute("""
             SELECT
@@ -427,11 +465,26 @@ class VectorSkillMatcher:
             (job_id, source, title, company, location, description, 
              url, scraped_at, skills_text, vector_sim) = row
             
-            # Calculate keyword matching score
-            description_lower = (description or "").lower()
-            keyword_matches = sum(1 for skill in cv_skills_lower 
-                                 if skill in description_lower)
-            keyword_score = keyword_matches / len(cv_skills) if cv_skills else 0
+            # Calculate weighted keyword matching score.
+            full_text = " ".join([
+                str(title or ""),
+                str(company or ""),
+                str(location or ""),
+                str(description or ""),
+                str(skills_text or ""),
+            ]).lower()
+            tech_hits = self._count_keyword_hits(tech_skills, full_text)
+            other_hits = self._count_keyword_hits(other_skills, full_text)
+            soft_hits = self._count_keyword_hits(soft_skills, full_text)
+
+            # Tech skills carry most of the keyword signal, soft skills least.
+            weighted_hits = (2.5 * tech_hits) + (1.0 * other_hits) + (0.25 * soft_hits)
+            max_possible = (2.5 * len(tech_skills)) + (1.0 * len(other_skills)) + (0.25 * len(soft_skills))
+            keyword_score = (weighted_hits / max_possible) if max_possible > 0 else 0.0
+
+            # If user has technical skills but job has none of them, downrank heavily.
+            if tech_skills and tech_hits == 0:
+                keyword_score *= 0.25
             
             # Combined score
             combined_score = (vector_weight * float(vector_sim)) + (keyword_weight * keyword_score)
@@ -448,6 +501,11 @@ class VectorSkillMatcher:
                 'skills_text': skills_text,
                 'vector_similarity': float(vector_sim),
                 'keyword_score': keyword_score,
+                'keyword_hits': {
+                    'technical': tech_hits,
+                    'other': other_hits,
+                    'soft': soft_hits,
+                },
                 'combined_score': combined_score,
                 'match_percentage': combined_score * 100,
                 'cv_skills': cv_skills
@@ -464,7 +522,6 @@ class VectorSkillMatcher:
             title_norm = (job['title'] or '').lower().strip()
             company_norm = (job['company'] or '').lower().strip()
             # Remove common noise words so "Software Engineer" == "software engineer"
-            import re
             title_norm = re.sub(r'[^a-z0-9\s]', '', title_norm).strip()
             company_norm = re.sub(r'[^a-z0-9\s]', '', company_norm).strip()
             return (title_norm, company_norm)

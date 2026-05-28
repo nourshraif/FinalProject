@@ -58,7 +58,7 @@ export default function TermsPage() {
             <li>Upload only your own CV</li>
             <li>Provide accurate profile information</li>
             <li>Do not spam companies with applications</li>
-            <li>Free plan limited to 5 saved jobs</li>
+            <li>Users can save jobs without plan limits</li>
             <li>Pro plan required for full access</li>
           </ul>
         </Section>

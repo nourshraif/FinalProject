@@ -661,3 +661,112 @@ def send_direct_email(
     except Exception as e:
         print(f"Direct email error: {e}")
         return False
+
+
+def send_new_job_application_email(
+    to_email: str,
+    company_name: str,
+    job_title: str,
+    candidate_name: str,
+    applicants_url: str,
+) -> bool:
+    """Notify company when a candidate applies to a Vertex posted job."""
+    try:
+        resend.Emails.send({
+            "from": FROM_EMAIL,
+            "to": [to_email],
+            "subject": f"New application: {job_title}",
+            "html": f"""
+      <div style="font-family: Arial, sans-serif;
+                  max-width: 600px; margin: 0 auto;
+                  background: #0a0a0f; color: white;
+                  padding: 40px; border-radius: 12px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <h1 style="font-size: 28px; margin: 0;">
+            <span style="color: white;">Vert</span>
+            <span style="color: #6366f1;">ex</span>
+          </h1>
+        </div>
+        <h2 style="color: white; font-size: 22px;">New applicant</h2>
+        <p style="color: #94a3b8; line-height: 1.6;">
+          <strong style="color: white;">{candidate_name}</strong> applied to
+          <strong style="color: white;">{job_title}</strong> at {company_name}.
+        </p>
+        <div style="text-align: center; margin: 32px 0;">
+          <a href="{applicants_url}"
+             style="background: #6366f1; color: white; padding: 14px 32px;
+                    border-radius: 8px; text-decoration: none; font-weight: bold;">
+            Review applicants →
+          </a>
+        </div>
+        <p style="color: #64748b; font-size: 12px; text-align: center;">
+          © 2026 Vertex
+        </p>
+      </div>
+            """,
+        })
+        return True
+    except Exception:
+        logger.exception("send_new_job_application_email failed")
+        return False
+
+
+def send_application_status_email(
+    to_email: str,
+    candidate_name: str,
+    job_title: str,
+    company_name: str,
+    status_label: str,
+    applications_url: str,
+    details: Optional[str] = None,
+) -> bool:
+    """Notify job seeker when company updates application status."""
+    details_block = ""
+    if details and details.strip():
+        safe_details = (
+            details.strip()
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\n", "<br>")
+        )
+        details_block = f"""
+        <div style="margin: 20px 0; padding: 16px; background: rgba(255,255,255,0.06);
+                    border-radius: 8px; border-left: 3px solid #6366f1;">
+          <p style="color: #94a3b8; font-size: 12px; margin: 0 0 8px 0;">Details</p>
+          <p style="color: #e2e8f0; line-height: 1.6; margin: 0; font-size: 14px;">
+            {safe_details}
+          </p>
+        </div>
+        """
+    try:
+        resend.Emails.send({
+            "from": FROM_EMAIL,
+            "to": [to_email],
+            "subject": f"Application update: {job_title}",
+            "html": f"""
+      <div style="font-family: Arial, sans-serif;
+                  max-width: 600px; margin: 0 auto;
+                  background: #0a0a0f; color: white;
+                  padding: 40px; border-radius: 12px;">
+        <h2 style="color: white; font-size: 22px;">Hi {candidate_name},</h2>
+        <p style="color: #94a3b8; line-height: 1.6;">
+          Your application for <strong style="color: white;">{job_title}</strong>
+          at {company_name} was updated to:
+          <strong style="color: #a5b4fc;">{status_label}</strong>.
+        </p>
+        {details_block}
+        <div style="text-align: center; margin: 28px 0;">
+          <a href="{applications_url}"
+             style="background: #6366f1; color: white; padding: 12px 28px;
+                    border-radius: 8px; text-decoration: none; font-weight: bold;">
+            View Application Tracker
+          </a>
+        </div>
+      </div>
+            """,
+        })
+        return True
+    except Exception:
+        logger.exception("send_application_status_email failed")
+        return False

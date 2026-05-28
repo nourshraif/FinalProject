@@ -4,6 +4,8 @@ import type { Job } from "@/types";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SaveButton } from "@/components/SaveButton";
+import { AddApplicationButton } from "@/components/AddApplicationButton";
+import { ApplyOnVertexButton } from "@/components/ApplyOnVertexButton";
 import { ExternalLink, MapPin, Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
@@ -25,6 +27,7 @@ export interface JobCardProps {
   initialSaved?: boolean;
   showAnalyzeGap?: boolean;
   isProUser?: boolean;
+  vertexJob?: { id: number; title: string; company_name: string; location?: string };
 }
 
 function MatchScoreBadge({ score }: { score: number }) {
@@ -60,6 +63,7 @@ export function JobCard(props: JobCardProps) {
     initialSaved = false,
     showAnalyzeGap = false,
     isProUser = false,
+    vertexJob,
   } = props;
   const router = useRouter();
   const { showToast } = useToast();
@@ -122,6 +126,25 @@ export function JobCard(props: JobCardProps) {
               <ExternalLink className="h-3.5 w-3.5" />
             </a>
           </Button>
+          {vertexJob ? (
+            <ApplyOnVertexButton
+              job={{
+                id: vertexJob.id,
+                title: vertexJob.title,
+                company_name: vertexJob.company_name,
+                location: vertexJob.location,
+              }}
+            />
+          ) : (
+            <AddApplicationButton
+              prefill={{
+                job_title: title,
+                company,
+                location: location || undefined,
+                job_url: url || undefined,
+              }}
+            />
+          )}
           {showAnalyzeGap && jobId != null && (
             <button
               type="button"
@@ -160,6 +183,8 @@ export function JobCardFromJob({
   showAnalyzeGap?: boolean;
   isProUser?: boolean;
 }) {
+  const src = (job.source || "").toLowerCase().replace(/[\s_-]+/g, "");
+  const isVertex = src === "companyposted";
   return (
     <JobCard
       title={job.title}
@@ -175,6 +200,16 @@ export function JobCardFromJob({
       initialSaved={initialSaved}
       showAnalyzeGap={showAnalyzeGap}
       isProUser={isProUser}
+      vertexJob={
+        isVertex
+          ? {
+              id: job.id,
+              title: job.title,
+              company_name: job.company,
+              location: job.location,
+            }
+          : undefined
+      }
     />
   );
 }

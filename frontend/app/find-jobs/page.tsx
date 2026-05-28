@@ -13,6 +13,7 @@ import { useAuth } from "@/context/AuthContext";
 
 const LIMIT = 20;
 const DEBOUNCE_MS = 500;
+const VERTEX_SOURCE = "company_posted";
 
 export default function FindJobsPage() {
   const { token, user } = useAuth();
@@ -34,7 +35,9 @@ export default function FindJobsPage() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    getJobSources().then(setSources).catch(() => setSources([]));
+    getJobSources()
+      .then((list) => setSources((list || []).filter((s) => s !== VERTEX_SOURCE)))
+      .catch(() => setSources([]));
   }, []);
 
   useEffect(() => {
@@ -72,8 +75,9 @@ export default function FindJobsPage() {
       offset,
     })
       .then((res) => {
-        setJobs(res.jobs);
-        setTotal(res.total);
+        const boardJobs = (res.jobs || []).filter((job) => job.source !== VERTEX_SOURCE);
+        setJobs(boardJobs);
+        setTotal(boardJobs.length);
         setPage(res.page);
         setTotalPages(res.total_pages);
       })

@@ -26,11 +26,9 @@ import {
 } from "lucide-react";
 
 const PAGE_SIZE = 20;
-/** "All jobs": fetch this many from each source per page (merge up to 40). */
-const ALL_TAB_PER_SOURCE = 20;
 const DEBOUNCE_MS = 500;
 
-type Tab = "all" | "posted" | "boards";
+type Tab = "posted" | "boards";
 
 type UnifiedItem =
   | { type: "scraped"; job: ScrapedJob; sortDate: string }
@@ -39,7 +37,7 @@ type UnifiedItem =
 export default function SearchPage() {
   const searchParams = useSearchParams();
   const { token, user } = useAuth();
-  const [tab, setTab] = useState<Tab>("all");
+  const [tab, setTab] = useState<Tab>("boards");
   const [query, setQuery] = useState("");
   const [queryDebounced, setQueryDebounced] = useState("");
   const [sources, setSources] = useState<string[]>([]);
@@ -75,7 +73,9 @@ export default function SearchPage() {
   }, [qParam]);
 
   useEffect(() => {
-    getJobSources().then(setSources).catch(() => setSources([]));
+    getJobSources()
+      .then((list) => setSources((list || []).filter((s) => s !== "company_posted")))
+      .catch(() => setSources([]));
   }, []);
 
   useEffect(() => {
@@ -114,7 +114,6 @@ export default function SearchPage() {
     const q = queryDebounced.trim() || undefined;
     const loc = locationDebounced.trim() || undefined;
     const offset = (effPage - 1) * PAGE_SIZE;
-    const allOffset = (effPage - 1) * ALL_TAB_PER_SOURCE;
     let cancelled = false;
 
     const mapPosted = (job: PostedJob): UnifiedItem => ({
@@ -130,52 +129,6 @@ export default function SearchPage() {
 
     setLoading(true);
     setLoadError(null);
-
-    if (tab === "all") {
-      Promise.all([
-        getPostedJobs({ limit: ALL_TAB_PER_SOURCE, offset: allOffset, search: q }),
-        searchJobs({
-          q,
-          source: sourceFilter || undefined,
-          location: loc,
-          date_posted: datePosted === "all" ? undefined : datePosted,
-          sort_by: sortBy,
-          limit: ALL_TAB_PER_SOURCE,
-          offset: allOffset,
-        }),
-      ])
-        .then(([postedRes, scrapedRes]) => {
-          if (cancelled) return;
-          const combined: UnifiedItem[] = [
-            ...(postedRes.jobs || []).map(mapPosted),
-            ...(scrapedRes.jobs || []).map(mapScraped),
-          ];
-          combined.sort((a, b) => (a.sortDate > b.sortDate ? -1 : 1));
-          setItems(combined);
-          const pTotal = postedRes.total ?? 0;
-          const sTotal = scrapedRes.total ?? 0;
-          setTotalResults(pTotal + sTotal);
-          const tp = Math.max(
-            1,
-            Math.max(Math.ceil(pTotal / ALL_TAB_PER_SOURCE), Math.ceil(sTotal / ALL_TAB_PER_SOURCE))
-          );
-          setTotalPages(tp);
-        })
-        .catch(() => {
-          if (!cancelled) {
-            setItems([]);
-            setTotalResults(0);
-            setTotalPages(1);
-            setLoadError("Could not load jobs. Please try again.");
-          }
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false);
-        });
-      return () => {
-        cancelled = true;
-      };
-    }
 
     if (tab === "posted") {
       getPostedJobs({
@@ -303,9 +256,8 @@ export default function SearchPage() {
   const pillActive =
     "border border-indigo-500/50 bg-indigo-500/15 text-indigo-100 shadow-[0_0_0_1px_rgba(99,102,241,0.2)]";
 
-  const rangeStart = totalResults === 0 || tab === "all" ? 0 : (page - 1) * PAGE_SIZE + 1;
-  const rangeEnd =
-    tab === "all" ? items.length : totalResults === 0 ? 0 : Math.min(page * PAGE_SIZE, totalResults);
+  const rangeStart = totalResults === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const rangeEnd = totalResults === 0 ? 0 : Math.min(page * PAGE_SIZE, totalResults);
 
   const goPage = useCallback(
     (p: number) => {
@@ -373,6 +325,7 @@ export default function SearchPage() {
                       setLoadError(null);
                     }}
                     aria-label="Filter by job board"
+                    disabled={tab === "posted"}
                   >
                     <option value="">All boards</option>
                     {sources.map((s) => (
@@ -492,8 +445,7 @@ export default function SearchPage() {
         <main className="min-w-0">
           <div className="mb-4 flex flex-wrap gap-2">
             {[
-              { id: "all" as Tab, label: "All jobs" },
-              { id: "posted" as Tab, label: "Posted on Vertex" },
+              { id: "posted" as Tab, label: "Vertex Jobs" },
               { id: "boards" as Tab, label: "Job boards" },
             ].map((t) => (
               <button
@@ -501,6 +453,7 @@ export default function SearchPage() {
                 type="button"
                 onClick={() => {
                   setTab(t.id);
+                  if (t.id === "posted") setSourceFilter("");
                   setPage(1);
                   setLoadError(null);
                 }}
@@ -518,15 +471,6 @@ export default function SearchPage() {
             <h2 className="text-sm font-bold text-white sm:text-base">
               {!loading && loadError ? (
                 <span className="text-slate-400">Could not load results</span>
-              ) : tab === "all" ? (
-                <>
-                  {totalResults.toLocaleString()} total listing{totalResults === 1 ? "" : "s"} indexed
-                  {items.length > 0 && (
-                    <span className="ml-2 font-normal text-slate-400">
-                      · {items.length} on this page · page {page} of {totalPages}
-                    </span>
-                  )}
-                </>
               ) : (
                 <>
                   {totalResults.toLocaleString()} result{totalResults !== 1 ? "s" : ""}
@@ -552,12 +496,6 @@ export default function SearchPage() {
             </select>
           </div>
 
-          {tab === "all" && (
-            <p className="mb-3 text-xs text-slate-500">
-              All jobs loads {ALL_TAB_PER_SOURCE} posted and {ALL_TAB_PER_SOURCE} board listings per page, merged by
-              date.
-            </p>
-          )}
 
           {activeFilters.length > 0 && (
             <div className="mb-4 flex flex-wrap items-center gap-2">

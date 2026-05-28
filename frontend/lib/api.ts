@@ -18,6 +18,8 @@ import type {
   Notification,
   Subscription,
   PostedJob,
+  VertexJobApplication,
+  VertexApplicationStatus,
   ScrapedJob,
   SkillsGapResult,
   AdminUserDetail,
@@ -275,6 +277,92 @@ export async function getCompanyPostedJobs(
     headers: { Authorization: `Bearer ${token}` },
   });
   return handleResponse<PostedJob[]>(res);
+}
+
+// ---------------------------------------------------------------------------
+// Vertex job applications (posted jobs only)
+// ---------------------------------------------------------------------------
+
+export async function getVertexApplyStatus(
+  token: string,
+  postedJobId: number
+): Promise<{ applied: boolean; application: VertexJobApplication | null }> {
+  const res = await fetch(`${API_BASE}/api/jobs/posted/${postedJobId}/apply-status`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return handleResponse(res);
+}
+
+export async function applyToVertexJob(
+  token: string,
+  postedJobId: number,
+  coverMessage?: string
+): Promise<{ id: number; success: boolean; status: string }> {
+  const res = await fetch(`${API_BASE}/api/jobs/posted/${postedJobId}/apply`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ cover_message: coverMessage || undefined }),
+  });
+  return handleResponse(res);
+}
+
+export async function getMyVertexApplications(
+  token: string
+): Promise<VertexJobApplication[]> {
+  const res = await fetch(`${API_BASE}/api/my-vertex-applications`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return handleResponse<VertexJobApplication[]>(res);
+}
+
+export async function withdrawVertexApplication(
+  token: string,
+  applicationId: number
+): Promise<{ success: boolean }> {
+  const res = await fetch(
+    `${API_BASE}/api/my-vertex-applications/${applicationId}/withdraw`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+  return handleResponse(res);
+}
+
+export async function getCompanyApplications(
+  token: string,
+  params?: { posted_job_id?: number; status?: VertexApplicationStatus }
+): Promise<VertexJobApplication[]> {
+  const q = new URLSearchParams();
+  if (params?.posted_job_id != null) {
+    q.set("posted_job_id", String(params.posted_job_id));
+  }
+  if (params?.status) q.set("status", params.status);
+  const qs = q.toString();
+  const res = await fetch(
+    `${API_BASE}/api/company/applications${qs ? `?${qs}` : ""}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  return handleResponse<VertexJobApplication[]>(res);
+}
+
+export async function updateCompanyApplicationStatus(
+  token: string,
+  applicationId: number,
+  data: { status: VertexApplicationStatus; company_notes?: string }
+): Promise<{ success: boolean; status: string }> {
+  const res = await fetch(`${API_BASE}/api/company/applications/${applicationId}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  });
+  return handleResponse(res);
 }
 
 /** Trigger scraper run. No args = public endpoint; with token = admin endpoint. */

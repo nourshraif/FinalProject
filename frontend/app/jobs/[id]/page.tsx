@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { getPostedJobById } from "@/lib/api";
+import { ApplyOnVertexButton } from "@/components/ApplyOnVertexButton";
 import type { PostedJob } from "@/types";
 
 function formatSalary(job: PostedJob): string {
@@ -164,27 +165,24 @@ export default function JobDetailPage() {
                   </div>
                 </div>
               )}
+              <ApplyOnVertexButton job={job} fullWidth className="mb-3" />
               {applyUrl ? (
                 <a
                   href={applyUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="glow-button mb-4 flex w-full items-center justify-center rounded-lg py-3 font-medium text-white"
+                  className="ghost-button mb-4 flex w-full items-center justify-center rounded-lg py-2.5 text-sm font-medium"
                 >
-                  Apply Now →
+                  Apply on company website →
                 </a>
               ) : applyEmail ? (
                 <a
                   href={`mailto:${applyEmail}`}
-                  className="glow-button mb-4 flex w-full items-center justify-center rounded-lg py-3 font-medium text-white"
+                  className="ghost-button mb-4 flex w-full items-center justify-center rounded-lg py-2.5 text-sm font-medium"
                 >
-                  Apply via Email
+                  Apply via email
                 </a>
-              ) : (
-                <p className="mb-4 text-sm text-vertex-muted">
-                  Contact company for application details.
-                </p>
-              )}
+              ) : null}
               <p className="text-xs text-vertex-muted">
                 👁 {job.views_count ?? 0} people viewed this
               </p>

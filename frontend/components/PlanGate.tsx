@@ -10,7 +10,6 @@ import type { Subscription } from "@/types";
 export type PlanGateFeature =
   | "view_matches"
   | "skills_gap"
-  | "save_jobs"
   | "application_tracker"
   | "job_alerts"
   | "search_candidates"
@@ -30,12 +29,6 @@ const FEATURE_COPY: Record<
     title: "Pro feature",
     description:
       "Upgrade to Pro to analyze your skills gap and get a personalized learning path.",
-    requiredPlan: "pro",
-  },
-  save_jobs: {
-    title: "Pro feature",
-    description:
-      "Upgrade to Pro to save unlimited jobs and never miss an opportunity.",
     requiredPlan: "pro",
   },
   application_tracker: {

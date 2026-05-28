@@ -136,6 +136,14 @@ from app.database.db import (
     update_posted_job as db_update_posted_job,
     toggle_job_active as db_toggle_job_active,
     delete_posted_job as db_delete_posted_job,
+    has_posted_job_application as db_has_posted_job_application,
+    get_posted_job_application_for_user as db_get_posted_job_application_for_user,
+    create_posted_job_application as db_create_posted_job_application,
+    get_jobseeker_vertex_applications as db_get_jobseeker_vertex_applications,
+    get_company_posted_job_applications as db_get_company_posted_job_applications,
+    get_posted_job_application_by_id as db_get_posted_job_application_by_id,
+    update_posted_job_application_status as db_update_posted_job_application_status,
+    withdraw_posted_job_application as db_withdraw_posted_job_application,
     create_notification as db_create_notification,
     get_user_notifications as db_get_user_notifications,
     get_unread_count as db_get_unread_count,
@@ -153,6 +161,8 @@ from api.email_service import (
     send_support_reply_email,
     send_announcement_email,
     send_direct_email,
+    send_new_job_application_email,
+    send_application_status_email,
 )
 from api.job_alerts_scheduler import create_scheduler
 from api.skills_gap_service import analyze_job_specific_gap
@@ -194,28 +204,35 @@ scheduler = create_scheduler()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from app.database.db import ensure_admin_platform_tables
+    from app.database.db import (
+        ensure_admin_platform_tables,
+        ensure_vertex_application_tables,
+        ensure_notification_application_types,
+    )
 
     ensure_admin_platform_tables()
+    ensure_vertex_application_tables()
+    ensure_notification_application_types()
+    print("Vertex application tables ready")
 
     # ── Initialize vector tables (creates posted_job_embeddings etc.) ────
     try:
         from app.services.vector_matching_service import VectorSkillMatcher
         _matcher = VectorSkillMatcher()
         _matcher.close()
-        print("✓ Vector tables and indexes created")
+        print("Vector tables and indexes created")
     except Exception as e:
         print(f"Warning: Vector service init failed: {e}")
     # ─────────────────────────────────────────────────────────────────────
 
     scheduler.start()
-    print("✅ Job alerts scheduler started")
-    print("📅 Nightly scraper: 2:00 AM (full ingest to DB)")
-    print("📅 Daily alerts: 8:00 AM")
-    print("📅 Weekly alerts: Monday 9:00 AM")
+    print("Job alerts scheduler started")
+    print("Nightly scraper: 2:00 AM (full ingest to DB)")
+    print("Daily alerts: 8:00 AM")
+    print("Weekly alerts: Monday 9:00 AM")
     yield
     scheduler.shutdown()
-    print("🛑 Scheduler stopped")
+    print("Scheduler stopped")
 
 
 app = FastAPI(
@@ -429,6 +446,20 @@ class ApplicationUpdate(BaseModel):
     notes: Optional[str] = None
 
 
+VERTEX_APPLICATION_STATUSES = (
+    "applied", "reviewing", "interviewing", "offer", "rejected", "withdrawn"
+)
+
+
+class VertexApplyCreate(BaseModel):
+    cover_message: Optional[str] = None
+
+
+class VertexApplicationStatusUpdate(BaseModel):
+    status: str
+    company_notes: Optional[str] = None
+
+
 class CompanyProfileUpdate(BaseModel):
     company_name: str
     website: Optional[str] = None
@@ -571,10 +602,10 @@ def check_plan_access(current_user: dict, feature: str) -> bool:
         "view_profile",
         "upload_cv",
         "browse_jobs",
+        "save_jobs",
     ]
     JOBSEEKER_PRO_FEATURES = [
         "view_matches",
-        "save_jobs",
         "skills_gap",
         "priority_matching",
         "profile_boost",
@@ -1777,13 +1808,12 @@ def jobs_search(
     offset: int = 0,
 ):
     """
-    Search jobs - returns both company-posted AND scraped jobs.
-    Company-posted jobs appear first.
-    If a company is registered AND posts a job, their job is shown (not the scraped version).
+    Search external job-board listings only (scraped jobs table).
+    Vertex-posted jobs are served by /api/jobs/posted.
     """
     import math
     try:
-        jobs_list, total = db_search_jobs_with_company_priority(
+        jobs_list, total = db_search_jobs(
             q=q,
             source=source,
             location=location,
@@ -1877,6 +1907,272 @@ def get_posted_job(job_id: int):
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
+
+
+# ---------------------------------------------------------------------------
+# Vertex job applications (posted jobs only)
+# ---------------------------------------------------------------------------
+@app.get("/api/jobs/posted/{job_id}/apply-status")
+def get_vertex_apply_status(
+    job_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    """Whether the current job seeker has applied to this Vertex job."""
+    if current_user.get("user_type") != "jobseeker":
+        return {"applied": False, "application": None}
+    app = db_get_posted_job_application_for_user(job_id, current_user["id"])
+    if not app:
+        return {"applied": False, "application": None}
+    return {"applied": app.get("status") != "withdrawn", "application": app}
+
+
+@app.post("/api/jobs/posted/{job_id}/apply")
+def apply_to_vertex_job(
+    job_id: int,
+    body: VertexApplyCreate,
+    current_user: dict = Depends(get_current_user),
+):
+    """Apply to a Vertex posted job with profile snapshot."""
+    if current_user.get("user_type") != "jobseeker":
+        raise HTTPException(status_code=403, detail="Job seeker access only")
+    job = db_get_posted_job_by_id(job_id)
+    if not job or not job.get("is_active"):
+        raise HTTPException(status_code=404, detail="Job not found or not accepting applications")
+    if job.get("expires_at"):
+        try:
+            from datetime import datetime
+
+            exp = job["expires_at"]
+            if isinstance(exp, str):
+                exp = datetime.fromisoformat(exp.replace("Z", "+00:00"))
+            if exp and exp < datetime.utcnow():
+                raise HTTPException(status_code=400, detail="This job posting has expired")
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+    if db_has_posted_job_application(job_id, current_user["id"]):
+        existing = db_get_posted_job_application_for_user(job_id, current_user["id"])
+        if existing and existing.get("status") == "withdrawn":
+            raise HTTPException(
+                status_code=400,
+                detail="You previously withdrew this application. Contact the company to re-apply.",
+            )
+        raise HTTPException(status_code=409, detail="You have already applied to this job")
+    profile = db_get_user_profile(current_user["id"]) or {}
+    if not profile.get("cv_filename"):
+        raise HTTPException(
+            status_code=400,
+            detail="Upload your CV on your profile before applying on Vertex",
+        )
+    app_data = {
+        "cover_message": body.cover_message,
+        "applicant_name": profile.get("full_name") or current_user.get("full_name") or "",
+        "applicant_email": current_user.get("email") or profile.get("email") or "",
+        "headline": profile.get("headline"),
+        "location": profile.get("location"),
+        "years_experience": profile.get("years_experience") or 0,
+        "skills": profile.get("skills") or [],
+        "cv_filename": profile.get("cv_filename"),
+        "profile_slug": profile.get("profile_slug"),
+    }
+    if not app_data["applicant_name"] or not app_data["applicant_email"]:
+        raise HTTPException(status_code=400, detail="Complete your profile before applying")
+    new_id = db_create_posted_job_application(job_id, current_user["id"], app_data)
+    job_title = job.get("title") or "the role"
+    company_name = job.get("company_name") or "the company"
+    try:
+        db_create_notification(
+            user_id=current_user["id"],
+            type="application_status",
+            title="Application submitted",
+            message=f"You applied to {job_title} at {company_name}. Track updates in your Application Tracker.",
+            link="/tracker",
+        )
+    except Exception:
+        pass
+    company_user = db_get_user_by_id(job["company_user_id"])
+    if company_user:
+        try:
+            db_create_notification(
+                user_id=company_user["id"],
+                type="job_application",
+                title="New job application",
+                message=f'{app_data["applicant_name"]} applied to {job_title}',
+                link=f"/company/jobs/{job_id}/applicants",
+            )
+        except Exception:
+            pass
+        try:
+            send_new_job_application_email(
+                to_email=company_user["email"],
+                company_name=company_name,
+                job_title=job_title,
+                candidate_name=app_data["applicant_name"],
+                applicants_url=f'{os.getenv("APP_URL", "http://localhost:3000")}/company/jobs/{job_id}/applicants',
+            )
+        except Exception:
+            pass
+    # Also add to personal tracker if Pro (best-effort)
+    try:
+        if check_plan_access(current_user, "application_tracker"):
+            db_create_application(
+                current_user["id"],
+                {
+                    "job_title": job.get("title") or "",
+                    "company": job.get("company_name") or "",
+                    "job_url": f'/jobs/{job_id}',
+                    "location": job.get("location"),
+                    "status": "applied",
+                    "notes": "Applied on Vertex",
+                },
+            )
+    except Exception:
+        pass
+    return {"id": new_id, "success": True, "status": "applied"}
+
+
+@app.get("/api/my-vertex-applications")
+def get_my_vertex_applications(current_user: dict = Depends(get_current_user)):
+    """Job seeker's applications to Vertex posted jobs."""
+    if current_user.get("user_type") != "jobseeker":
+        raise HTTPException(status_code=403, detail="Job seeker access only")
+    return db_get_jobseeker_vertex_applications(current_user["id"])
+
+
+@app.post("/api/my-vertex-applications/{application_id}/withdraw")
+def withdraw_vertex_application(
+    application_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    if current_user.get("user_type") != "jobseeker":
+        raise HTTPException(status_code=403, detail="Job seeker access only")
+    app_before = db_get_posted_job_application_by_id(application_id)
+    if (
+        not app_before
+        or app_before.get("jobseeker_user_id") != current_user["id"]
+        or app_before.get("status") == "withdrawn"
+    ):
+        raise HTTPException(status_code=404, detail="Application not found")
+    if not db_withdraw_posted_job_application(application_id, current_user["id"]):
+        raise HTTPException(status_code=404, detail="Application not found")
+    company_user = db_get_user_by_id(app_before.get("company_user_id"))
+    if company_user:
+        job_title = app_before.get("job_title") or "the role"
+        applicant = app_before.get("applicant_name") or current_user.get("full_name") or "A candidate"
+        posted_job_id = app_before.get("posted_job_id")
+        try:
+            db_create_notification(
+                user_id=company_user["id"],
+                type="job_application",
+                title="Application withdrawn",
+                message=f"{applicant} withdrew their application for {job_title}.",
+                link=f"/company/jobs/{posted_job_id}/applicants",
+            )
+        except Exception:
+            pass
+    return {"success": True}
+
+
+@app.get("/api/company/applications")
+def company_list_applications(
+    posted_job_id: Optional[int] = None,
+    status: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+):
+    if current_user.get("user_type") != "company":
+        raise HTTPException(status_code=403, detail="Company access only")
+    if status and status not in VERTEX_APPLICATION_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid status filter")
+    return db_get_company_posted_job_applications(
+        current_user["id"], posted_job_id=posted_job_id, status=status
+    )
+
+
+@app.get("/api/company/applications/{application_id}")
+def company_get_application(
+    application_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    if current_user.get("user_type") != "company":
+        raise HTTPException(status_code=403, detail="Company access only")
+    app = db_get_posted_job_application_by_id(application_id, current_user["id"])
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+    return app
+
+
+@app.patch("/api/company/applications/{application_id}")
+def company_update_application(
+    application_id: int,
+    body: VertexApplicationStatusUpdate,
+    current_user: dict = Depends(get_current_user),
+):
+    if current_user.get("user_type") != "company":
+        raise HTTPException(status_code=403, detail="Company access only")
+    status = (body.status or "").strip().lower()
+    if status not in VERTEX_APPLICATION_STATUSES or status == "withdrawn":
+        raise HTTPException(status_code=400, detail="Invalid status")
+    app_before = db_get_posted_job_application_by_id(application_id, current_user["id"])
+    if not app_before:
+        raise HTTPException(status_code=404, detail="Application not found")
+    prev_status = (app_before.get("status") or "").strip().lower()
+    notes_value = body.company_notes
+    if notes_value is not None:
+        notes_value = (notes_value or "").strip() or None
+
+    if not db_update_posted_job_application_status(
+        application_id,
+        current_user["id"],
+        status,
+        company_notes=notes_value,
+    ):
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    status_changed = prev_status != status
+    seeker = db_get_user_by_id(app_before["jobseeker_user_id"])
+    notify_statuses = ("reviewing", "interviewing", "offer", "rejected")
+    if seeker and status_changed and status in notify_statuses:
+        labels = {
+            "reviewing": "Under review",
+            "interviewing": "Interviewing",
+            "offer": "Offer received",
+            "rejected": "Not selected",
+        }
+        status_label = labels.get(status, status)
+        job_title = app_before.get("job_title") or "the role"
+        company_name = app_before.get("company_name") or "the company"
+        tracker_url = f'{os.getenv("APP_URL", "http://localhost:3000")}/tracker'
+        message = (
+            f"Your application for {job_title} at {company_name} "
+            f"is now: {status_label}."
+        )
+        if notes_value:
+            preview = notes_value if len(notes_value) <= 120 else notes_value[:117] + "..."
+            message += f" {preview}"
+        try:
+            db_create_notification(
+                user_id=seeker["id"],
+                type="application_status",
+                title="Application status updated",
+                message=message,
+                link="/tracker",
+            )
+        except Exception:
+            pass
+        try:
+            send_application_status_email(
+                to_email=seeker["email"],
+                candidate_name=app_before.get("applicant_name") or seeker.get("full_name") or "",
+                job_title=job_title,
+                company_name=company_name,
+                status_label=status_label,
+                applications_url=tracker_url,
+                details=notes_value,
+            )
+        except Exception:
+            pass
+    return {"success": True, "status": status}
 
 
 # ---------------------------------------------------------------------------
@@ -2505,10 +2801,8 @@ def delete_app(app_id: int, current_user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 @app.get("/api/saved-jobs")
 def get_saved_jobs_route(current_user: dict = Depends(get_current_user)):
-    """Return current user's saved jobs (max 5 on Free for jobseekers)."""
+    """Return current user's saved jobs."""
     jobs = db_get_saved_jobs(current_user["id"])
-    if current_user.get("user_type") == "jobseeker" and not check_plan_access(current_user, "save_jobs"):
-        return jobs[:5]
     return jobs
 
 
@@ -2520,19 +2814,6 @@ def post_save_job(job_id: int, current_user: dict = Depends(get_current_user)):
     """Save a job for the current user."""
     if current_user.get("user_type") != "jobseeker":
         raise HTTPException(status_code=403, detail="Job seeker access only")
-    if not check_plan_access(current_user, "save_jobs"):
-        n = db_count_saved_jobs_for_user(current_user["id"])
-        if n >= 5:
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "error": "plan_required",
-                    "message": "Free plan allows up to 5 saved jobs. Upgrade to Pro for unlimited saves.",
-                    "current_plan": (current_user.get("plan") or "free"),
-                    "required_plan": "pro",
-                    "upgrade_url": "/pricing",
-                },
-            )
     db_save_job(current_user["id"], job_id)
     return {"success": True, "saved": True}
 
@@ -3086,6 +3367,8 @@ def create_checkout(
     plan = (body.plan or "").strip().lower()
     if plan not in ("pro", "business"):
         raise HTTPException(status_code=400, detail="plan must be 'pro' or 'business'")
+    if plan == "business" and current_user.get("user_type") != "company":
+        raise HTTPException(status_code=403, detail="Business plan is only available for company accounts")
     billing_cycle = (body.billing_cycle or "monthly").strip().lower()
     if billing_cycle not in ("monthly", "annually"):
         raise HTTPException(status_code=400, detail="billing_cycle must be 'monthly' or 'annually'")
@@ -3187,6 +3470,8 @@ def verify_checkout_session(
     plan = (_safe(metadata, "plan", "") or "").strip().lower()
     if plan not in ("pro", "business"):
         raise HTTPException(status_code=400, detail="Invalid plan in session metadata")
+    if plan == "business" and current_user.get("user_type") != "company":
+        raise HTTPException(status_code=403, detail="Business plan is only available for company accounts")
 
     subscription_id = _safe(session, "subscription")
     customer_id = _safe(session, "customer")
@@ -3238,6 +3523,9 @@ async def stripe_webhook(request: Request):
         session = event["data"]["object"]
         user_id = int(session["metadata"]["user_id"])
         plan = session["metadata"]["plan"]
+        user = db_get_user_by_id(user_id)
+        if plan == "business" and (not user or user.get("user_type") != "company"):
+            return {"received": True}
         subscription_id = session["subscription"]
         customer_id = session["customer"]
         sub = stripe.Subscription.retrieve(subscription_id)

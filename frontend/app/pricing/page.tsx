@@ -35,7 +35,7 @@ const FAQ_ITEMS = [
 
 export default function PricingPage() {
   const router = useRouter();
-  const { isLoggedIn, token } = useAuth();
+  const { isLoggedIn, token, user } = useAuth();
   const { showToast } = useToast();
   const [billingCycle, setBillingCycle] = useState<BillingCycle>("monthly");
   const [planType, setPlanType] = useState<PlanType>("jobseekers");
@@ -60,6 +60,11 @@ export default function PricingPage() {
   }
 
   async function handleBusinessUpgrade() {
+    const selectedType = isLoggedIn && user?.user_type ? user.user_type : planType === "companies" ? "company" : "jobseeker";
+    if (selectedType !== "company") {
+      showToast("Business plan is only available for company accounts.", "error");
+      return;
+    }
     if (!isLoggedIn) {
       router.push("/auth/register?plan=business");
       return;
@@ -88,8 +93,8 @@ export default function PricingPage() {
     { text: "Upload your CV", included: true },
     { text: "Apply to jobs directly", included: true },
     { text: "Basic profile page", included: true },
+    { text: "Save unlimited jobs", included: true },
     { text: "See job matches (Pro only)", included: false },
-    { text: "Save jobs (Pro only)", included: false },
     { text: "Skills Gap Analyzer (Pro only)", included: false },
     { text: "Application tracker (Pro only)", included: false },
     { text: "Job alerts (Pro only)", included: false },
@@ -106,7 +111,6 @@ export default function PricingPage() {
   const proFeaturesJobSeekers = [
     "Everything in Free",
     "See all job matches (unlimited)",
-    "Save unlimited jobs",
     "Skills Gap Analyzer",
     "Priority matching algorithm",
     "Profile boost in searches",
@@ -359,72 +363,74 @@ export default function PricingPage() {
             </button>
           </div>
 
-          {/* CARD 3 — Business */}
-          <div
-            className="glass-card rounded-2xl p-8"
-            style={{ border: "1px solid rgba(6,182,212,0.2)" }}
-          >
-            <h3 className="text-xl font-bold text-white">Business</h3>
-            <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
-              For hiring teams
-            </p>
-            <div className="my-6">
-              <span className="text-5xl font-bold text-white">${businessPrice}</span>
-              <span className="ml-1 text-base" style={{ color: "var(--text-secondary)" }}>
-                /month
-              </span>
-              {billingCycle === "annually" && (
-                <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
-                  Billed ${businessAnnual * 12}/year
-                </p>
-              )}
-            </div>
-            <div className="h-px" style={{ background: "var(--border-subtle)" }} />
-            <ul className="mt-6 space-y-3">
-              {businessFeaturesCompanies.map((f, i) => {
-                if (typeof f === "object" && "included" in f) {
-                  const item = f as { text: string; included: boolean };
+          {/* CARD 3 — Business (companies only) */}
+          {planType === "companies" && (
+            <div
+              className="glass-card rounded-2xl p-8"
+              style={{ border: "1px solid rgba(6,182,212,0.2)" }}
+            >
+              <h3 className="text-xl font-bold text-white">Business</h3>
+              <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
+                For hiring teams
+              </p>
+              <div className="my-6">
+                <span className="text-5xl font-bold text-white">${businessPrice}</span>
+                <span className="ml-1 text-base" style={{ color: "var(--text-secondary)" }}>
+                  /month
+                </span>
+                {billingCycle === "annually" && (
+                  <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+                    Billed ${businessAnnual * 12}/year
+                  </p>
+                )}
+              </div>
+              <div className="h-px" style={{ background: "var(--border-subtle)" }} />
+              <ul className="mt-6 space-y-3">
+                {businessFeaturesCompanies.map((f, i) => {
+                  if (typeof f === "object" && "included" in f) {
+                    const item = f as { text: string; included: boolean };
+                    return (
+                      <li key={i} className="flex items-center gap-2">
+                        {item.included ? (
+                          <Check className="h-5 w-5 shrink-0" style={{ color: "#22c55e" }} />
+                        ) : (
+                          <X className="h-5 w-5 shrink-0" style={{ color: "#ef4444" }} />
+                        )}
+                        <span
+                          className="text-sm"
+                          style={item.included ? { color: "var(--text-primary)" } : { color: "var(--text-muted)" }}
+                        >
+                          {item.text}
+                        </span>
+                      </li>
+                    );
+                  }
                   return (
                     <li key={i} className="flex items-center gap-2">
-                      {item.included ? (
-                        <Check className="h-5 w-5 shrink-0" style={{ color: "#22c55e" }} />
-                      ) : (
-                        <X className="h-5 w-5 shrink-0" style={{ color: "#ef4444" }} />
-                      )}
-                      <span
-                        className="text-sm"
-                        style={item.included ? { color: "var(--text-primary)" } : { color: "var(--text-muted)" }}
-                      >
-                        {item.text}
-                      </span>
+                      <Check className="h-5 w-5 shrink-0" style={{ color: "#22c55e" }} />
+                      <span className="text-sm text-vertex-white">{String(f)}</span>
                     </li>
                   );
-                }
-                return (
-                  <li key={i} className="flex items-center gap-2">
-                    <Check className="h-5 w-5 shrink-0" style={{ color: "#22c55e" }} />
-                    <span className="text-sm text-vertex-white">{String(f)}</span>
-                  </li>
-                );
-              })}
-            </ul>
-            <button
-              type="button"
-              onClick={handleBusinessUpgrade}
-              disabled={!!isLoading}
-              className="mt-8 flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-70"
-              style={{
-                border: "1px solid rgba(6,182,212,0.4)",
-                color: "var(--accent-cyan)",
-                background: "transparent",
-              }}
-            >
-              {isLoading === "business" ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : null}
-              Start Business
-            </button>
-          </div>
+                })}
+              </ul>
+              <button
+                type="button"
+                onClick={handleBusinessUpgrade}
+                disabled={!!isLoading}
+                className="mt-8 flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-70"
+                style={{
+                  border: "1px solid rgba(6,182,212,0.4)",
+                  color: "var(--accent-cyan)",
+                  background: "transparent",
+                }}
+              >
+                {isLoading === "business" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : null}
+                Start Business
+              </button>
+            </div>
+          )}
         </section>
 
         {/* SECTION 3 — FEATURE COMPARISON TABLE */}
@@ -518,12 +524,6 @@ export default function PricingPage() {
                   <td className="p-3 text-center">
                     <Check className="inline h-4 w-4" style={{ color: "#22c55e" }} />
                   </td>
-                </tr>
-                <tr>
-                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Saved Jobs</td>
-                  <td className="p-3 text-center text-white">10</td>
-                  <td className="p-3 text-center text-white">Unlimited</td>
-                  <td className="p-3 text-center text-white">Unlimited</td>
                 </tr>
                 <tr style={{ background: "rgba(255,255,255,0.02)" }}>
                   <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Match Reports</td>

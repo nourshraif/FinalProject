@@ -2,6 +2,7 @@
 
 import type { ScrapedJob } from "@/types";
 import { SaveButton } from "@/components/SaveButton";
+import { AddApplicationButton } from "@/components/AddApplicationButton";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/context/ToastContext";
 
@@ -95,6 +96,14 @@ export function JobSearchCard({
               📊 Analyze My Gap
             </button>
           )}
+          <AddApplicationButton
+            prefill={{
+              job_title: title,
+              company,
+              location: location || undefined,
+              job_url: url !== "#" ? url : undefined,
+            }}
+          />
           <a
             href={url}
             target="_blank"

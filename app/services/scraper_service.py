@@ -57,6 +57,9 @@ class BatchStats:
         self.enriched = 0
         
         # Phase 3: Storage
+        self.jobs_inserted = 0
+        self.jobs_updated = 0
+        self.jobs_unchanged = 0
         self.total_saved = 0
         self.errors_count = 0
         self.embeddings_generated = 0
@@ -93,7 +96,9 @@ class BatchStats:
         print(f"   Jobs enriched: {self.enriched}")
         
         print(f"\n💾 PHASE 3 (STORAGE):")
-        print(f"   Jobs saved: {self.total_saved}")
+        print(f"   New jobs inserted: {self.jobs_inserted}")
+        print(f"   Existing jobs updated: {self.jobs_updated}")
+        print(f"   Unchanged (skipped): {self.jobs_unchanged}")
         print(f"   Embeddings generated: {self.embeddings_generated}")
         print(f"   Embeddings failed: {self.embeddings_failed}")
         print(f"   Errors: {self.errors_count}")
@@ -281,62 +286,104 @@ class ScraperService:
     # ══════════════════════════════════════════════════════════════════════════════
     # PHASE 3: DATA STORAGE - Batch insert to database + embeddings
     # ══════════════════════════════════════════════════════════════════════════════
-    
-    def save_job_to_db(self, job_data: dict) -> bool:
-        """Save a single job to database (used by batch insert)."""
+
+    @staticmethod
+    def _normalized_job_fields(job_data: dict) -> tuple:
+        """Comparable tuple: source, title, company, location, description."""
+        return (
+            normalize_source(job_data.get("source", "")),
+            str(job_data.get("title", "")).strip()[:255],
+            str(job_data.get("company", "")).strip()[:255],
+            str(job_data.get("location", "Remote")).strip()[:255],
+            str(job_data.get("description") or "").strip(),
+        )
+
+    def _generate_embedding_for_job(self, job_id: int, job_data: dict) -> None:
         try:
-            url = job_data.get('url')
-            title = job_data.get('title')
-            
+            generate_and_save_embedding(
+                cursor=self.cur,
+                connection=self.conn,
+                job_id=job_id,
+                title=job_data.get("title", ""),
+                company=job_data.get("company", ""),
+                location=job_data.get("location", ""),
+                description=job_data.get("description", ""),
+            )
+            self.stats.embeddings_generated += 1
+        except Exception as e:
+            logger.warning(f"Failed to generate embedding for job {job_id}: {e}")
+            self.stats.embeddings_failed += 1
+
+    def save_job_to_db(self, job_data: dict) -> bool:
+        """Insert new jobs; update existing rows only when content fields changed."""
+        try:
+            url = job_data.get("url")
+            title = job_data.get("title")
+
             if not url or not title:
                 return False
-            
-            self.cur.execute("""
-                INSERT INTO jobs (source, job_title, company, location, description, job_url, scraped_at)
-                VALUES (%s, %s, %s, %s, %s, %s, NOW())
-                ON CONFLICT (job_url) DO UPDATE SET
-                  source = EXCLUDED.source,
-                  job_title = EXCLUDED.job_title,
-                  company = EXCLUDED.company,
-                  location = EXCLUDED.location,
-                  description = EXCLUDED.description,
-                  scraped_at = NOW()
-                RETURNING id;
-            """, (
-                job_data.get('source'),
-                title,
-                job_data.get('company', ''),
-                job_data.get('location', 'Remote'),
-                job_data.get('description', ''),
-                url
-            ))
-            
-            result = self.cur.fetchone()
-            if result:
-                job_id = result[0]
-                
-                # Generate embedding (async-safe)
-                try:
-                    generate_and_save_embedding(
-                        cursor=self.cur,
-                        connection=self.conn,
-                        job_id=job_id,
-                        title=title,
-                        company=job_data.get('company', ''),
-                        location=job_data.get('location', ''),
-                        description=job_data.get('description', '')
+
+            incoming = self._normalized_job_fields(job_data)
+            source, job_title, company, location, description = incoming
+
+            self.cur.execute(
+                """
+                SELECT id, source, job_title, company, location,
+                       COALESCE(description, '') AS description
+                FROM jobs
+                WHERE job_url = %s
+                """,
+                (url,),
+            )
+            existing_row = self.cur.fetchone()
+
+            if existing_row is None:
+                self.cur.execute(
+                    """
+                    INSERT INTO jobs (
+                        source, job_title, company, location, description, job_url, scraped_at
                     )
-                    self.stats.embeddings_generated += 1
-                    
-                except Exception as e:
-                    logger.warning(f"Failed to generate embedding for job {job_id}: {e}")
-                    self.stats.embeddings_failed += 1
-                
+                    VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                    RETURNING id
+                    """,
+                    (source, job_title, company, location, description or None, url),
+                )
+                job_id = self.cur.fetchone()[0]
+                self._generate_embedding_for_job(job_id, job_data)
+                self.stats.jobs_inserted += 1
                 self.stats.total_saved += 1
                 return True
-            
-            return False
-            
+
+            job_id = existing_row[0]
+            stored = (
+                normalize_source(existing_row[1] or ""),
+                str(existing_row[2] or "").strip(),
+                str(existing_row[3] or "").strip(),
+                str(existing_row[4] or "Remote").strip()[:255],
+                str(existing_row[5] or "").strip(),
+            )
+            if stored == incoming:
+                self.stats.jobs_unchanged += 1
+                return True
+
+            self.cur.execute(
+                """
+                UPDATE jobs SET
+                    source = %s,
+                    job_title = %s,
+                    company = %s,
+                    location = %s,
+                    description = %s,
+                    scraped_at = NOW()
+                WHERE id = %s
+                """,
+                (source, job_title, company, location, description or None, job_id),
+            )
+            self._generate_embedding_for_job(job_id, job_data)
+            self.stats.jobs_updated += 1
+            self.stats.total_saved += 1
+            return True
+
         except Exception as e:
             logger.error(f"Error saving job: {e}", exc_info=True)
             self.stats.errors_count += 1

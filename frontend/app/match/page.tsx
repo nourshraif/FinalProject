@@ -35,7 +35,6 @@ const SOURCE_OPTIONS = [
   { value: "remotive", label: "Remotive" },
   { value: "himalayas", label: "Himalayas" },
   { value: "linkedin", label: "LinkedIn" },
-  { value: "company_posted", label: "Posted by Companies" }, 
 ];
 
 function hasProfileCvAndSkills(p: UserProfile | null): boolean {
@@ -49,6 +48,10 @@ function hasProfileCvAndSkills(p: UserProfile | null): boolean {
 
 function normalizeSource(s: string | null | undefined): string {
   return (s || "").toLowerCase().replace(/[\s_-]+/g, "");
+}
+
+function isVertexSource(s: string | null | undefined): boolean {
+  return normalizeSource(s) === "companyposted";
 }
 
 function normalizeJobArray(value: unknown): Job[] {
@@ -106,6 +109,7 @@ export default function MatchPage() {
   const [appliedLocation, setAppliedLocation] = useState("");
   const [appliedSource, setAppliedSource] = useState("");
   const [appliedSort, setAppliedSort] = useState<"match" | "recent">("match");
+  const [resultGroup, setResultGroup] = useState<"boards" | "vertex">("boards");
 
   const loadProfile = useCallback(async () => {
     if (!token) {
@@ -130,10 +134,7 @@ export default function MatchPage() {
 
   const savedReady = Boolean(token) && !profileLoading && hasProfileCvAndSkills(profile);
 const handleMatchComplete = useCallback((result: MatchJobsResult) => {
-    console.log("raw result:", result)        // ← add this
-    console.log("first job:", result.jobs?.[0]) // ← check keys
     const jobsResult = normalizeJobArray(result.jobs)
-    // ...
     setJobs(jobsResult);
     setMatchTotal(typeof result.total_matched === "number" ? result.total_matched : jobsResult.length);
     setMatchUpgradeMessage(result.upgrade_message ?? null);
@@ -174,6 +175,8 @@ const handleMatchComplete = useCallback((result: MatchJobsResult) => {
 
     const jobsList = Array.isArray(jobs) ? jobs : [];
     let list = jobsList.filter((job) => {
+      if (resultGroup === "vertex" && !isVertexSource(job.source)) return false;
+      if (resultGroup === "boards" && isVertexSource(job.source)) return false;
       const matchesSearch =
         !q ||
         (job.title || "").toLowerCase().includes(q) ||
@@ -195,7 +198,13 @@ const handleMatchComplete = useCallback((result: MatchJobsResult) => {
       list = [...list].sort((a, b) => b.id - a.id);
     }
     return list;
-  }, [jobs, appliedSearch, appliedLocation, appliedSource, appliedSort]);
+  }, [jobs, appliedSearch, appliedLocation, appliedSource, appliedSort, resultGroup]);
+
+  const groupCounts = useMemo(() => {
+    const boards = jobs.filter((j) => !isVertexSource(j.source)).length;
+    const vertex = jobs.filter((j) => isVertexSource(j.source)).length;
+    return { boards, vertex };
+  }, [jobs]);
 
   const applyFilters = useCallback(() => {
     setAppliedSearch(draftSearch);
@@ -348,6 +357,28 @@ const handleMatchComplete = useCallback((result: MatchJobsResult) => {
 
           {hasSearched && jobs.length > 0 && (
             <div className="mx-auto mb-6 max-w-5xl space-y-3">
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setResultGroup("boards")}
+                  className={cn(
+                    "rounded-lg px-4 py-2 text-sm font-medium transition-colors",
+                    resultGroup === "boards" ? "bg-indigo-600 text-white" : "ghost-button"
+                  )}
+                >
+                  Job Boards ({groupCounts.boards})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setResultGroup("vertex")}
+                  className={cn(
+                    "rounded-lg px-4 py-2 text-sm font-medium transition-colors",
+                    resultGroup === "vertex" ? "bg-indigo-600 text-white" : "ghost-button"
+                  )}
+                >
+                  Vertex Jobs ({groupCounts.vertex})
+                </button>
+              </div>
               <div className="flex flex-wrap items-end justify-center gap-4">
                 <div className="min-w-[200px] flex-1">
                   <label className="mb-1 block text-xs font-medium text-slate-400">Search</label>
@@ -379,6 +410,7 @@ const handleMatchComplete = useCallback((result: MatchJobsResult) => {
                     className="vertex-input w-full rounded-lg px-3 py-2 text-sm text-white"
                     value={draftSource}
                     onChange={(e) => setDraftSource(e.target.value)}
+                    disabled={resultGroup === "vertex"}
                   >
                     {SOURCE_OPTIONS.map((o) => (
                       <option key={o.label} value={o.value}>
