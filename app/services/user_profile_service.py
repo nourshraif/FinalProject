@@ -73,80 +73,37 @@ def save_user_profile(
 
 def find_matching_candidates(
     required_skills: List[str],
-    query_embedding: Optional[np.ndarray] = None,
     top_k: int = 20,
     min_keyword_matches: int = 1,
 ) -> List[Dict]:
     """
-    Return a ranked list of user profiles whose skills match the required skills.
-
-    Ranking uses two signals:
-      1. Keyword overlap  – exact / case-insensitive skill matches
-      2. Vector similarity – semantic closeness (if embedding provided)
-
-    Args:
-        required_skills:   Skills the company is looking for.
-        query_embedding:   Embedding of the required skills (optional but recommended).
-        top_k:             Max candidates to return.
-        min_keyword_matches: Minimum keyword matches to include a candidate.
-
-    Returns:
-        List of candidate dicts, sorted best-first.
+    Return user profiles ranked by keyword skill overlap with required skills.
     """
     conn = get_connection()
     cur = conn.cursor()
 
     try:
-        use_vector = query_embedding is not None
-
-        if use_vector:
-            cur.execute(
-                """
-                SELECT
-                    up.id,
-                    up.email,
-                    up.full_name,
-                    up.skills,
-                    up.cv_filename,
-                    up.created_at,
-                    1 - (up.skills_embedding <=> %s::vector) AS vector_score,
-                    u.id AS user_id,
-                    up.profile_slug,
-                    up.location,
-                    up.years_experience
-                FROM user_profiles up
-                LEFT JOIN users u ON u.email = up.email
-                WHERE up.skills_embedding IS NOT NULL
-                ORDER BY up.skills_embedding <=> %s::vector
-                LIMIT %s
-                """,
-                (query_embedding.tolist(), query_embedding.tolist(), top_k * 3),
-            )
-        else:
-            cur.execute(
-                """
-                SELECT
-                    up.id,
-                    up.email,
-                    up.full_name,
-                    up.skills,
-                    up.cv_filename,
-                    up.created_at,
-                    0.0 AS vector_score,
-                    u.id AS user_id,
-                    up.profile_slug,
-                    up.location,
-                    up.years_experience
-                FROM user_profiles up
-                LEFT JOIN users u ON u.email = up.email
-                ORDER BY up.created_at DESC
-                LIMIT %s
-                """,
-                (top_k * 3,),
-            )
-
+        cur.execute(
+            """
+            SELECT
+                up.id,
+                up.email,
+                up.full_name,
+                up.skills,
+                up.cv_filename,
+                up.created_at,
+                u.id AS user_id,
+                up.profile_slug,
+                up.location,
+                up.years_experience
+            FROM user_profiles up
+            LEFT JOIN users u ON u.email = up.email
+            ORDER BY up.created_at DESC
+            LIMIT %s
+            """,
+            (top_k * 10,),
+        )
         rows = cur.fetchall()
-
     finally:
         cur.close()
         conn.close()
@@ -155,12 +112,18 @@ def find_matching_candidates(
     candidates = []
 
     for row in rows:
-        if len(row) >= 11:
-            (pid, email, full_name, skills, cv_filename, created_at, vector_score, user_id, profile_slug, location, years_experience) = row
-        else:
-            (pid, email, full_name, skills, cv_filename, created_at, vector_score, user_id, profile_slug) = row
-            location = None
-            years_experience = None
+        (
+            pid,
+            email,
+            full_name,
+            skills,
+            cv_filename,
+            created_at,
+            user_id,
+            profile_slug,
+            location,
+            years_experience,
+        ) = row
         candidate_skills = [s.lower().strip() for s in (skills or [])]
 
         matched = [r for r in required_lower if any(r in c or c in r for c in candidate_skills)]
@@ -168,8 +131,6 @@ def find_matching_candidates(
 
         if len(matched) < min_keyword_matches:
             continue
-
-        combined_score = (0.6 * float(vector_score)) + (0.4 * keyword_score)
 
         candidates.append(
             {
@@ -181,8 +142,6 @@ def find_matching_candidates(
                 "created_at": created_at,
                 "matched_skills": matched,
                 "keyword_score": round(keyword_score * 100, 1),
-                "vector_score": round(float(vector_score) * 100, 1),
-                "combined_score": round(combined_score * 100, 1),
                 "user_id": user_id,
                 "profile_slug": profile_slug,
                 "location": location,
@@ -190,7 +149,7 @@ def find_matching_candidates(
             }
         )
 
-    candidates.sort(key=lambda x: x["combined_score"], reverse=True)
+    candidates.sort(key=lambda x: x["keyword_score"], reverse=True)
     return candidates[:top_k]
 
 

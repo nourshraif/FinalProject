@@ -54,7 +54,7 @@ export default function ContactPageClient() {
 
     const mailto = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subjectLine)}&body=${encodeURIComponent(body)}`;
     window.location.href = mailto;
-    toast.success("Opening your email app to contact support.");
+    toast.success("Your email app will open with the message pre-filled. Hit send there to reach us.");
   }
 
   return (
@@ -74,7 +74,9 @@ export default function ContactPageClient() {
         <div className="grid gap-6 lg:grid-cols-3">
           <section className="glass-card rounded-2xl border border-white/[0.06] p-6 lg:col-span-2">
             <h2 className="text-xl font-bold text-white">Send us a message</h2>
-            <p className="mt-2 text-sm text-slate-400">Fields marked with * are required.</p>
+            <p className="mt-2 text-sm text-slate-400">
+              Fill in the form, then we&apos;ll open your email app with everything pre-filled. Fields marked with * are required.
+            </p>
 
             <form onSubmit={handleSubmit} className="mt-6 space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
@@ -138,10 +140,10 @@ export default function ContactPageClient() {
                   type="submit"
                   className="glow-button rounded-full px-6 py-2.5 text-sm font-semibold text-white"
                 >
-                  Contact Support
+                  Open in Email App
                 </button>
                 <a href={`mailto:${SUPPORT_EMAIL}`} className="ghost-button rounded-full px-6 py-2.5 text-sm font-semibold text-white">
-                  Email Directly
+                  Email Without Form
                 </a>
               </div>
             </form>

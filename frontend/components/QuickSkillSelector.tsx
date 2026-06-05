@@ -4,27 +4,28 @@ import { useCallback } from "react";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
+/** Cross-industry shortcuts — not limited to tech roles. */
 export const QUICK_SKILLS = [
+  "Communication",
+  "Project Management",
+  "Customer Service",
+  "Sales",
+  "Marketing",
+  "Data Analysis",
+  "Microsoft Excel",
+  "Financial Analysis",
+  "Accounting",
+  "Graphic Design",
+  "Content Writing",
+  "Social Media",
+  "Patient Care",
+  "Teaching",
+  "Recruiting",
+  "Supply Chain",
+  "Quality Assurance",
+  "Problem Solving",
+  "Team Leadership",
   "Python",
-  "JavaScript",
-  "React",
-  "Node.js",
-  "SQL",
-  "PostgreSQL",
-  "MongoDB",
-  "Docker",
-  "Kubernetes",
-  "AWS",
-  "Machine Learning",
-  "Deep Learning",
-  "Django",
-  "Flask",
-  "TypeScript",
-  "Java",
-  "C++",
-  "Git",
-  "REST API",
-  "GraphQL",
 ] as const;
 
 export interface QuickSkillSelectorProps {

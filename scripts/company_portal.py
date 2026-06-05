@@ -104,8 +104,6 @@ with st.sidebar:
     st.subheader("Search Settings")
     top_k = st.slider("Max Candidates", 5, 50, 15, 5)
     min_matches = st.slider("Min Skill Matches", 1, 10, 1)
-    use_semantic = st.toggle("Semantic Matching (AI)", value=True,
-                             help="Use vector embeddings for smarter skill matching")
     st.markdown("---")
 
     # Admin: show all profiles
@@ -194,16 +192,8 @@ if st.button("🔍 Search Candidates", type="primary", use_container_width=True)
     else:
         with st.spinner(f"Searching {candidate_count} candidates..."):
             try:
-                query_embedding = None
-                if use_semantic:
-                    from sentence_transformers import SentenceTransformer
-                    model = SentenceTransformer("all-MiniLM-L6-v2")
-                    skills_text = "Professional skills: " + ", ".join(required_skills)
-                    query_embedding = model.encode(skills_text, convert_to_numpy=True)
-
                 results = find_matching_candidates(
                     required_skills=required_skills,
-                    query_embedding=query_embedding,
                     top_k=top_k,
                     min_keyword_matches=min_matches,
                 )
@@ -234,8 +224,8 @@ if st.session_state.company_results is not None:
         st.subheader(f"3. Matching Candidates ({len(results)} found)")
 
         # Summary metrics
-        avg_score = sum(r["combined_score"] for r in results) / len(results)
-        best_score = max(r["combined_score"] for r in results)
+        avg_score = sum(r["keyword_score"] for r in results) / len(results)
+        best_score = max(r["keyword_score"] for r in results)
         col1, col2, col3 = st.columns(3)
         col1.metric("Candidates Found", len(results))
         col2.metric("Avg Match Score", f"{avg_score:.1f}%")
@@ -251,7 +241,7 @@ if st.session_state.company_results is not None:
 
         # Candidate cards
         for rank, candidate in enumerate(results, 1):
-            score = candidate["combined_score"]
+            score = candidate["keyword_score"]
             matched = candidate["matched_skills"]
             all_skills = candidate["skills"]
 
@@ -298,7 +288,7 @@ if st.session_state.company_results is not None:
                                 f'<span class="matched-chip">{s}</span>' for s in matched
                             ), unsafe_allow_html=True)
                         else:
-                            st.caption("Matched via semantic similarity")
+                            st.caption("No keyword matches")
 
                     with col_b:
                         st.markdown("**🧠 All Skills**")
@@ -310,9 +300,7 @@ if st.session_state.company_results is not None:
                                 st.caption(f"+ {len(all_skills) - 20} more skills")
 
                     st.markdown("")
-                    sc1, sc2 = st.columns(2)
-                    sc1.metric("Keyword Match", f"{candidate['keyword_score']:.1f}%")
-                    sc2.metric("Semantic Match", f"{candidate['vector_score']:.1f}%")
+                    st.metric("Skill Match", f"{candidate['keyword_score']:.1f}%")
 
                     if candidate.get("cv_filename"):
                         st.caption(f"📄 CV: {candidate['cv_filename']}")

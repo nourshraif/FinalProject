@@ -41,6 +41,7 @@ const VERTEX_STATUS_LABELS: Record<VertexApplicationStatus, string> = {
   offer: "Offer",
   rejected: "Not selected",
   withdrawn: "Withdrawn",
+  expired: "Position closed",
 };
 
 const STATUS_STYLES: Record<string, { border: string; bg: string; text: string }> = {
@@ -50,6 +51,7 @@ const STATUS_STYLES: Record<string, { border: string; bg: string; text: string }
   offer:        { border: "#22c55e", bg: "rgba(34,197,94,0.2)",   text: "#86efac" },
   rejected:     { border: "#ef4444", bg: "rgba(239,68,68,0.2)",   text: "#fca5a5" },
   withdrawn:    { border: "#64748b", bg: "rgba(100,116,139,0.2)", text: "#94a3b8" },
+  expired:      { border: "#64748b", bg: "rgba(100,116,139,0.15)", text: "#94a3b8" },
   saved:        { border: "#64748b", bg: "rgba(100,116,139,0.2)", text: "#94a3b8" },
 };
 

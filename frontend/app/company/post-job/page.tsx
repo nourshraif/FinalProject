@@ -185,7 +185,7 @@ function PostJobContent() {
                 <label className="mb-1 block text-sm text-vertex-muted">Job Title *</label>
                 <input
                   className="vertex-input w-full rounded-lg px-3 py-2 text-white"
-                  placeholder="e.g. Senior React Developer"
+                  placeholder="e.g. Account Manager, Registered Nurse"
                   value={form.title}
                   onChange={(e) => update("title", e.target.value)}
                 />

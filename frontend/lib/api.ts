@@ -759,12 +759,9 @@ export interface SearchCandidatesParams {
   required_skills: string[];
   top_k?: number;
   min_keyword_matches?: number;
-  use_semantic?: boolean;
   location_filter?: string;
   min_experience?: number;
   max_experience?: number;
-  min_match_score?: number;
-  sort_by?: "score" | "experience" | "recent";
 }
 
 export async function searchCandidates(
@@ -782,12 +779,9 @@ export async function searchCandidates(
       required_skills: params.required_skills,
       top_k: params.top_k ?? 15,
       min_keyword_matches: params.min_keyword_matches ?? 1,
-      use_semantic: params.use_semantic ?? true,
       location_filter: params.location_filter ?? null,
       min_experience: params.min_experience ?? null,
       max_experience: params.max_experience ?? null,
-      min_match_score: params.min_match_score ?? null,
-      sort_by: params.sort_by ?? "score",
     }),
   });
   return handleResponse<Candidate[]>(res);

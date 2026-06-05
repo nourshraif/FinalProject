@@ -27,7 +27,7 @@ export default function CompanyPortalPage() {
             <CardContent className="flex flex-1 flex-col space-y-4 text-sm text-vertex-muted">
               <p>
                 Enter the skills your role requires. We rank candidates by
-                keyword and semantic match so you see the best fits first.
+                keyword skill match so you see the best fits first.
               </p>
               <div className="mt-auto pt-2">
                 <Button asChild className="w-full gap-2">

@@ -229,16 +229,30 @@ function SavedContent() {
                 className="glass-card rounded-xl p-6 transition-all hover:border-indigo-500/30 hover:-translate-y-0.5"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <span
-                    className="rounded-full px-2.5 py-0.5 text-xs"
-                    style={{
-                      background: "#1e1e3a",
-                      color: "#94a3b8",
-                      border: "1px solid #2a2a3d",
-                    }}
-                  >
-                    {job.source || "—"}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="rounded-full px-2.5 py-0.5 text-xs"
+                      style={{
+                        background: "#1e1e3a",
+                        color: "#94a3b8",
+                        border: "1px solid #2a2a3d",
+                      }}
+                    >
+                      {job.source || "—"}
+                    </span>
+                    {job.is_active === false && (
+                      <span
+                        className="rounded-full px-2.5 py-0.5 text-xs font-medium"
+                        style={{
+                          background: "rgba(239,68,68,0.15)",
+                          color: "#fca5a5",
+                          border: "1px solid rgba(239,68,68,0.3)",
+                        }}
+                      >
+                        Expired
+                      </span>
+                    )}
+                  </div>
                   <button
                     type="button"
                     onClick={() => handleUnsave(job)}

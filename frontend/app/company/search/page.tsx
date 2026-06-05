@@ -24,8 +24,6 @@ export default function CompanySearchPage() {
   const [locationFilter, setLocationFilter] = useState("");
   const [minExperience, setMinExperience] = useState<number | "">("");
   const [maxExperience, setMaxExperience] = useState<number | "">("");
-  const [minMatchScore, setMinMatchScore] = useState(0);
-  const [sortBy, setSortBy] = useState<"score" | "experience" | "recent">("score");
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(false);
   const [count, setCount] = useState<number | null>(null);
@@ -80,12 +78,9 @@ export default function CompanySearchPage() {
           required_skills: requiredSkills,
           top_k: topK,
           min_keyword_matches: minMatches,
-          use_semantic: false,
           location_filter: locationFilter.trim() || undefined,
           min_experience: minExperience === "" ? undefined : Number(minExperience),
           max_experience: maxExperience === "" ? undefined : Number(maxExperience),
-          min_match_score: minMatchScore > 0 ? minMatchScore : undefined,
-          sort_by: sortBy,
         },
         token
       );
@@ -103,23 +98,23 @@ export default function CompanySearchPage() {
 
   const avgScore =
     candidates.length > 0
-      ? candidates.reduce((a, c) => a + c.combined_score, 0) / candidates.length
+      ? candidates.reduce((a, c) => a + c.keyword_score, 0) / candidates.length
       : 0;
   const bestScore =
-    candidates.length > 0 ? Math.max(...candidates.map((c) => c.combined_score)) : 0;
+    candidates.length > 0 ? Math.max(...candidates.map((c) => c.keyword_score)) : 0;
 
   const hasAdvancedFilters =
-    locationFilter || minExperience !== "" || maxExperience !== "" || minMatchScore > 0;
+    locationFilter || minExperience !== "" || maxExperience !== "";
 
   return (
     <PlanGate feature="search_candidates" requiredPlan="business">
-      <div className="container px-4 pb-10 pt-24 sm:px-6">
+      <div className="mx-auto max-w-[1000px] px-6 pb-10 pt-24">
         <header className="mb-8">
           <h1 className="font-headline text-3xl font-bold tracking-tight text-white sm:text-4xl">
             Find talent
           </h1>
           <p className="mt-2 max-w-2xl text-pretty text-sm text-vertex-muted sm:text-base">
-            Search the pool by skills, location, and more. Results are ranked by match.
+            Enter the skills your role needs, then use location and experience filters to narrow the list. Candidates are ranked by how many of those skills appear in their profile.
           </p>
           {count !== null && (
             <p className="mt-3 text-sm font-medium text-indigo-200/90">
@@ -143,7 +138,7 @@ export default function CompanySearchPage() {
                     type="text"
                     value={skillsText}
                     onChange={(e) => setSkillsText(e.target.value)}
-                    placeholder="e.g. React, Python, SQL"
+                    placeholder="e.g. Sales, Project Management, Python"
                     className="vertex-input w-full rounded-lg px-3 py-2 text-sm"
                   />
                 </div>
@@ -159,21 +154,6 @@ export default function CompanySearchPage() {
                     placeholder="Any location"
                     className="vertex-input w-full rounded-lg px-3 py-2 text-sm"
                   />
-                </div>
-
-                <div className="min-w-[140px] flex-1">
-                  <label className="mb-1 block text-xs font-medium text-vertex-muted">
-                    Sort by
-                  </label>
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value as "score" | "experience" | "recent")}
-                    className="vertex-input w-full rounded-lg px-3 py-2 text-sm"
-                  >
-                    <option value="score">Best Match</option>
-                    <option value="experience">Most Experience</option>
-                    <option value="recent">Recently Joined</option>
-                  </select>
                 </div>
 
                 <Button type="submit" disabled={loading} className="gap-2 self-end shrink-0">
@@ -248,21 +228,6 @@ export default function CompanySearchPage() {
                       max={10}
                       value={minMatches}
                       onChange={(e) => setMinMatches(Number(e.target.value))}
-                      className="w-36"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-vertex-muted">
-                      Min match score: {minMatchScore}%
-                    </label>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={5}
-                      value={minMatchScore}
-                      onChange={(e) => setMinMatchScore(Number(e.target.value))}
                       className="w-36"
                     />
                   </div>

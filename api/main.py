@@ -208,11 +208,15 @@ async def lifespan(app: FastAPI):
         ensure_admin_platform_tables,
         ensure_vertex_application_tables,
         ensure_notification_application_types,
+        create_archive_tables,
+        ensure_expired_application_support,
     )
 
     ensure_admin_platform_tables()
     ensure_vertex_application_tables()
     ensure_notification_application_types()
+    create_archive_tables()
+    ensure_expired_application_support()
     print("Vertex application tables ready")
 
     # ── Initialize vector tables (creates posted_job_embeddings etc.) ────
@@ -302,12 +306,9 @@ class SearchCandidatesRequest(BaseModel):
     company_name: Optional[str] = None
     top_k: int = 15
     min_keyword_matches: int = 1
-    use_semantic: bool = True
     location_filter: Optional[str] = None
     min_experience: Optional[int] = None
     max_experience: Optional[int] = None
-    min_match_score: Optional[float] = None
-    sort_by: str = "score"  # "score", "experience", "recent"
 
 
 class CandidateResponse(BaseModel):
@@ -317,8 +318,6 @@ class CandidateResponse(BaseModel):
     skills: List[str]
     matched_skills: List[str]
     keyword_score: float
-    vector_score: float
-    combined_score: float
     cv_filename: Optional[str] = None
     created_at: Optional[str] = None
     user_id: Optional[int] = None
@@ -2464,18 +2463,8 @@ def search_candidates(
         if not required_skills:
             return []
 
-        query_embedding = None
-        if body.use_semantic:
-            from app.services.vector_matching_service import VectorSkillMatcher
-            matcher = VectorSkillMatcher()
-            try:
-                query_embedding = matcher.embed_skills(required_skills)
-            finally:
-                matcher.close()
-
         candidates = find_matching_candidates(
             required_skills=required_skills,
-            query_embedding=query_embedding,
             top_k=min(body.top_k, 50),
             min_keyword_matches=body.min_keyword_matches,
         )
@@ -2487,18 +2476,6 @@ def search_candidates(
             candidates = [c for c in candidates if (c.get("years_experience") or 0) >= body.min_experience]
         if body.max_experience is not None:
             candidates = [c for c in candidates if (c.get("years_experience") is None or c.get("years_experience") <= body.max_experience)]
-        if body.min_match_score is not None:
-            candidates = [c for c in candidates if (c.get("combined_score") or 0) >= body.min_match_score]
-        if body.sort_by == "experience":
-            candidates = sorted(candidates, key=lambda c: (c.get("years_experience") or 0), reverse=True)
-        elif body.sort_by == "recent":
-            candidates = sorted(
-                candidates,
-                key=lambda c: c.get("created_at") or "",
-                reverse=True,
-            )
-        else:
-            pass  # keep score order
 
         result = []
         for i, c in enumerate(candidates, start=1):
@@ -2511,8 +2488,6 @@ def search_candidates(
                     skills=c.get("skills") or [],
                     matched_skills=c.get("matched_skills") or [],
                     keyword_score=float(c.get("keyword_score", 0)),
-                    vector_score=float(c.get("vector_score", 0)),
-                    combined_score=float(c.get("combined_score", 0)),
                     cv_filename=c.get("cv_filename"),
                     created_at=created_at.isoformat() if created_at and hasattr(created_at, "isoformat") else (str(created_at) if created_at else None),
                     user_id=c.get("user_id"),

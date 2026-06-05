@@ -41,8 +41,6 @@ export interface Candidate {
   skills: string[];
   matched_skills: string[];
   keyword_score: number;
-  vector_score: number;
-  combined_score: number;
   cv_filename?: string;
   created_at?: string;
   user_id?: number;
@@ -149,6 +147,7 @@ export interface SavedJob {
   source: string;
   saved_at: string;
   scraped_at: string;
+  is_active: boolean;
 }
 
 export interface SearchHistoryItem {
@@ -249,7 +248,8 @@ export type VertexApplicationStatus =
   | "interviewing"
   | "offer"
   | "rejected"
-  | "withdrawn";
+  | "withdrawn"
+  | "expired";
 
 export interface VertexJobApplication {
   id: number;

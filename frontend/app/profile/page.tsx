@@ -7,6 +7,7 @@ import { useToast } from "@/context/ToastContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { uploadProfileCV, getMySlug, updateProfileVisibility } from "@/lib/api";
 import { SkeletonProfileHeader } from "@/components/Skeleton";
+import { QUICK_SKILLS } from "@/components/QuickSkillSelector";
 
 export default function ProfilePage() {
   return (
@@ -234,20 +235,6 @@ function ProfileContent() {
     .toUpperCase()
     .slice(0, 2);
 
-  const quickSkills = [
-    "Python",
-    "JavaScript",
-    "React",
-    "Node.js",
-    "SQL",
-    "PostgreSQL",
-    "Docker",
-    "AWS",
-    "TypeScript",
-    "Java",
-    "Machine Learning",
-    "Git",
-  ];
 
   if (loading)
     return (
@@ -487,7 +474,7 @@ function ProfileContent() {
                     className="vertex-input w-full rounded-lg px-3 py-2 text-sm text-white"
                     value={headline}
                     onChange={(e) => setHeadline(e.target.value)}
-                    placeholder="Senior React Developer"
+                    placeholder="e.g. Marketing Coordinator, Registered Nurse"
                   />
                 </div>
                 <div>
@@ -663,7 +650,7 @@ function ProfileContent() {
                   Quick add:
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {quickSkills.map((skill) => (
+                  {QUICK_SKILLS.map((skill) => (
                     <button
                       key={skill}
                       onClick={() =>

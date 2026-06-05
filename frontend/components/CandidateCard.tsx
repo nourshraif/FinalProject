@@ -16,8 +16,6 @@ export interface CandidateCardProps {
   matched_skills: string[];
   skills: string[];
   keyword_score: number;
-  vector_score: number;
-  combined_score: number;
   cv_filename?: string;
   created_at?: string;
   profile_slug?: string;
@@ -52,8 +50,6 @@ export function CandidateCard(props: CandidateCardProps) {
     matched_skills,
     skills,
     keyword_score,
-    vector_score,
-    combined_score,
     cv_filename,
     created_at,
     profile_slug,
@@ -94,19 +90,12 @@ export function CandidateCard(props: CandidateCardProps) {
             )}
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <ScoreBadge score={Math.round(combined_score)} />
+            <ScoreBadge score={Math.round(keyword_score)} />
             {headerRight}
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="flex flex-wrap gap-2">
-          <span className="text-xs text-vertex-muted">Keyword:</span>
-          <span className="text-sm font-medium">{keyword_score}%</span>
-          <span className="text-xs text-vertex-muted">Semantic:</span>
-          <span className="text-sm font-medium">{vector_score}%</span>
-        </div>
-
         <div>
           <p className="text-xs font-medium text-vertex-muted mb-1.5">
             Matched skills
@@ -248,8 +237,6 @@ export function CandidateCardFromApi({
       matched_skills={candidate.matched_skills}
       skills={candidate.skills}
       keyword_score={candidate.keyword_score}
-      vector_score={candidate.vector_score}
-      combined_score={candidate.combined_score}
       cv_filename={candidate.cv_filename}
       created_at={candidate.created_at}
       profile_slug={candidate.profile_slug}

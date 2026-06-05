@@ -40,8 +40,8 @@ const jobseekerPrimary: NavItem[] = [
 const jobseekerMore: NavItem[] = [
   { href: "/search", label: "All Jobs" },
   { href: "/analytics", label: "Analytics" },
-  { href: "/about", label: "About" },
-  { href: "/contact", label: "Contact" },
+  { href: "/about", label: "About us" },
+  { href: "/contact", label: "Contact us" },
   { href: "/pricing", label: "Pricing" },
 ];
 
@@ -53,19 +53,18 @@ const jobseekerAccount: NavItem[] = [
 
 const companyPrimary: NavItem[] = [
   { href: "/dashboard/company", label: "Dashboard" },
-  { href: "/company/post-job", label: "Post job" },
   { href: "/company/jobs", label: "My jobs" },
-  { href: "/company/search", label: "Find talent" },
-  { href: "/company/saved", label: "Saved" },
-  { href: "/company/requests", label: "Requests" },
+  { href: "/company/search", label: "Find candidates" },
+  { href: "/company/saved", label: "Saved candidates" },
+  { href: "/company/requests", label: "Contact requests" },
 ];
 
 const companyMore: NavItem[] = [
-  { href: "/company/history", label: "History" },
+  { href: "/company/history", label: "Search history" },
   { href: "/analytics", label: "Analytics" },
   { href: "/company/profile", label: "Profile" },
-  { href: "/about", label: "About" },
-  { href: "/contact", label: "Contact" },
+  { href: "/about", label: "About us" },
+  { href: "/contact", label: "Contact us" },
   { href: "/pricing", label: "Pricing" },
 ];
 

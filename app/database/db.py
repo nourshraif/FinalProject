@@ -102,6 +102,220 @@ def ensure_notification_application_types() -> None:
         conn.close()
 
 
+def create_archive_tables() -> None:
+    """
+    Create archive tables for expired/stale jobs (safe to run on every API start).
+
+    archived_jobs        — mirrors the scraped jobs table
+    archived_posted_jobs — mirrors the company-posted jobs table
+
+    These tables are append-only and used exclusively for analytics and
+    historical reporting. They are never queried for active job listings.
+    """
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS archived_jobs (
+                id              INTEGER NOT NULL,
+                source          VARCHAR(50),
+                job_title       VARCHAR(255),
+                company         VARCHAR(255),
+                location        VARCHAR(255),
+                description     TEXT,
+                job_url         VARCHAR(500),
+                scraped_at      TIMESTAMP,
+                created_at      TIMESTAMP,
+                archived_at     TIMESTAMP DEFAULT NOW(),
+                archive_reason  VARCHAR(50) DEFAULT 'stale_30d'
+            );
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_archived_jobs_archived_at
+            ON archived_jobs(archived_at DESC);
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_archived_jobs_source
+            ON archived_jobs(source);
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS archived_posted_jobs (
+                id                  INTEGER NOT NULL,
+                company_user_id     INTEGER,
+                title               VARCHAR(255),
+                company_name        VARCHAR(255),
+                location            VARCHAR(255),
+                job_type            VARCHAR(50),
+                experience_level    VARCHAR(50),
+                salary_min          INTEGER,
+                salary_max          INTEGER,
+                salary_currency     VARCHAR(10),
+                description         TEXT,
+                requirements        TEXT,
+                benefits            TEXT,
+                skills_required     TEXT[],
+                is_featured         BOOLEAN,
+                views_count         INTEGER,
+                applications_count  INTEGER,
+                expires_at          TIMESTAMP,
+                created_at          TIMESTAMP,
+                updated_at          TIMESTAMP,
+                archived_at         TIMESTAMP DEFAULT NOW(),
+                archive_reason      VARCHAR(50) DEFAULT 'expired_60d'
+            );
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_archived_posted_jobs_archived_at
+            ON archived_posted_jobs(archived_at DESC);
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_archived_posted_jobs_company
+            ON archived_posted_jobs(company_user_id);
+        """)
+
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
+def purge_old_archive_data() -> dict:
+    """
+    Delete archive rows older than 6 months.
+
+    Archive tables are append-only but must themselves be bounded.
+    Keeping 6 months of history covers full quarterly comparisons and
+    seasonal hiring patterns without letting the archive grow too large.
+    """
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "DELETE FROM archived_jobs WHERE archived_at < NOW() - INTERVAL '6 months'"
+        )
+        purged_scraped = cur.rowcount
+
+        cur.execute(
+            "DELETE FROM archived_posted_jobs WHERE archived_at < NOW() - INTERVAL '6 months'"
+        )
+        purged_posted = cur.rowcount
+
+        conn.commit()
+        return {"purged_archived_jobs": purged_scraped, "purged_archived_posted": purged_posted}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
+def cleanup_old_notifications() -> int:
+    """
+    Delete stale notifications to prevent the table growing indefinitely.
+
+    Rules:
+      - Read notifications older than 30 days  → deleted
+      - Unread notifications older than 90 days → deleted (assumed irrelevant)
+    """
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            DELETE FROM notifications
+            WHERE (is_read = TRUE  AND created_at < NOW() - INTERVAL '30 days')
+               OR (is_read = FALSE AND created_at < NOW() - INTERVAL '90 days')
+            """
+        )
+        deleted = cur.rowcount
+        conn.commit()
+        return deleted
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
+def ensure_expired_application_support() -> None:
+    """
+    Schema migration (safe to run on every start) that enables clean job expiry:
+
+    1. Adds job_title + company_name columns to posted_job_applications so the
+       application record still carries display info after its job is deleted.
+    2. Backfills those columns from posted_jobs for existing rows.
+    3. Makes posted_job_id nullable and changes the FK from ON DELETE CASCADE
+       to ON DELETE SET NULL — jobs can now be deleted without wiping applications.
+    4. Adds 'expired' to the application status CHECK constraint.
+    """
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        # 1. Add columns if they don't exist
+        cur.execute("""
+            ALTER TABLE posted_job_applications
+            ADD COLUMN IF NOT EXISTS job_title    VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS company_name VARCHAR(255)
+        """)
+
+        # 2. Backfill from posted_jobs for any rows that are still joined
+        cur.execute("""
+            UPDATE posted_job_applications a
+            SET    job_title    = j.title,
+                   company_name = j.company_name
+            FROM   posted_jobs j
+            WHERE  j.id = a.posted_job_id
+              AND  (a.job_title IS NULL OR a.company_name IS NULL)
+        """)
+
+        # 3. Make posted_job_id nullable (idempotent — DROP NOT NULL is safe)
+        cur.execute("""
+            ALTER TABLE posted_job_applications
+            ALTER COLUMN posted_job_id DROP NOT NULL
+        """)
+
+        # 4. Swap FK from CASCADE → SET NULL (drop old, add new)
+        cur.execute("""
+            ALTER TABLE posted_job_applications
+            DROP CONSTRAINT IF EXISTS posted_job_applications_posted_job_id_fkey
+        """)
+        cur.execute("""
+            ALTER TABLE posted_job_applications
+            ADD CONSTRAINT posted_job_applications_posted_job_id_fkey
+            FOREIGN KEY (posted_job_id)
+            REFERENCES posted_jobs(id)
+            ON DELETE SET NULL
+        """)
+
+        # 5. Expand status CHECK to include 'expired'
+        cur.execute("""
+            ALTER TABLE posted_job_applications
+            DROP CONSTRAINT IF EXISTS posted_job_applications_status_check
+        """)
+        cur.execute("""
+            ALTER TABLE posted_job_applications
+            ADD CONSTRAINT posted_job_applications_status_check
+            CHECK (status IN (
+                'applied', 'reviewing', 'interviewing',
+                'offer', 'rejected', 'withdrawn', 'expired'
+            ))
+        """)
+
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
 def ensure_vertex_application_tables() -> None:
     """Create Vertex job application pipeline tables (safe on every API start)."""
     conn = get_connection()
@@ -1093,7 +1307,7 @@ def get_saved_jobs(user_id: int) -> list:
         cur.execute(
             """
             SELECT j.id, j.source, j.job_title, j.company, j.location, j.description,
-                   j.job_url, j.scraped_at, sj.saved_at
+                   j.job_url, j.scraped_at, sj.saved_at, j.is_active
             FROM jobs j
             JOIN saved_jobs sj ON j.id = sj.job_id
             WHERE sj.user_id = %s
@@ -1104,7 +1318,7 @@ def get_saved_jobs(user_id: int) -> list:
         rows = cur.fetchall()
         cols = [
             "id", "source", "job_title", "company", "location", "description",
-            "job_url", "scraped_at", "saved_at",
+            "job_url", "scraped_at", "saved_at", "is_active",
         ]
         out = []
         for row in rows:
@@ -2459,32 +2673,129 @@ def normalize_job_sources() -> int:
 
 def remove_inactive_or_expired_jobs() -> dict:
     """
-    Remove jobs that are no longer active or expired.
-    - Scraped jobs table: delete where is_active = FALSE
-    - Posted jobs table: delete where is_active = FALSE or expires_at <= NOW()
-    Returns deletion counts.
+    TTL-based lifecycle cleanup — runs nightly.
+
+    Scraped jobs (jobs table):
+      • Mark inactive: not re-seen by the scraper in 30+ days.
+      • Hard-delete: already inactive AND not saved by any user.
+
+    Company-posted jobs (posted_jobs table):
+      • Expired = is_active=FALSE, OR explicit expires_at passed,
+        OR created >30 days ago with no expires_at set.
+      • If the job has active applications → soft-delete only (mark inactive).
+      • If no applications → hard-delete immediately.
     """
     conn = get_connection()
     cur = conn.cursor()
     try:
-        cur.execute("DELETE FROM jobs WHERE is_active = FALSE")
-        deleted_scraped = cur.rowcount
+        # ── Scraped jobs ──────────────────────────────────────────────────
+        # 1. Mark stale (not re-scraped in 30 days) as inactive
+        cur.execute(
+            """
+            UPDATE jobs
+            SET    is_active = FALSE
+            WHERE  is_active = TRUE
+              AND  scraped_at < NOW() - INTERVAL '30 days'
+            """
+        )
+        marked_stale = cur.rowcount
+
+        # 2. Archive inactive scraped jobs that no user has saved, then remove
+        # Description is intentionally excluded — metadata only keeps the archive lean
+        cur.execute(
+            """
+            INSERT INTO archived_jobs
+                (id, source, job_title, company, location,
+                 job_url, scraped_at, created_at, archived_at, archive_reason)
+            SELECT
+                id, source, job_title, company, location,
+                job_url, scraped_at, created_at, NOW(), 'stale_30d'
+            FROM jobs
+            WHERE is_active = FALSE
+              AND id NOT IN (SELECT job_id FROM saved_jobs)
+            """
+        )
+        archived_scraped = cur.rowcount
 
         cur.execute(
             """
-            DELETE FROM posted_jobs
-            WHERE is_active = FALSE
-               OR (expires_at IS NOT NULL AND expires_at <= NOW())
+            DELETE FROM jobs
+            WHERE  is_active = FALSE
+              AND  id NOT IN (SELECT job_id FROM saved_jobs)
             """
         )
+        deleted_scraped = cur.rowcount
+
+        # ── Company-posted jobs ───────────────────────────────────────────
+        # Mark expired (explicit expiry, admin deactivation, or no expiry + 60 days old)
+        cur.execute(
+            """
+            UPDATE posted_jobs
+            SET    is_active = FALSE
+            WHERE  is_active = TRUE
+              AND (
+                    (expires_at IS NOT NULL AND expires_at <= NOW())
+                 OR (expires_at IS NULL     AND created_at < NOW() - INTERVAL '30 days')
+              )
+            """
+        )
+        marked_posted = cur.rowcount
+
+        # Close any still-pending applications on expired jobs with 'expired' status
+        cur.execute(
+            """
+            UPDATE posted_job_applications
+            SET    status     = 'expired',
+                   updated_at = NOW()
+            WHERE  posted_job_id IN (
+                       SELECT id FROM posted_jobs WHERE is_active = FALSE
+                   )
+              AND  status NOT IN ('rejected', 'withdrawn', 'expired', 'offer')
+            """
+        )
+
+        # Archive ALL inactive posted jobs (applications are safe — FK is now SET NULL)
+        # description/requirements/benefits are excluded — metadata only keeps the archive lean
+        cur.execute(
+            """
+            INSERT INTO archived_posted_jobs
+                (id, company_user_id, title, company_name, location, job_type,
+                 experience_level, salary_min, salary_max, salary_currency,
+                 skills_required, is_featured, views_count, applications_count,
+                 expires_at, created_at, updated_at, archived_at, archive_reason)
+            SELECT
+                id, company_user_id, title, company_name, location, job_type,
+                experience_level, salary_min, salary_max, salary_currency,
+                skills_required, is_featured, views_count, applications_count,
+                expires_at, created_at, updated_at, NOW(),
+                CASE
+                    WHEN expires_at IS NOT NULL AND expires_at <= NOW() THEN 'explicit_expiry'
+                    WHEN expires_at IS NULL                             THEN 'no_expiry_60d'
+                    ELSE 'deactivated'
+                END
+            FROM posted_jobs
+            WHERE is_active = FALSE
+            """
+        )
+        archived_posted = cur.rowcount
+
+        cur.execute("DELETE FROM posted_jobs WHERE is_active = FALSE")
         deleted_posted = cur.rowcount
 
         conn.commit()
         return {
+            "marked_stale_scraped": marked_stale,
+            "archived_scraped": archived_scraped,
             "deleted_scraped": deleted_scraped,
+            "marked_expired_posted": marked_posted,
+            "archived_posted": archived_posted,
             "deleted_posted": deleted_posted,
+            "total_archived": archived_scraped + archived_posted,
             "total_deleted": deleted_scraped + deleted_posted,
         }
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         cur.close()
         conn.close()
@@ -4073,14 +4384,24 @@ def create_posted_job_application(
     conn = get_connection()
     cur = conn.cursor()
     try:
+        # Fetch job_title and company_name to denormalize into the application row
+        cur.execute(
+            "SELECT title, company_name FROM posted_jobs WHERE id = %s",
+            (posted_job_id,),
+        )
+        job_row = cur.fetchone()
+        job_title = job_row[0] if job_row else None
+        job_company = job_row[1] if job_row else None
+
         cur.execute(
             f"""
             INSERT INTO posted_job_applications (
                 posted_job_id, jobseeker_user_id, status, cover_message,
                 applicant_name, applicant_email, headline, location,
-                years_experience, skills, cv_filename, profile_slug
+                years_experience, skills, cv_filename, profile_slug,
+                job_title, company_name
             )
-            VALUES (%s, %s, 'applied', %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, 'applied', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (
@@ -4095,6 +4416,8 @@ def create_posted_job_application(
                 list(data.get("skills") or []),
                 (data.get("cv_filename") or "").strip()[:255] or None,
                 (data.get("profile_slug") or "").strip()[:100] or None,
+                job_title,
+                job_company,
             ),
         )
         app_id = cur.fetchone()[0]
@@ -4120,9 +4443,11 @@ def get_jobseeker_vertex_applications(jobseeker_user_id: int) -> list:
                 a.applicant_name, a.applicant_email, a.headline, a.location,
                 a.years_experience, a.skills, a.cv_filename, a.profile_slug,
                 a.company_notes, a.applied_at, a.updated_at,
-                j.title AS job_title, j.company_name, j.location AS job_location
+                COALESCE(j.title,        a.job_title)    AS job_title,
+                COALESCE(j.company_name, a.company_name) AS company_name,
+                j.location AS job_location
             FROM posted_job_applications a
-            JOIN posted_jobs j ON j.id = a.posted_job_id
+            LEFT JOIN posted_jobs j ON j.id = a.posted_job_id
             WHERE a.jobseeker_user_id = %s
             ORDER BY a.updated_at DESC
             """,

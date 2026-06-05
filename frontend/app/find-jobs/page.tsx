@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, useRef } from "react";
+import { Globe } from "lucide-react";
 import {
   searchJobs,
   getJobSources,
@@ -138,6 +139,32 @@ export default function FindJobsPage() {
 
   return (
     <div className="min-h-screen pt-24 pb-12">
+      {/* Page header */}
+      <div className="mx-auto max-w-[1400px] px-4 pb-6 lg:px-6">
+        <h1 className="text-3xl font-bold text-white sm:text-4xl">Job Boards</h1>
+        <p className="mt-2 max-w-2xl text-sm text-vertex-muted sm:text-base">
+          Listings aggregated from popular job boards across the web. Applying takes you directly
+          to the original posting on the source site.
+        </p>
+        <div
+          className="mt-4 flex items-start gap-3 rounded-xl px-4 py-3 text-sm"
+          style={{
+            background: "rgba(99,102,241,0.08)",
+            border: "1px solid rgba(99,102,241,0.2)",
+            color: "var(--text-muted)",
+          }}
+        >
+          <Globe className="mt-0.5 h-4 w-4 shrink-0 text-indigo-400" />
+          <span>
+            These jobs are collected from third-party job boards and are <strong className="text-white/80">not posted by companies on Vertex</strong>.
+            For positions posted directly by verified companies,{" "}
+            <a href="/jobs" className="font-medium text-indigo-400 underline-offset-2 hover:underline">
+              browse Vertex Jobs
+            </a>.
+          </span>
+        </div>
+      </div>
+
       <div className="mx-auto flex max-w-[1400px] flex-col px-4 lg:flex-row lg:gap-8 lg:px-6">
         {/* Sidebar */}
         <aside

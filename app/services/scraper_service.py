@@ -363,6 +363,11 @@ class ScraperService:
                 str(existing_row[5] or "").strip(),
             )
             if stored == incoming:
+                # Refresh scraped_at so the TTL clock knows this job is still live
+                self.cur.execute(
+                    "UPDATE jobs SET scraped_at = NOW() WHERE id = %s",
+                    (job_id,),
+                )
                 self.stats.jobs_unchanged += 1
                 return True
 

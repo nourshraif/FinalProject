@@ -258,6 +258,57 @@ def run_weekly_alerts():
 
 
 # =========================================================
+# NIGHTLY CLEANUP
+# =========================================================
+
+def run_cleanup_job():
+    """
+    Remove or archive stale jobs nightly.
+    - Scraped jobs not re-seen in 30 days are marked inactive, then deleted
+      unless a user has saved them.
+    - Company-posted jobs older than 30 days (with no explicit expiry) and
+      explicitly deactivated/expired postings are removed; postings that still
+      have active applications are only soft-deleted to preserve the records.
+    """
+    logger.info("[SCHEDULER] Starting nightly job cleanup...")
+    try:
+        from app.database.db import (
+            remove_inactive_or_expired_jobs,
+            purge_old_archive_data,
+            cleanup_old_notifications,
+        )
+
+        # 1. Expire stale/old jobs and archive their metadata
+        result = remove_inactive_or_expired_jobs()
+        logger.info(
+            "[SCHEDULER] Job cleanup — "
+            "stale_scraped=%s archived=%s deleted=%s | "
+            "expired_posted=%s archived=%s deleted=%s",
+            result.get("marked_stale_scraped", 0),
+            result.get("archived_scraped", 0),
+            result.get("deleted_scraped", 0),
+            result.get("marked_expired_posted", 0),
+            result.get("archived_posted", 0),
+            result.get("deleted_posted", 0),
+        )
+
+        # 2. Purge archive rows older than 6 months
+        purge = purge_old_archive_data()
+        logger.info(
+            "[SCHEDULER] Archive purge — scraped=%s posted=%s",
+            purge.get("purged_archived_jobs", 0),
+            purge.get("purged_archived_posted", 0),
+        )
+
+        # 3. Delete stale notifications
+        notif_deleted = cleanup_old_notifications()
+        logger.info("[SCHEDULER] Notifications pruned — deleted=%s", notif_deleted)
+
+    except Exception as e:
+        logger.error("[SCHEDULER] Cleanup job failed: %s", e, exc_info=True)
+
+
+# =========================================================
 # CREATE SCHEDULER
 # =========================================================
 
@@ -299,8 +350,20 @@ def create_scheduler():
         replace_existing=True,
     )
 
+    # -----------------------------------------------------
+    # NIGHTLY CLEANUP (stale / expired jobs)
+    # -----------------------------------------------------
+    scheduler.add_job(
+        run_cleanup_job,
+        CronTrigger(hour=3, minute=0),
+        id="nightly_cleanup",
+        name="Nightly Job Lifecycle Cleanup",
+        replace_existing=True,
+    )
+
     logger.info("✓ Batch scraper scheduled for 2:00 AM daily")
     logger.info("✓ Daily alerts scheduled for 8:00 AM daily")
     logger.info("✓ Weekly alerts scheduled for Monday 9:00 AM")
+    logger.info("✓ Nightly cleanup scheduled for 3:00 AM daily")
 
     return scheduler

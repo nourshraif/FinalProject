@@ -204,7 +204,7 @@ export default function AboutPageClient() {
               {
                 icon: Zap,
                 title: "Speed",
-                body: "The right match shouldn&apos;t take months. Vertex helps people find relevant opportunities in seconds.",
+                body: "The right match shouldn't take months. Vertex helps people find relevant opportunities in seconds.",
               },
             ].map((v) => {
               const Icon = v.icon;
