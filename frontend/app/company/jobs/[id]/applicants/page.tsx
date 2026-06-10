@@ -530,7 +530,7 @@ function ApplicantsContent() {
 
                 {app.profile_slug && (
                   <Link
-                    href={`/profile/${app.profile_slug}`}
+                    href={`/u/${app.profile_slug}`}
                     target="_blank"
                     className="mt-2 inline-block text-xs text-indigo-300 hover:underline"
                   >

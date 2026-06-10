@@ -1550,22 +1550,33 @@ def admin_health(admin_user: dict = Depends(get_admin_user)):
         conn.close()
 
 
-def _extract_skills_from_pdf_bytes(content: bytes) -> Tuple[List[str], bool]:
+def _extract_skills_from_cv_bytes(content: bytes, filename: str = "") -> Tuple[List[str], bool]:
     """
-    Extract skills from raw PDF bytes (same pipeline as /api/upload-cv).
+    Extract skills from raw CV bytes (same pipeline as /api/upload-cv).
     Returns (skills, used_fallback).
     """
-    from app.utils.pdf_utils import extract_text_from_pdf
+    from app.utils.cv_utils import ALLOWED_CV_LABEL, extract_text_from_cv_bytes, is_allowed_cv_filename
     from app.services.skill_extraction_service import (
         call_huggingface_api,
         parse_skills_from_response,
         merge_skills_from_api_and_fallback,
     )
 
-    pdf_file = BytesIO(content)
-    cv_text = extract_text_from_pdf(pdf_file)
+    if filename and not is_allowed_cv_filename(filename):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported CV format. Allowed: {ALLOWED_CV_LABEL}.",
+        )
+
+    cv_text = extract_text_from_cv_bytes(content, filename)
     if not cv_text or not cv_text.strip():
-        raise HTTPException(status_code=422, detail="Could not extract text from PDF")
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Could not extract text from this CV. "
+                f"Use {ALLOWED_CV_LABEL} with selectable text (not a scan-only image)."
+            ),
+        )
     model_name = os.getenv("HF_MODEL")
     skills: List[str] = []
     used_fallback = False
@@ -1583,8 +1594,8 @@ def _extract_skills_from_pdf_bytes(content: bytes) -> Tuple[List[str], bool]:
         raise HTTPException(
             status_code=502,
             detail=(
-                "Could not extract any skills from this PDF. "
-                "Use a PDF with selectable text (not a scan-only image), set HF_TOKEN for AI extraction, "
+                "Could not extract any skills from this CV. "
+                "Use a file with selectable text, set HF_TOKEN for AI extraction, "
                 "or add skills manually."
             ),
         )
@@ -1643,13 +1654,15 @@ def _match_jobs_from_skills(skills: List[str]) -> List[JobMatchResponse]:
 # ---------------------------------------------------------------------------
 @app.post("/api/upload-cv")
 async def upload_cv(file: UploadFile = File(...)):
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="PDF file required")
+    from app.utils.cv_utils import ALLOWED_CV_LABEL, is_allowed_cv_filename
+
+    if not file.filename or not is_allowed_cv_filename(file.filename):
+        raise HTTPException(status_code=400, detail=f"CV file required ({ALLOWED_CV_LABEL})")
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Empty file")
     try:
-        skills, used_fallback = _extract_skills_from_pdf_bytes(content)
+        skills, used_fallback = _extract_skills_from_cv_bytes(content, file.filename)
         return {"skills": skills, "fallback": used_fallback}
     except HTTPException:
         raise
@@ -1668,9 +1681,9 @@ async def match_jobs(
     current_user: Optional[dict] = Depends(get_current_user_optional),
 ):
     """
-    Match jobs from skills or from a CV PDF.
+    Match jobs from skills or from a CV file.
     - JSON body: { \"skills\": [\"Python\", \"React\"] } — skips extraction, runs matching only.
-    - multipart/form-data: field \"cv\" (PDF) — extracts skills then matches.
+    - multipart/form-data: field \"cv\" — extracts skills then matches.
     Guests receive match count only (no job cards). Free jobseekers see up to 3 matches;
     Pro/Business see all (within top_k).
     """
@@ -1685,17 +1698,19 @@ async def match_jobs(
         if file_item is None or not hasattr(file_item, "read"):
             raise HTTPException(
                 status_code=400,
-                detail='Multipart requests must include a PDF field named "cv" (or "file").',
+                detail='Multipart requests must include a CV field named "cv" (or "file").',
             )
         uf = file_item
         filename = getattr(uf, "filename", None) or ""
-        if not str(filename).lower().endswith(".pdf"):
-            raise HTTPException(status_code=400, detail="PDF file required")
+        from app.utils.cv_utils import ALLOWED_CV_LABEL, is_allowed_cv_filename
+
+        if not is_allowed_cv_filename(str(filename)):
+            raise HTTPException(status_code=400, detail=f"CV file required ({ALLOWED_CV_LABEL})")
         content = await uf.read()
         if not content:
             raise HTTPException(status_code=400, detail="Empty file")
         try:
-            skills, _ = _extract_skills_from_pdf_bytes(content)
+            skills, _ = _extract_skills_from_cv_bytes(content, str(filename))
         except HTTPException:
             raise
         except Exception as e:
@@ -1704,7 +1719,7 @@ async def match_jobs(
         try:
             body = await request.json()
         except Exception:
-            raise HTTPException(status_code=400, detail="Expected JSON body with a \"skills\" array or multipart PDF.")
+            raise HTTPException(status_code=400, detail="Expected JSON body with a \"skills\" array or multipart CV file.")
         if not isinstance(body, dict):
             raise HTTPException(status_code=400, detail="Invalid JSON body")
         raw = body.get("skills")
@@ -2692,11 +2707,13 @@ async def upload_profile_cv(
     cv: UploadFile = File(..., alias="cv"),
     current_user: dict = Depends(get_current_user),
 ):
-    """Protected: upload CV PDF, extract text and skills, update user profile (job seeker only)."""
+    """Protected: upload CV, extract text and skills, update user profile (job seeker only)."""
+    from app.utils.cv_utils import ALLOWED_CV_LABEL, extract_text_from_cv_bytes, is_allowed_cv_filename
+
     if current_user.get("user_type") != "jobseeker":
         raise HTTPException(status_code=403, detail="Job seeker access only")
-    if not cv.filename or not cv.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files allowed")
+    if not cv.filename or not is_allowed_cv_filename(cv.filename):
+        raise HTTPException(status_code=400, detail=f"Unsupported format. Allowed: {ALLOWED_CV_LABEL}.")
     content = await cv.read()
     if not content:
         raise HTTPException(status_code=400, detail="Empty file")
@@ -2711,16 +2728,14 @@ async def upload_profile_cv(
     with open(file_path, "wb") as f:
         f.write(content)
     try:
-        from app.utils.pdf_utils import extract_text_from_pdf
         from app.services.skill_extraction_service import (
             call_huggingface_api,
             parse_skills_from_response,
             merge_skills_from_api_and_fallback,
         )
-        with open(file_path, "rb") as f:
-            extracted_text = extract_text_from_pdf(f)
+        extracted_text = extract_text_from_cv_bytes(content, cv.filename)
         if not extracted_text or not extracted_text.strip():
-            raise HTTPException(status_code=422, detail="Could not extract text from PDF")
+            raise HTTPException(status_code=422, detail="Could not extract text from CV")
         model_name = os.getenv("HF_MODEL")
         skills = []
         try:
@@ -2737,6 +2752,10 @@ async def upload_profile_cv(
             skills,
         ):
             raise HTTPException(status_code=500, detail="Failed to save profile")
+        db_ensure_user_has_slug(
+            current_user["id"],
+            current_user.get("full_name") or current_user.get("email", ""),
+        )
         return {
             "success": True,
             "cv_filename": filename,
@@ -3670,13 +3689,25 @@ def update_profile_visibility_route(
     return {"success": True, "is_public": body.is_public}
 
 
+def _public_site_base(request: Optional[Request] = None) -> str:
+    """Public site origin for shareable links (respects nginx Host / X-Forwarded-*)."""
+    if request is not None:
+        host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+        if host:
+            proto = request.headers.get("x-forwarded-proto", "http").split(",")[0].strip()
+            return f"{proto}://{host}".rstrip("/")
+    return (FRONTEND_URL or APP_URL or "http://localhost:3000").rstrip("/")
+
+
 @app.get("/api/profile/slug")
-def get_profile_slug(current_user: dict = Depends(get_current_user)):
+def get_profile_slug(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
     if current_user.get("user_type") != "jobseeker":
         raise HTTPException(status_code=403, detail="Jobseeker access only")
     slug = db_ensure_user_has_slug(
         current_user["id"],
         current_user.get("full_name") or current_user.get("email", ""),
     )
-    base = FRONTEND_URL or APP_URL or "http://localhost:3000"
-    return {"slug": slug, "profile_url": f"{base}/u/{slug}"}
+    return {"slug": slug, "profile_url": f"{_public_site_base(request)}/u/{slug}"}

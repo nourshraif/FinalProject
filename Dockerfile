@@ -5,6 +5,9 @@ FROM finalproject-base:latest
 
 WORKDIR /app
 
+# Lightweight deps added after base image (avoids full base rebuild for small requirement changes).
+RUN pip install --no-cache-dir python-docx>=1.1.0 striprtf>=0.0.26 olefile>=0.47
+
 COPY . .
 
 ENV PYTHONPATH=/app

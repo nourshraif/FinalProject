@@ -77,7 +77,7 @@ export function MatchServiceShowcase({
               </span>
             </h2>
             <p className="mt-4 max-w-lg text-pretty leading-relaxed text-v-onSurfaceVariant">
-              Vertex extracts skills from your PDF, compares them semantically against{" "}
+              Vertex extracts skills from your CV, compares them semantically against{" "}
               <span className="font-medium text-white">{totalJobsLabel}</span> live roles, and
               surfaces matches with a clear fit score—so you stop scrolling and start applying.
             </p>
@@ -130,7 +130,7 @@ export function MatchServiceShowcase({
                   <p className="text-xs font-medium uppercase tracking-wider text-v-onSurfaceVariant">
                     Step 1
                   </p>
-                  <p className="text-sm font-semibold text-white">Upload your CV (PDF)</p>
+                  <p className="text-sm font-semibold text-white">Upload your CV</p>
                 </div>
               </div>
             </div>

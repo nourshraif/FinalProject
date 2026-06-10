@@ -19,7 +19,7 @@ export function EmptyState({ variant, uploadZoneId = "cv-upload-zone" }: EmptySt
         <Inbox className="h-12 w-12 text-vertex-muted mb-3" />
         <h3 className="font-semibold text-foreground mb-1">No CV uploaded yet</h3>
         <p className="text-sm text-vertex-muted mb-4 max-w-sm">
-          Drop your PDF CV above or click to browse. Then click “Find Matching Jobs” to see results.
+          Drop your CV above or click to browse. Then click “Find Matching Jobs” to see results.
         </p>
         <a
           href={`#${uploadZoneId}`}

@@ -65,7 +65,7 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-/** Upload PDF CV and get extracted skills */
+/** Upload CV and get extracted skills */
 export async function uploadCV(file: File): Promise<Skill[]> {
   const form = new FormData();
   form.append("file", file);
@@ -1596,8 +1596,7 @@ export interface PublicProfile {
 }
 
 export async function getPublicProfile(slug: string): Promise<PublicProfile> {
-  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-  const res = await fetch(`${BASE_URL}/api/public/profile/${encodeURIComponent(slug)}`);
+  const res = await fetch(`${API_BASE}/api/public/profile/${encodeURIComponent(slug)}`);
   if (!res.ok) {
     if (res.status === 404) throw new Error("Profile not found or is private");
     throw new Error("Failed to load profile");

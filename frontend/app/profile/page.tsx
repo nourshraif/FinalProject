@@ -6,6 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { uploadProfileCV, getMySlug, updateProfileVisibility } from "@/lib/api";
+import { ALLOWED_CV_ACCEPT, ALLOWED_CV_LABEL, isAllowedCvFile } from "@/lib/cv-formats";
 import { SkeletonProfileHeader } from "@/components/Skeleton";
 import { QUICK_SKILLS } from "@/components/QuickSkillSelector";
 
@@ -189,8 +190,8 @@ function ProfileContent() {
   }
 
   async function handleCVUpload(file: File) {
-    if (!file.name.endsWith(".pdf")) {
-      setError("Please upload a PDF file only");
+    if (!isAllowedCvFile(file)) {
+      setError(`Please upload a supported CV (${ALLOWED_CV_LABEL}).`);
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
@@ -766,7 +767,7 @@ function ProfileContent() {
             <input
               ref={cvInputRef}
               type="file"
-              accept=".pdf"
+              accept={ALLOWED_CV_ACCEPT}
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0];
@@ -794,7 +795,7 @@ function ProfileContent() {
                   Drag and drop or click to browse
                 </p>
                 <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                  PDF only · Max 10MB
+                  {ALLOWED_CV_LABEL} · Max 10MB
                 </p>
               </div>
             )}

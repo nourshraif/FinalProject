@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Upload, FileText, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { ALLOWED_CV_ACCEPT, ALLOWED_CV_LABEL, isAllowedCvFile } from "@/lib/cv-formats";
 
 export interface CVUploaderProps {
   /** Called with job results after upload + match (on submit) */
@@ -45,8 +46,8 @@ export function CVUploader({
 
   const handleFileSelect = useCallback((f: File | null) => {
     if (!f) return;
-    if (!f.name.toLowerCase().endsWith(".pdf")) {
-      setError("Please upload a PDF file.");
+    if (!isAllowedCvFile(f)) {
+      setError(`Please upload a supported CV (${ALLOWED_CV_LABEL}).`);
       return;
     }
     setFile(f);
@@ -145,7 +146,7 @@ export function CVUploader({
       >
         <input
           type="file"
-          accept=".pdf,application/pdf"
+          accept={ALLOWED_CV_ACCEPT}
           onChange={onInputChange}
           className="absolute h-0 w-0 opacity-0"
           id="cv-upload"
@@ -165,7 +166,7 @@ export function CVUploader({
               ? "Extracting skills and finding jobs…"
               : "Drop your CV here or click to browse"}
           </span>
-          <span className="text-xs text-vertex-muted">PDF only</span>
+          <span className="text-xs text-vertex-muted">{ALLOWED_CV_LABEL}</span>
         </label>
       </div>
 
