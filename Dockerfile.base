@@ -32,4 +32,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir --default-timeout=100 --retries=5 -r requirements.txt
 
+# Cache the embedding model at build time so runtime works without HuggingFace DNS.
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+
 # No application code here — that goes in the app image.

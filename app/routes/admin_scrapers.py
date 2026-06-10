@@ -6,6 +6,7 @@ from app.models.scraper_source import (
     create_scraper_source,
     update_scraper_source,
     delete_scraper_source,
+    seed_default_scraper_sources,
 )
 
 router = APIRouter(prefix="/api/admin/scrapers", tags=["Admin Scrapers"])
@@ -16,7 +17,11 @@ router = APIRouter(prefix="/api/admin/scrapers", tags=["Admin Scrapers"])
 # -----------------------------
 @router.get("/")
 def get_sources():
-    return get_all_scraper_sources()
+    sources = get_all_scraper_sources()
+    if not sources:
+        seed_default_scraper_sources()
+        sources = get_all_scraper_sources()
+    return sources
 
 
 # -----------------------------

@@ -1,22 +1,41 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { getStats, runScraper } from "@/lib/api";
 import type { Stats } from "@/types";
 import { useToast } from "@/context/ToastContext";
+import { useAuth } from "@/context/AuthContext";
 import { StatsPanel } from "@/components/StatsPanel";
 import { SkeletonStatCard } from "@/components/Skeleton";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Loader2, AlertCircle } from "lucide-react";
 
 export default function DashboardPage() {
+  const router = useRouter();
+  const { isLoggedIn, user } = useAuth();
   const { showToast } = useToast();
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [scraperRunning, setScraperRunning] = useState(false);
 
+  const redirecting =
+    isLoggedIn &&
+    user != null &&
+    (user.user_type === "jobseeker" || user.user_type === "company");
+
   useEffect(() => {
+    if (!redirecting || !user) return;
+    if (user.user_type === "jobseeker") {
+      router.replace("/dashboard/jobseeker");
+      return;
+    }
+    router.replace("/dashboard/company");
+  }, [redirecting, user, router]);
+
+  useEffect(() => {
+    if (redirecting) return;
     let cancelled = false;
     setError(null);
     getStats()
@@ -34,7 +53,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [redirecting, showToast]);
 
   const handleRunScraper = async () => {
     setScraperRunning(true);
@@ -52,6 +71,14 @@ export default function DashboardPage() {
       setScraperRunning(false);
     }
   };
+
+  if (redirecting) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-vertex-muted" aria-hidden />
+      </div>
+    );
+  }
 
   return (
     <div className="container py-8">

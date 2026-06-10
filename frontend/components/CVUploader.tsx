@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { uploadCV, matchJobs, uploadProfileCV } from "@/lib/api";
+import { uploadCV, matchJobs, matchJobsWithSkills, uploadProfileCV } from "@/lib/api";
 import type { MatchJobsResult, Skill } from "@/types";
+import { savePendingMatchSkills } from "@/lib/match-auth";
 import { toast } from "sonner";
 import { Upload, FileText, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -99,10 +100,24 @@ export function CVUploader({
       }
       setSkills(extractedSkills);
       onSkillsExtracted?.(extractedSkills);
-      const matchResult = await matchJobs(extractedSkills);
+      const matchResult = token
+        ? await matchJobsWithSkills(token, extractedSkills)
+        : await matchJobs(extractedSkills);
+      if (!token && extractedSkills.length > 0) {
+        savePendingMatchSkills(extractedSkills);
+      }
       onMatchComplete?.(matchResult);
-      const n = matchResult.jobs?.length ?? 0;
-      toast.success(`Loaded ${n} matching job${n !== 1 ? "s" : ""}`);
+      const shown = matchResult.jobs?.length ?? 0;
+      const total = matchResult.total_matched ?? shown;
+      if (!token && shown === 0 && total > 0) {
+        toast.success(
+          `Found ${total} matching job${total !== 1 ? "s" : ""} — sign up free to preview your top 3`
+        );
+      } else if (token && matchResult.upgrade_message && total > shown) {
+        toast.success(`Showing ${shown} of ${total} matches — upgrade to Pro for the rest`);
+      } else {
+        toast.success(`Loaded ${shown} matching job${shown !== 1 ? "s" : ""}`);
+      }
     } catch (e) {
       const message = e instanceof Error ? e.message : "Something went wrong";
       setError(message);

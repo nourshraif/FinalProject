@@ -1,22 +1,46 @@
 "use client";
 
+import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
+import type { User } from "@/context/AuthContext";
 import { verifyCheckoutSession } from "@/lib/api";
 
-export default function PaymentSuccessPage() {
+function postPaymentPath(user: User | null, verifiedPlan: string): string {
+  const plan = verifiedPlan.toLowerCase();
+  if (plan === "pro" && user?.user_type !== "company") {
+    return "/match?unlocked=1";
+  }
+  if (plan === "business" && user?.user_type === "company") {
+    return "/dashboard/company";
+  }
+  if (user?.user_type === "company") return "/dashboard/company";
+  if (user?.user_type === "jobseeker") return "/dashboard/jobseeker";
+  return "/";
+}
+
+function postPaymentCta(user: User | null, verifiedPlan: string): string {
+  const plan = verifiedPlan.toLowerCase();
+  if (plan === "pro" && user?.user_type !== "company") {
+    return "See all your matches";
+  }
+  if (user?.user_type === "company") return "Go to company dashboard";
+  return "Go to dashboard";
+}
+
+function PaymentSuccessPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { token, updateUser, refreshUser } = useAuth();
+  const { token, user, updateUser, refreshUser } = useAuth();
   const sessionId = searchParams.get("session_id") || "";
   const planParam = (searchParams.get("plan") || "pro").toLowerCase();
 
   const [verifying, setVerifying] = useState<boolean>(Boolean(sessionId && token));
   const [error, setError] = useState<string | null>(null);
   const [verifiedPlan, setVerifiedPlan] = useState<string>(planParam);
-  const [countdown, setCountdown] = useState(5);
+  const [countdown, setCountdown] = useState(3);
 
   useEffect(() => {
     let cancelled = false;
@@ -30,7 +54,7 @@ export default function PaymentSuccessPage() {
         if (cancelled) return;
         setVerifiedPlan(res.plan || planParam);
         updateUser({ plan: res.plan });
-        refreshUser().catch(() => undefined);
+        await refreshUser();
       } catch (e) {
         if (cancelled) return;
         setError(
@@ -48,25 +72,28 @@ export default function PaymentSuccessPage() {
     };
   }, [sessionId, token, planParam, updateUser, refreshUser]);
 
+  const destination = postPaymentPath(user, verifiedPlan);
+  const primaryCta = postPaymentCta(user, verifiedPlan);
+
   useEffect(() => {
     if (verifying || error) return;
     const t = setInterval(() => {
       setCountdown((c) => {
         if (c <= 1) {
           clearInterval(t);
-          router.push("/dashboard");
+          router.push(destination);
           return 0;
         }
         return c - 1;
       });
     }, 1000);
     return () => clearInterval(t);
-  }, [router, verifying, error]);
+  }, [router, verifying, error, destination]);
 
   const subtext =
     verifiedPlan === "business"
       ? "You now have unlimited candidate searches and contact requests."
-      : "You now have access to unlimited matches, daily job alerts, and priority matching.";
+      : "Your Pro plan is active — we're taking you to all your job matches now.";
 
   if (verifying) {
     return (
@@ -135,10 +162,10 @@ export default function PaymentSuccessPage() {
       </p>
       <div className="mt-8 flex flex-col gap-3 sm:flex-row">
         <Link
-          href="/dashboard"
+          href={destination}
           className="glow-button rounded-lg px-6 py-2.5 text-center text-sm font-medium text-white"
         >
-          Go to Dashboard
+          {primaryCta}
         </Link>
         <Link
           href="/settings/billing"
@@ -152,4 +179,8 @@ export default function PaymentSuccessPage() {
       </p>
     </div>
   );
+}
+
+export default function PaymentSuccessPageWrapper() {
+  return <Suspense fallback={null}><PaymentSuccessPage /></Suspense>;
 }

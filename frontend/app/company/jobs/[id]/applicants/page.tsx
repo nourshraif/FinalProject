@@ -300,6 +300,8 @@ function ApplicantsContent() {
       interviewing: active.filter((a) => a.status === "interviewing").length,
       offer: active.filter((a) => a.status === "offer").length,
       rejected: active.filter((a) => a.status === "rejected").length,
+      withdrawn: apps.filter((a) => a.status === "withdrawn").length,
+      expired: apps.filter((a) => a.status === "expired").length,
     };
   }, [apps]);
 

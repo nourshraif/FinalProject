@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Briefcase,
   Brain,
@@ -14,18 +14,13 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { getStats } from "@/lib/api";
+import type { Stats } from "@/types";
 import { HeroMatchPanel } from "@/components/HeroMatchPanel";
-
-const HERO_STATS = [
-  { key: "boards" as const, label: "Job boards", value: "8" },
-  { key: "pricing" as const, label: "To get started", value: "Free" },
-  { key: "updates" as const, label: "Fresh updates", value: "Daily" },
-];
 
 export default function HomePage() {
   const router = useRouter();
   const { isLoggedIn, user } = useAuth();
-  const [stats, setStats] = useState<{ total_jobs: number } | null>(null);
+  const [stats, setStats] = useState<Stats | null>(null);
 
   useEffect(() => {
     getStats()
@@ -39,6 +34,22 @@ export default function HomePage() {
         ? "10K+"
         : stats.total_jobs.toLocaleString()
       : "2,194";
+
+  const heroStats = useMemo(
+    () => [
+      {
+        key: "boards" as const,
+        label: "Job boards",
+        value:
+          stats?.job_board_count != null
+            ? String(stats.job_board_count)
+            : "…",
+      },
+      { key: "pricing" as const, label: "To get started", value: "Free" },
+      { key: "updates" as const, label: "Fresh updates", value: "Daily" },
+    ],
+    [stats?.job_board_count]
+  );
 
   const dashboardHref =
     user?.user_type === "company" ? "/dashboard/company" : "/dashboard/jobseeker";
@@ -107,7 +118,7 @@ export default function HomePage() {
         <div className="mx-auto max-w-7xl px-6 pt-5 sm:pt-6">
           <div className="overflow-hidden rounded-t-2xl border border-b-0 border-white/[0.08] bg-gradient-to-b from-[#0f1a30]/95 to-[#0e182c]/60 shadow-[0_-6px_28px_rgba(99,102,241,0.06)]">
             <div className="grid grid-cols-3 divide-x divide-white/[0.06]">
-              {HERO_STATS.map(({ key, label, value }) => (
+              {heroStats.map(({ key, label, value }) => (
                 <div
                   key={key}
                   className="flex min-h-[72px] flex-col items-center justify-center gap-0.5 px-3 py-4 sm:min-h-[76px] sm:py-5"

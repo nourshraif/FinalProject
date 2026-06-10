@@ -1,18 +1,126 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import type { Job, MatchJobsResult, UserProfile } from "@/types";
 import { CVUploader } from "@/components/CVUploader";
 import { JobCardFromJob } from "@/components/JobCard";
 import { SkeletonJobCard } from "@/components/SkeletonJobCard";
 import { EmptyState } from "@/components/EmptyState";
 import { PlanGate } from "@/components/PlanGate";
-import { CheckCircle2, Lock } from "lucide-react";
+import { CheckCircle2, Lock, Sparkles } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
-import { getProfile, matchJobsWithSkills } from "@/lib/api";
+import { getProfile, matchJobsWithSkills, updateSkills } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import {
+  matchLoginUrl,
+  matchRegisterUrl,
+  peekPendingMatchSkills,
+  takePendingMatchSkills,
+} from "@/lib/match-auth";
+
+function GuestMatchCountTeaser({ total }: { total: number }) {
+  return (
+    <div className="mx-auto max-w-3xl space-y-6">
+      <div className="glass-card rounded-2xl border border-indigo-500/25 bg-indigo-500/[0.06] px-8 py-8 text-center">
+        <p className="text-sm font-medium uppercase tracking-wide text-indigo-300/90">
+          Matches found
+        </p>
+        <p className="mt-2 font-headline text-5xl font-bold text-white sm:text-6xl">
+          {total.toLocaleString()}
+        </p>
+        <p className="mx-auto mt-3 max-w-md text-sm text-slate-400">
+          Your CV matches <span className="font-semibold text-white">{total}</span> open role
+          {total !== 1 ? "s" : ""}. Create a free account to preview your top 3 — upgrade to Pro to
+          unlock them all.
+        </p>
+        <Link
+          href={matchRegisterUrl()}
+          className="mt-6 inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-v-primary to-v-primaryContainer px-7 py-2.5 text-sm font-bold text-white shadow-lg shadow-v-primary/25 transition-all hover:shadow-v-primary/40"
+        >
+          <Sparkles className="h-4 w-4" />
+          Sign up free to preview matches
+        </Link>
+      </div>
+
+      <div className="relative">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 select-none pointer-events-none">
+          {Array.from({ length: Math.min(total, 6) }).map((_, i) => (
+            <div key={i} className="blur-md opacity-50">
+              <SkeletonJobCard />
+            </div>
+          ))}
+        </div>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="glass-card rounded-2xl border border-indigo-500/30 bg-[#0e182c]/85 px-8 py-7 text-center shadow-[0_16px_48px_rgba(0,0,0,0.5)] backdrop-blur-md max-w-sm w-full mx-4">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-indigo-500/15 ring-1 ring-indigo-500/30">
+              <Lock className="h-6 w-6 text-indigo-300" aria-hidden />
+            </div>
+            <p className="text-base font-bold text-white">Your matches are ready</p>
+            <p className="mt-1.5 text-sm text-slate-400">
+              Sign up to reveal your top 3 best-fit roles.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LockedResultsSection({
+  shown,
+  total,
+  isGuest,
+}: {
+  shown: number;
+  total: number;
+  isGuest: boolean;
+}) {
+  const remaining = Math.max(0, total - shown);
+  const label = remaining > 0 ? `${remaining} more match${remaining !== 1 ? "es" : ""}` : "more matches";
+  const href = isGuest ? matchRegisterUrl() : "/pricing";
+  const cta = isGuest ? "Sign up free to preview matches" : "Upgrade to Pro to see all";
+  const sub = isGuest
+    ? "Create a free account to preview your top 3 matches."
+    : "Upgrade to Pro and see every role that fits your skills.";
+
+  return (
+    <div className="mt-4 space-y-3">
+      {/* Blurred ghost cards */}
+      <div className="relative">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 select-none pointer-events-none">
+          {Array.from({ length: Math.min(remaining, 3) }).map((_, i) => (
+            <div key={i} className="blur-sm opacity-60">
+              <SkeletonJobCard />
+            </div>
+          ))}
+        </div>
+
+        {/* Lock overlay */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="glass-card rounded-2xl border border-indigo-500/30 bg-[#0e182c]/80 px-8 py-7 text-center shadow-[0_16px_48px_rgba(0,0,0,0.5)] backdrop-blur-md max-w-sm w-full mx-4">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-indigo-500/15 ring-1 ring-indigo-500/30">
+              <Lock className="h-6 w-6 text-indigo-300" aria-hidden />
+            </div>
+            <p className="text-base font-bold text-white">
+              {label} waiting
+            </p>
+            <p className="mt-1.5 text-sm text-slate-400">{sub}</p>
+            <Link
+              href={href}
+              className="mt-5 inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-v-primary to-v-primaryContainer px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-v-primary/25 transition-all hover:shadow-v-primary/40"
+            >
+              <Sparkles className="h-4 w-4" />
+              {cta}
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const SKELETON_COUNT = 6;
 
@@ -36,6 +144,11 @@ const SOURCE_OPTIONS = [
   { value: "himalayas", label: "Himalayas" },
   { value: "linkedin", label: "LinkedIn" },
 ];
+
+function hasProfileSkills(p: UserProfile | null): boolean {
+  const skills = p?.skills;
+  return Array.isArray(skills) && skills.length > 0;
+}
 
 function hasProfileCvAndSkills(p: UserProfile | null): boolean {
   if (!p) return false;
@@ -88,8 +201,12 @@ function normalizeJobArray(value: unknown): Job[] {
     .filter((job): job is Job => job !== null && Number.isFinite(job.id));
 }
 
-export default function MatchPage() {
-  const { token, user } = useAuth();
+function MatchPage() {
+  const searchParams = useSearchParams();
+  const justUnlocked = searchParams.get("unlocked") === "1";
+  const previewAfterAuth = searchParams.get("preview") === "1";
+  const autoMatchStarted = useRef(false);
+  const { token, user, refreshUser } = useAuth();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [matchTotal, setMatchTotal] = useState(0);
   const [matchUpgradeMessage, setMatchUpgradeMessage] = useState<string | null>(null);
@@ -158,8 +275,13 @@ const handleMatchComplete = useCallback((result: MatchJobsResult) => {
     try {
       const result = await matchJobsWithSkills(token, profile.skills);
       handleMatchComplete(result);
-      const n = result.jobs?.length ?? 0;
-      toast.success(`Loaded ${n} matching job${n !== 1 ? "s" : ""} from your profile`);
+      const shown = result.jobs?.length ?? 0;
+      const total = result.total_matched ?? shown;
+      if (result.upgrade_message && total > shown) {
+        toast.success(`Showing ${shown} of ${total} matches — upgrade to Pro for the rest`);
+      } else {
+        toast.success(`Loaded ${shown} matching job${shown !== 1 ? "s" : ""} from your profile`);
+      }
     } catch (e) {
       const message = e instanceof Error ? e.message : "Could not load matches";
       handleMatchError(message);
@@ -167,6 +289,84 @@ const handleMatchComplete = useCallback((result: MatchJobsResult) => {
       setJobsLoading(false);
     }
   }, [token, profile, handleMatchComplete, handleMatchError]);
+
+  useEffect(() => {
+    if (!token || autoMatchStarted.current) return;
+
+    const pending = peekPendingMatchSkills();
+    const shouldRun =
+      justUnlocked ||
+      previewAfterAuth ||
+      pending != null;
+
+    if (!shouldRun) return;
+
+    if (justUnlocked) {
+      if (profileLoading) return;
+      if (!pending?.length && !hasProfileSkills(profile)) return;
+    } else if (!pending) {
+      if (profileLoading) return;
+      if (!profile?.skills?.length) return;
+    }
+
+    autoMatchStarted.current = true;
+
+    async function runAutoMatch() {
+      setJobsLoading(true);
+      setError(null);
+      try {
+        let skills = takePendingMatchSkills();
+        if (skills?.length) {
+          await updateSkills(token!, skills).catch(() => undefined);
+          const p = await getProfile(token!);
+          setProfile(p);
+        } else if (profile?.skills?.length) {
+          skills = profile.skills;
+        }
+        if (!skills?.length) {
+          autoMatchStarted.current = false;
+          return;
+        }
+
+        if (justUnlocked) {
+          await refreshUser().catch(() => undefined);
+          toast.success("Pro unlocked — loading all your matches");
+        } else {
+          toast.success("Loading your job matches…");
+        }
+
+        const result = await matchJobsWithSkills(token!, skills);
+        handleMatchComplete(result);
+        const shown = result.jobs?.length ?? 0;
+        const total = result.total_matched ?? shown;
+        if (justUnlocked && shown > 0) {
+          toast.success(`All ${total} match${total !== 1 ? "es" : ""} unlocked`);
+        } else if (result.upgrade_message && total > shown) {
+          toast.success(`Showing ${shown} of ${total} matches — upgrade to Pro for the rest`);
+        } else if (!justUnlocked) {
+          toast.success(`Loaded ${shown} matching job${shown !== 1 ? "s" : ""}`);
+        }
+      } catch (e) {
+        autoMatchStarted.current = false;
+        const message = e instanceof Error ? e.message : "Could not load matches";
+        handleMatchError(message);
+      } finally {
+        setJobsLoading(false);
+      }
+    }
+
+    void runAutoMatch();
+  }, [
+    token,
+    justUnlocked,
+    previewAfterAuth,
+    profileLoading,
+    savedReady,
+    profile,
+    handleMatchComplete,
+    handleMatchError,
+    refreshUser,
+  ]);
 
   const filteredJobs = useMemo(() => {
     const q = appliedSearch.trim().toLowerCase();
@@ -231,7 +431,9 @@ const handleMatchComplete = useCallback((result: MatchJobsResult) => {
     !error &&
     !savedReady &&
     !showOneOffUpload;
-  const noJobsMatched = !jobsLoading && hasSearched && jobs.length === 0;
+  const guestCountOnly =
+    !token && hasSearched && matchTotal > 0 && jobs.length === 0 && !error;
+  const noJobsMatched = !jobsLoading && hasSearched && matchTotal === 0 && !error;
   const awaitingSavedSearch =
     savedReady && !showOneOffUpload && !hasSearched && !jobsLoading && jobs.length === 0 && !error;
   const showFilterEmpty = filteredJobs.length === 0 && jobs.length > 0;
@@ -246,6 +448,38 @@ const handleMatchComplete = useCallback((result: MatchJobsResult) => {
               Upload your CV and we&apos;ll match you to roles using your skills.
             </p>
           </div>
+
+          {!token && !hasSearched && (
+            <div className="mx-auto mb-10 max-w-2xl text-center">
+              <div className="glass-card rounded-3xl border border-indigo-400/20 bg-indigo-500/[0.04] px-8 py-10 shadow-[0_16px_48px_rgba(99,102,241,0.12)]">
+                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-500/15 ring-1 ring-indigo-500/30">
+                  <Sparkles className="h-7 w-7 text-indigo-300" aria-hidden />
+                </div>
+                <h2 className="font-headline text-xl font-bold text-white sm:text-2xl">
+                  See your personalized job matches
+                </h2>
+                <p className="mx-auto mt-3 max-w-sm text-sm text-slate-400">
+                  Upload your CV to see how many jobs match your skills — then sign up free to preview
+                  your top 3.
+                </p>
+                <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+                  <Link
+                    href={matchRegisterUrl()}
+                    className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-br from-v-primary to-v-primaryContainer px-7 py-2.5 text-sm font-bold text-white shadow-lg shadow-v-primary/25 transition-all hover:shadow-v-primary/40"
+                  >
+                    Sign up free
+                  </Link>
+                  <Link
+                    href={matchLoginUrl()}
+                    className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/[0.04] px-7 py-2.5 text-sm font-medium text-white transition-colors hover:border-white/25 hover:bg-white/[0.08]"
+                  >
+                    Already have an account?
+                  </Link>
+                </div>
+              </div>
+              <p className="mt-4 text-xs text-slate-500">Or try a quick preview by uploading your CV below ↓</p>
+            </div>
+          )}
 
           {!token && (
             <div id="cv-upload-zone" className="mx-auto mb-8 max-w-2xl scroll-mt-4">
@@ -355,8 +589,14 @@ const handleMatchComplete = useCallback((result: MatchJobsResult) => {
             <p className="mx-auto mb-4 max-w-2xl text-center text-sm text-vertex-danger">{error}</p>
           )}
 
-          {hasSearched && jobs.length > 0 && (
+          {hasSearched && (jobs.length > 0 || guestCountOnly) && (
             <div className="mx-auto mb-6 max-w-5xl space-y-3">
+              {guestCountOnly ? (
+                <p className="text-center text-sm text-slate-400">
+                  {matchTotal.toLocaleString()} role{matchTotal !== 1 ? "s" : ""} match your CV
+                </p>
+              ) : (
+                <>
               <div className="flex flex-wrap items-center justify-center gap-2">
                 <button
                   type="button"
@@ -439,7 +679,9 @@ const handleMatchComplete = useCallback((result: MatchJobsResult) => {
                 </button>
               </div>
               <p className="text-center text-sm text-slate-400">
-                Showing {filteredJobs.length} of {jobs.length} matches
+                {matchUpgradeMessage
+                  ? `Showing ${filteredJobs.length} of ${matchTotal.toLocaleString()} matches`
+                  : `Showing ${filteredJobs.length} of ${jobs.length} matches`}
               </p>
               {showFilterEmpty && (
                 <p className="text-center text-sm text-slate-400">
@@ -448,6 +690,8 @@ const handleMatchComplete = useCallback((result: MatchJobsResult) => {
                     Clear filters
                   </button>
                 </p>
+              )}
+                </>
               )}
             </div>
           )}
@@ -479,24 +723,15 @@ const handleMatchComplete = useCallback((result: MatchJobsResult) => {
                   ))}
                 </div>
                 {matchUpgradeMessage && !user?.is_admin && (
-                  <div className="glass-card relative mt-6 flex flex-col items-center gap-4 overflow-hidden rounded-2xl border border-indigo-500/25 bg-indigo-950/40 p-8 text-center md:flex-row md:text-left">
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-indigo-600/20 to-transparent" aria-hidden />
-                    <Lock className="relative h-10 w-10 shrink-0 text-indigo-300" aria-hidden />
-                    <div className="relative flex-1">
-                      <p className="text-sm font-semibold text-white">
-                        You are seeing {jobs.length} of {matchTotal} matches
-                      </p>
-                      <p className="mt-1 text-sm text-slate-400">{matchUpgradeMessage}</p>
-                    </div>
-                    <Link
-                      href="/pricing"
-                      className="relative glow-button shrink-0 rounded-lg px-5 py-2.5 text-sm font-semibold text-white"
-                    >
-                      Upgrade to Pro
-                    </Link>
-                  </div>
+                  <LockedResultsSection
+                    shown={jobs.length}
+                    total={matchTotal}
+                    isGuest={!token}
+                  />
                 )}
               </>
+            ) : guestCountOnly ? (
+              <GuestMatchCountTeaser total={matchTotal} />
             ) : noCVYet ? (
               <EmptyState variant="no-cv" uploadZoneId="cv-upload-zone" />
             ) : noJobsMatched ? (
@@ -506,5 +741,13 @@ const handleMatchComplete = useCallback((result: MatchJobsResult) => {
         </PlanGate>
       </div>
     </div>
+  );
+}
+
+export default function MatchPageWrapper() {
+  return (
+    <Suspense fallback={null}>
+      <MatchPage />
+    </Suspense>
   );
 }

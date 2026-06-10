@@ -224,7 +224,13 @@ export default function PricingPage() {
         </div>
 
         {/* SECTION 2 — PRICING CARDS */}
-        <section className="mt-8 grid grid-cols-1 gap-6 md:grid-cols-3">
+        <section
+          className={
+            planType === "jobseekers"
+              ? "mx-auto mt-8 grid max-w-3xl grid-cols-1 gap-6 sm:grid-cols-2"
+              : "mt-8 grid grid-cols-1 gap-6 md:grid-cols-3"
+          }
+        >
           {/* CARD 1 — Free */}
           <div className="glass-card rounded-2xl p-8">
             <h3 className="text-xl font-bold text-white">Free</h3>

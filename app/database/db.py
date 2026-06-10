@@ -2424,6 +2424,17 @@ def get_platform_stats() -> dict:
             "SELECT COUNT(*) FROM jobs WHERE scraped_at > NOW() - INTERVAL '24 hours'"
         )
         stats["jobs_scraped_today"] = cur.fetchone()[0]
+        try:
+            from app.models.scraper_source import (
+                count_scraper_sources,
+                seed_default_scraper_sources,
+            )
+
+            if count_scraper_sources(active_only=False) == 0:
+                seed_default_scraper_sources()
+            stats["total_job_boards"] = count_scraper_sources(active_only=True)
+        except Exception:
+            stats["total_job_boards"] = 0
         return stats
     finally:
         cur.close()
@@ -3366,6 +3377,7 @@ def get_users_for_alerts() -> list:
             JOIN user_profiles p ON p.email = u.email
             JOIN job_alert_settings jas ON jas.user_id = u.id
             WHERE u.user_type = 'jobseeker'
+            AND u.is_admin = FALSE
             AND u.is_active = TRUE
             AND jas.is_enabled = TRUE
             AND p.skills IS NOT NULL
@@ -4121,6 +4133,27 @@ def get_all_posted_jobs(
                     d[k] = d[k].isoformat()
             out.append(d)
         return out
+    finally:
+        cur.close()
+        conn.close()
+
+
+def count_available_jobs() -> int:
+    """Active scraped jobs plus active, non-expired company postings."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM jobs WHERE is_active = TRUE)
+                + (SELECT COUNT(*) FROM posted_jobs
+                   WHERE is_active = TRUE
+                     AND (expires_at IS NULL OR expires_at > NOW()))
+            """
+        )
+        row = cur.fetchone()
+        return int(row[0] or 0)
     finally:
         cur.close()
         conn.close()

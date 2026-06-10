@@ -169,6 +169,7 @@ def call_huggingface_api(cv_text: str, model_name: Optional[str] = None) -> Opti
     client = OpenAI(
         base_url="https://router.huggingface.co/v1",
         api_key=api_token,
+        timeout=25.0,
     )
 
     system_prompt = (

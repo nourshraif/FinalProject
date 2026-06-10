@@ -59,7 +59,7 @@ function SkillsGapContent() {
   const isJobSpecificMode = Boolean(jobId);
 
   return (
-    <div className="container max-w-3xl py-10 pt-24">
+    <div className="mx-auto max-w-3xl px-4 py-10 pt-24 sm:px-6">
       <h1 className="text-3xl font-bold text-white">Skills Gap Analyzer</h1>
       <p className="mt-3 text-sm text-slate-400">
         Compare your profile skills to target roles and discover what to learn next.

@@ -36,17 +36,34 @@ const TEAM: TeamMember[] = [
 
 export default function AboutPageClient() {
   const [totalJobs, setTotalJobs] = useState<number | null>(null);
+  const [jobBoardCount, setJobBoardCount] = useState<number | null>(null);
 
   useEffect(() => {
     getStats()
-      .then((s) => setTotalJobs(s.total_jobs))
-      .catch(() => setTotalJobs(null));
+      .then((s) => {
+        setTotalJobs(s.total_jobs);
+        setJobBoardCount(s.job_board_count);
+      })
+      .catch(() => {
+        setTotalJobs(null);
+        setJobBoardCount(null);
+      });
   }, []);
 
   const statJobs = useMemo(() => {
     if (typeof totalJobs !== "number") return "988+";
     return `${totalJobs}+`;
   }, [totalJobs]);
+
+  const statBoards = useMemo(() => {
+    if (typeof jobBoardCount !== "number") return "10+";
+    return String(jobBoardCount);
+  }, [jobBoardCount]);
+
+  const boardsCopy = useMemo(() => {
+    if (typeof jobBoardCount !== "number") return "10+ job boards";
+    return `${jobBoardCount} job board${jobBoardCount === 1 ? "" : "s"}`;
+  }, [jobBoardCount]);
 
   return (
     <div className="aurora-bg min-h-screen bg-transparent pb-20">
@@ -121,7 +138,7 @@ export default function AboutPageClient() {
               <Zap className="h-10 w-10 text-indigo-300" />
               <h3 className="mt-4 text-lg font-bold text-white">Always fresh opportunities</h3>
               <p className="mt-2 text-sm leading-relaxed text-slate-300">
-                We check 8+ job boards automatically every day so you never miss a new opportunity — and never see the same stale listing twice.
+                We check {boardsCopy} automatically every day so you never miss a new opportunity — and never see the same stale listing twice.
               </p>
             </div>
           </div>
@@ -163,7 +180,7 @@ export default function AboutPageClient() {
           <div className="grid gap-5 md:grid-cols-4">
             {[
               { value: statJobs, label: "Jobs Available" },
-              { value: "8", label: "Job Boards Integrated" },
+              { value: statBoards, label: "Job Boards Integrated" },
               { value: "2", label: "User Types Served" },
               { value: "1", label: "Platform, Built Different" },
             ].map((stat, idx) => (

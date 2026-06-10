@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   searchJobs,
@@ -34,7 +34,7 @@ type UnifiedItem =
   | { type: "scraped"; job: ScrapedJob; sortDate: string }
   | { type: "posted"; job: PostedJob; sortDate: string };
 
-export default function SearchPage() {
+function SearchPage() {
   const searchParams = useSearchParams();
   const { token, user } = useAuth();
   const [tab, setTab] = useState<Tab>("boards");
@@ -629,4 +629,8 @@ export default function SearchPage() {
       </div>
     </div>
   );
+}
+
+export default function SearchPageWrapper() {
+  return <Suspense fallback={null}><SearchPage /></Suspense>;
 }

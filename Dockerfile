@@ -1,6 +1,5 @@
-# App image: code only. Depends on finalproject-base (see Dockerfile.base).
-# Build is fast (~seconds) as long as finalproject-base exists.
-# Ensure base exists first: docker build -f Dockerfile.base -t finalproject-base .
+# Backend image. Depends on finalproject-base (Python deps + torch).
+# Build base first: docker build -f Dockerfile.base -t finalproject-base .
 
 FROM finalproject-base:latest
 
@@ -12,5 +11,4 @@ ENV PYTHONPATH=/app
 
 EXPOSE 8000
 
-# Default command (overridden by docker-compose.yml)
-# CMD ["pythno", "-m", "scripts.scheduled_scraper"]
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

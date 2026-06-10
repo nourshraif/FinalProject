@@ -26,6 +26,7 @@ export type Skill = string;
 
 export interface Stats {
   total_jobs: number;
+  job_board_count: number;
   last_scraped: string | null;
   top_categories: string[];
 }
@@ -41,6 +42,7 @@ export interface Candidate {
   skills: string[];
   matched_skills: string[];
   keyword_score: number;
+  profile_boosted?: boolean;
   cv_filename?: string;
   created_at?: string;
   user_id?: number;

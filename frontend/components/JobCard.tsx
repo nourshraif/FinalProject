@@ -32,7 +32,7 @@ export interface JobCardProps {
 
 function MatchScoreBadge({ score }: { score: number }) {
   const variant =
-    score > 80 ? "green" : score >= 60 ? "yellow" : "red";
+    score >= 80 ? "green" : score >= 65 ? "yellow" : "red";
   return (
     <span
       className={cn(

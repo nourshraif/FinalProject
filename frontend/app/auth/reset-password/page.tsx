@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
@@ -26,7 +26,7 @@ function getPasswordStrength(password: string): {
   return { level: "medium", width: 66, color: "#f59e0b", label: "Medium" };
 }
 
-export default function ResetPasswordPage() {
+function ResetPasswordPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token") ?? "";
@@ -200,4 +200,8 @@ export default function ResetPasswordPage() {
       </div>
     </div>
   );
+}
+
+export default function ResetPasswordPageWrapper() {
+  return <Suspense fallback={null}><ResetPasswordPage /></Suspense>;
 }

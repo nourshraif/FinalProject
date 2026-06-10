@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { SkillChip } from "@/components/SkillChip";
 import { SaveCandidateButton } from "@/components/SaveCandidateButton";
 import Link from "next/link";
-import { ChevronDown, ChevronUp, Mail, ExternalLink } from "lucide-react";
+import { ChevronDown, ChevronUp, Mail, ExternalLink, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface CandidateCardProps {
@@ -16,6 +16,7 @@ export interface CandidateCardProps {
   matched_skills: string[];
   skills: string[];
   keyword_score: number;
+  profile_boosted?: boolean;
   cv_filename?: string;
   created_at?: string;
   profile_slug?: string;
@@ -50,6 +51,7 @@ export function CandidateCard(props: CandidateCardProps) {
     matched_skills,
     skills,
     keyword_score,
+    profile_boosted,
     cv_filename,
     created_at,
     profile_slug,
@@ -69,6 +71,15 @@ export function CandidateCard(props: CandidateCardProps) {
                 #{rank}
               </span>
               <h3 className="font-semibold leading-tight">{full_name}</h3>
+              {profile_boosted ? (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full border border-indigo-400/30 bg-indigo-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-200"
+                  title="Pro profile — ranked higher in search results"
+                >
+                  <Sparkles className="h-3 w-3" />
+                  Pro
+                </span>
+              ) : null}
             </div>
             <a
               href={`mailto:${email}`}
@@ -237,6 +248,7 @@ export function CandidateCardFromApi({
       matched_skills={candidate.matched_skills}
       skills={candidate.skills}
       keyword_score={candidate.keyword_score}
+      profile_boosted={candidate.profile_boosted}
       cv_filename={candidate.cv_filename}
       created_at={candidate.created_at}
       profile_slug={candidate.profile_slug}

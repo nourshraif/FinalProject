@@ -1,27 +1,90 @@
-# Postgres with pgvector only. Run scraper and Streamlit locally.
-# Start DB:  docker compose up -d
-# Then:      python -m scripts.scheduled_scraper
-#            streamlit run scripts/integrated_job_matcher_app.py
+# Full Vertex stack: postgres + backend + frontend + nginx
+# Usage:
+#   1. Build base image first (once): docker build -f Dockerfile.base -t finalproject-base .
+#   2. Copy env.example to .env and fill in all values
+#   3. docker compose up -d --build
 
 services:
+
+  # ── PostgreSQL + pgvector ─────────────────────────────────────────────────
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: postgres-vector
+    container_name: vertex-postgres
     environment:
       POSTGRES_DB: ${DB_NAME:-jobs_db}
       POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-202211217nour}
-    ports:
-      - "${DB_PORT:-5433}:5432"
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
       interval: 10s
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    networks:
+      - vertex-net
+
+  # ── FastAPI backend (+ APScheduler) ──────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vertex-backend
+    env_file: .env
+    environment:
+      # Override DB_HOST so backend reaches the postgres container, not localhost
+      DB_HOST: postgres
+      DB_PORT: 5432
+      # Cron jobs use this timezone (Docker otherwise runs in UTC)
+      SCHEDULER_TIMEZONE: ${SCHEDULER_TIMEZONE:-Asia/Beirut}
+      # Scraper schedule — override via .env if needed
+      SCRAPER_CRON_HOUR: ${SCRAPER_CRON_HOUR:-2}
+      SCRAPER_CRON_MINUTE: ${SCRAPER_CRON_MINUTE:-0}
+      # Model is mounted from host cache — do not contact huggingface.co at runtime
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    volumes:
+      - uploads-data:/app/uploads
+      # Share host HuggingFace cache so the embedding model does not re-download in Docker
+      - ${USERPROFILE}/.cache/huggingface:/root/.cache/huggingface
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - vertex-net
+
+  # ── Next.js frontend ──────────────────────────────────────────────────────
+  frontend:
+    image: finalproject-frontend:latest
+    container_name: vertex-frontend
+    restart: unless-stopped
+    networks:
+      - vertex-net
+
+  # ── Nginx reverse proxy ───────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: vertex-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+      - frontend
+    restart: unless-stopped
+    networks:
+      - vertex-net
 
 volumes:
   postgres-data:
-    driver: local
+  uploads-data:
+
+networks:
+  vertex-net:
+    driver: bridge

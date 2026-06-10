@@ -8,6 +8,7 @@ Requires: pip install fastapi uvicorn python-multipart
 """
 
 import logging
+import math
 import os
 import sys
 import subprocess
@@ -219,6 +220,15 @@ async def lifespan(app: FastAPI):
     ensure_expired_application_support()
     print("Vertex application tables ready")
 
+    try:
+        from app.models.scraper_source import seed_default_scraper_sources
+
+        seeded = seed_default_scraper_sources()
+        if seeded:
+            print(f"Seeded {seeded} default job board source(s)")
+    except Exception as e:
+        print(f"Warning: job board source seed failed: {e}")
+
     # ── Initialize vector tables (creates posted_job_embeddings etc.) ────
     try:
         from app.services.vector_matching_service import VectorSkillMatcher
@@ -231,7 +241,10 @@ async def lifespan(app: FastAPI):
 
     scheduler.start()
     print("Job alerts scheduler started")
-    print("Nightly scraper: 2:00 AM (full ingest to DB)")
+    sh = os.getenv("SCRAPER_CRON_HOUR", "2")
+    sm = os.getenv("SCRAPER_CRON_MINUTE", "0")
+    stz = os.getenv("SCHEDULER_TIMEZONE", "Asia/Beirut")
+    print(f"Nightly scraper: {sh}:{sm.zfill(2)} {stz} (full ingest to DB)")
     print("Daily alerts: 8:00 AM")
     print("Weekly alerts: Monday 9:00 AM")
     yield
@@ -294,6 +307,7 @@ class MatchJobsResponse(BaseModel):
 
 class JobsStatsResponse(BaseModel):
     total_jobs: int
+    job_board_count: int = 0
     last_scraped: Optional[str]
     top_categories: List[str]
 
@@ -318,6 +332,7 @@ class CandidateResponse(BaseModel):
     skills: List[str]
     matched_skills: List[str]
     keyword_score: float
+    profile_boosted: bool = False
     cv_filename: Optional[str] = None
     created_at: Optional[str] = None
     user_id: Optional[int] = None
@@ -1577,7 +1592,12 @@ def _extract_skills_from_pdf_bytes(content: bytes) -> Tuple[List[str], bool]:
 
 
 def _normalize_matching_job(j: dict) -> JobMatchResponse:
-    score = j.get("match_percentage") or (j.get("similarity_score", 0) * 100)
+    raw = j.get("match_percentage") or (j.get("similarity_score", 0) * 100)
+    # Cosine/hybrid similarity scores land in a conservative ~20-50% range.
+    # Rescale with sqrt so relative ranking is preserved but numbers feel
+    # human-friendly: raw 25 → ~70 %, raw 40 → ~77 %, raw 60 → ~84 %.
+    r = max(0.0, min(1.0, float(raw) / 100.0))
+    score = round(45.0 + math.sqrt(r) * 50.0, 1)
     tags = []
     st = j.get("skills_text") or ""
     if st:
@@ -1589,7 +1609,7 @@ def _normalize_matching_job(j: dict) -> JobMatchResponse:
         location=j.get("location") or "Remote",
         description=(j.get("description") or "")[:2000] or None,
         url=j.get("url") or "",
-        match_score=round(float(score), 1),
+        match_score=score,
         tags=tags,
         source=j.get("source"),
     )
@@ -1651,7 +1671,8 @@ async def match_jobs(
     Match jobs from skills or from a CV PDF.
     - JSON body: { \"skills\": [\"Python\", \"React\"] } — skips extraction, runs matching only.
     - multipart/form-data: field \"cv\" (PDF) — extracts skills then matches.
-    Free jobseekers (and guests) receive up to 3 matches; Pro/Business see all (within top_k).
+    Guests receive match count only (no job cards). Free jobseekers see up to 3 matches;
+    Pro/Business see all (within top_k).
     """
     ct = (request.headers.get("content-type") or "").lower()
     skills: List[str] = []
@@ -1696,10 +1717,16 @@ async def match_jobs(
     try:
         full = _match_jobs_from_skills(skills)
         total = len(full)
-        viewer = current_user if current_user is not None else {"plan": "free", "user_type": "jobseeker"}
-        if check_plan_access(viewer, "view_matches"):
+        if current_user is not None and check_plan_access(current_user, "view_matches"):
             return MatchJobsResponse(jobs=full, total_matched=total, upgrade_message=None)
-        upgrade_message = "Upgrade to see all matches" if total > 3 else None
+        if current_user is None:
+            upgrade_message = (
+                "Sign up free to preview your top 3 matches"
+                if total > 0
+                else None
+            )
+            return MatchJobsResponse(jobs=[], total_matched=total, upgrade_message=upgrade_message)
+        upgrade_message = "Upgrade to Pro to see all matches" if total > 3 else None
         return MatchJobsResponse(jobs=full[:3], total_matched=total, upgrade_message=upgrade_message)
     except HTTPException:
         raise
@@ -1760,13 +1787,20 @@ def skills_gap_analyze_job(job_id: int, current_user: dict = Depends(get_current
 @app.get("/api/jobs/stats", response_model=JobsStatsResponse)
 def jobs_stats():
     try:
-        from app.database.db import get_connection
+        from app.database.db import count_available_jobs, get_connection
+        from app.models.scraper_source import (
+            count_scraper_sources,
+            seed_default_scraper_sources,
+        )
 
+        if count_scraper_sources(active_only=False) == 0:
+            seed_default_scraper_sources()
+        job_board_count = count_scraper_sources(active_only=True)
+
+        total = count_available_jobs()
         conn = get_connection()
         cur = conn.cursor()
         try:
-            cur.execute("SELECT COUNT(*) FROM jobs WHERE is_active = TRUE")
-            total = cur.fetchone()[0]
             cur.execute("SELECT MAX(scraped_at) FROM jobs")
             row = cur.fetchone()
             last_scraped = None
@@ -1784,6 +1818,7 @@ def jobs_stats():
             conn.close()
         return JobsStatsResponse(
             total_jobs=total,
+            job_board_count=job_board_count,
             last_scraped=last_scraped,
             top_categories=top_categories,
         )
@@ -2263,6 +2298,7 @@ def post_posted_job(
                     FROM users u
                     JOIN user_profiles up ON up.id = u.id
                     WHERE u.user_type = 'jobseeker'
+                    AND u.is_admin = FALSE
                     AND u.is_active = TRUE
                     AND up.skills IS NOT NULL
                     AND array_length(up.skills, 1) > 0
@@ -2488,6 +2524,7 @@ def search_candidates(
                     skills=c.get("skills") or [],
                     matched_skills=c.get("matched_skills") or [],
                     keyword_score=float(c.get("keyword_score", 0)),
+                    profile_boosted=bool(c.get("profile_boosted")),
                     cv_filename=c.get("cv_filename"),
                     created_at=created_at.isoformat() if created_at and hasattr(created_at, "isoformat") else (str(created_at) if created_at else None),
                     user_id=c.get("user_id"),

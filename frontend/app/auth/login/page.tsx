@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
@@ -10,13 +10,14 @@ import { useToast } from "@/context/ToastContext";
 import { loginUser } from "@/lib/api";
 import type { User } from "@/context/AuthContext";
 import GoogleButton from "@/components/GoogleButton";
+import { postAuthPathFromNext } from "@/lib/match-auth";
 
 function loggedInDashboardPath(u: User): string {
   if (u.is_admin) return "/admin";
   return u.user_type === "company" ? "/dashboard/company" : "/dashboard/jobseeker";
 }
 
-export default function LoginPage() {
+function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { login, isLoggedIn, user: authUser } = useAuth();
@@ -31,10 +32,7 @@ export default function LoginPage() {
   const nextUrl = searchParams.get("next");
 
   function postLoginPath(u: User): string {
-    if (nextUrl && nextUrl.startsWith("/") && !nextUrl.startsWith("//")) {
-      return nextUrl;
-    }
-    return loggedInDashboardPath(u);
+    return postAuthPathFromNext(nextUrl, loggedInDashboardPath(u));
   }
   useEffect(() => {
     if (googleError === "google_failed") {
@@ -198,7 +196,11 @@ export default function LoginPage() {
         <p className="mt-6 text-center text-sm text-vertex-muted">
           Don&apos;t have an account?{" "}
           <Link
-            href="/auth/register"
+            href={
+              nextUrl
+                ? `/auth/register?next=${encodeURIComponent(nextUrl)}`
+                : "/auth/register"
+            }
             className="font-medium hover:underline"
             style={{ color: "#6366f1" }}
           >
@@ -217,4 +219,8 @@ export default function LoginPage() {
       </div>
     </div>
   );
+}
+
+export default function LoginPageWrapper() {
+  return <Suspense fallback={null}><LoginPage /></Suspense>;
 }

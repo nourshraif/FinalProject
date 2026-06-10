@@ -38,6 +38,7 @@ function JobseekerDashboardContent() {
   const router = useRouter();
   const { showToast } = useToast();
   const [totalJobs, setTotalJobs] = useState<number | null>(null);
+  const [jobBoardCount, setJobBoardCount] = useState<number | null>(null);
   const [profileComplete, setProfileComplete] = useState<number | null>(null);
   const [applicationsCount, setApplicationsCount] = useState<number | null>(null);
   const [savedJobs, setSavedJobs] = useState<SavedJob[]>([]);
@@ -61,8 +62,14 @@ function JobseekerDashboardContent() {
 
   const loadData = useCallback(() => {
     getStats()
-      .then((s) => setTotalJobs(s.total_jobs))
-      .catch(() => setTotalJobs(0));
+      .then((s) => {
+        setTotalJobs(s.total_jobs);
+        setJobBoardCount(s.job_board_count);
+      })
+      .catch(() => {
+        setTotalJobs(0);
+        setJobBoardCount(null);
+      });
     if (token) {
       getProfile(token)
         .then((p) => setProfileComplete(profileCompleteness(p)))
@@ -200,7 +207,11 @@ function JobseekerDashboardContent() {
             <p className="mt-1 text-2xl font-bold text-vertex-white">
               {totalJobs === null ? "..." : totalJobs.toLocaleString()}
             </p>
-            <p className="mt-1 text-xs text-vertex-muted">Across all job boards</p>
+            <p className="mt-1 text-xs text-vertex-muted">
+              {jobBoardCount != null
+                ? `Across ${jobBoardCount} job board${jobBoardCount === 1 ? "" : "s"}`
+                : "Across all job boards"}
+            </p>
           </div>
           <div className="glass-card relative rounded-2xl p-6">
             <ClipboardList className="absolute right-4 top-4 h-5 w-5" style={{ color: "#6366f1" }} />

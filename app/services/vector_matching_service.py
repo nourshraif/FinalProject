@@ -33,7 +33,8 @@ class VectorSkillMatcher:
                        'all-mpnet-base-v2' - More accurate, slower
         """
         print(f"Loading embedding model: {model_name}...")
-        self.model = SentenceTransformer(model_name)
+        local_only = os.getenv("HF_HUB_OFFLINE", "").lower() in ("1", "true", "yes")
+        self.model = SentenceTransformer(model_name, local_files_only=local_only)
         self.embedding_dim = self.model.get_sentence_embedding_dimension()
         print(f"✓ Model loaded! Embedding dimension: {self.embedding_dim}")
         

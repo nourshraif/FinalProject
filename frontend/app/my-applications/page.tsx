@@ -19,6 +19,7 @@ const STATUS_LABELS: Record<VertexApplicationStatus, string> = {
   offer: "Offer",
   rejected: "Not selected",
   withdrawn: "Withdrawn",
+  expired: "Position closed",
 };
 
 const STATUS_STYLES: Record<string, { bg: string; text: string }> = {

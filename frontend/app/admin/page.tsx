@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Users,
@@ -10,7 +10,6 @@ import {
   ClipboardList,
   Mail,
   TrendingUp,
-  Loader2,
   Clock3,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
@@ -19,13 +18,12 @@ import {
   getAdminHealth,
   getAdminScraperLastRun,
   getAdminActivity,
-  cleanupInactiveJobs,
   type AdminStats as AdminStatsType,
   type AdminActivityItem,
 } from "@/lib/api";
 import { AdminForbidden } from "./AdminForbidden";
 import { useToast } from "@/context/ToastContext";
-import { useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { AdminUsersSection } from "@/components/admin/AdminUsersSection";
 import { AdminJobsSection } from "@/components/admin/AdminJobsSection";
@@ -33,12 +31,14 @@ import { AdminAnnouncementsSection } from "@/components/admin/AdminAnnouncements
 import { AdminEmailsSection } from "@/components/admin/AdminEmailsSection";
 import { AdminSettingsSection } from "@/components/admin/AdminSettingsSection";
 import { AdminAnalyticsSection } from "@/components/admin/AdminAnalyticsSection";
+import { AdminSourcesSection } from "@/components/admin/AdminSourcesSection";
 
 type AdminTab =
   | "overview"
   | "analytics"
   | "users"
   | "jobs"
+  | "sources"
   | "announcements"
   | "emails"
   | "settings";
@@ -48,10 +48,15 @@ const TABS: { id: AdminTab; label: string }[] = [
   { id: "analytics", label: "Analytics" },
   { id: "users", label: "Users" },
   { id: "jobs", label: "Jobs" },
+  { id: "sources", label: "Job Boards" },
   { id: "announcements", label: "Announcements" },
   { id: "emails", label: "Emails" },
   { id: "settings", label: "Settings" },
 ];
+
+function isAdminTab(value: string | null): value is AdminTab {
+  return value !== null && TABS.some((t) => t.id === value);
+}
 
 function timeAgo(iso: string): string {
   try {
@@ -70,18 +75,28 @@ function timeAgo(iso: string): string {
   }
 }
 
-export default function AdminPage() {
-  const router = useRouter();
+function AdminPage() {
+  const searchParams = useSearchParams();
   const { user, token, isLoggedIn } = useAuth();
   const { showToast } = useToast();
   const [stats, setStats] = useState<AdminStatsType | null>(null);
   const [activity, setActivity] = useState<AdminActivityItem[]>([]);
   const [loadingStats, setLoadingStats] = useState(true);
   const [loadingActivity, setLoadingActivity] = useState(true);
-  const [cleanupInactiveLoading, setCleanupInactiveLoading] = useState(false);
   const [lastScraperRun, setLastScraperRun] = useState<string | null>(null);
   const [emailConfigured, setEmailConfigured] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<AdminTab>("overview");
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (isAdminTab(tab)) setActiveTab(tab);
+  }, [searchParams]);
+
+  function selectTab(tab: AdminTab) {
+    setActiveTab(tab);
+    const url = tab === "overview" ? "/admin" : `/admin?tab=${tab}`;
+    window.history.replaceState(null, "", url);
+  }
 
   const loadStats = useCallback(() => {
     if (!token) return;
@@ -131,25 +146,6 @@ export default function AdminPage() {
     loadHealth();
   }, [loadLastScraperRun, loadHealth]);
 
-  const handleCleanupInactiveJobs = useCallback(() => {
-    if (!token) return;
-    setCleanupInactiveLoading(true);
-    cleanupInactiveJobs(token)
-      .then((res) => {
-        showToast(
-          `Removed ${res.total_deleted} inactive/expired jobs (${res.deleted_scraped} scraped, ${res.deleted_posted} posted)`,
-          "success"
-        );
-        loadStats();
-        loadLastScraperRun();
-        loadHealth();
-      })
-      .catch((e) => {
-        showToast(e instanceof Error ? e.message : "Failed to remove inactive jobs", "error");
-      })
-      .finally(() => setCleanupInactiveLoading(false));
-  }, [token, showToast, loadStats, loadLastScraperRun, loadHealth]);
-
   if (!isLoggedIn || !user) {
     return (
       <div className="mx-auto max-w-[1200px] px-6 pt-24">
@@ -170,30 +166,11 @@ export default function AdminPage() {
   return (
     <div className="relative mx-auto max-w-[1200px] px-6 pb-16 pt-24">
       {/* Page header */}
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-white">Admin Panel</h1>
-          <p className="mt-1 text-sm text-vertex-muted">
-            Platform overview and management
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={handleCleanupInactiveJobs}
-            disabled={cleanupInactiveLoading}
-            className="ghost-button inline-flex min-w-[190px] items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-70"
-          >
-            {cleanupInactiveLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            {cleanupInactiveLoading ? "Removing..." : "Remove Inactive/Expired"}
-          </button>
-          <button
-  onClick={() => router.push("/admin/sources")}
-  className="glow-button inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm text-white"
->
-  Add Sources
-</button>
-        </div>
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold text-white">Admin Panel</h1>
+        <p className="mt-1 text-sm text-vertex-muted">
+          Platform overview and management
+        </p>
       </div>
 
       <nav className="mb-8 flex flex-wrap gap-1 border-b border-white/10 pb-px">
@@ -201,7 +178,7 @@ export default function AdminPage() {
           <button
             key={t.id}
             type="button"
-            onClick={() => setActiveTab(t.id)}
+            onClick={() => selectTab(t.id)}
             className={cn(
               "px-4 py-2.5 text-sm font-medium transition",
               activeTab === t.id
@@ -401,6 +378,9 @@ export default function AdminPage() {
       {activeTab === "jobs" && token && (
         <AdminJobsSection token={token} showToast={showToast} />
       )}
+      {activeTab === "sources" && token && (
+        <AdminSourcesSection token={token} showToast={showToast} />
+      )}
       {activeTab === "announcements" && token && (
         <AdminAnnouncementsSection token={token} showToast={showToast} />
       )}
@@ -412,5 +392,13 @@ export default function AdminPage() {
       )}
 
     </div>
+  );
+}
+
+export default function AdminPageWrapper() {
+  return (
+    <Suspense fallback={null}>
+      <AdminPage />
+    </Suspense>
   );
 }

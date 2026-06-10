@@ -312,17 +312,37 @@ def run_cleanup_job():
 # CREATE SCHEDULER
 # =========================================================
 
+def _scheduler_timezone():
+    """Cron times use this zone (Docker defaults to UTC without this)."""
+    from zoneinfo import ZoneInfo
+
+    tz_name = os.getenv("SCHEDULER_TIMEZONE", "Asia/Beirut")
+    try:
+        return ZoneInfo(tz_name)
+    except Exception:
+        logger.warning("Invalid SCHEDULER_TIMEZONE=%r — falling back to UTC", tz_name)
+        return ZoneInfo("UTC")
+
+
+def _cron(hour: int, minute: int = 0, **kwargs):
+    return CronTrigger(hour=hour, minute=minute, timezone=_scheduler_timezone(), **kwargs)
+
+
 def create_scheduler():
     """Create scheduler with all background jobs"""
 
-    scheduler = BackgroundScheduler()
+    tz = _scheduler_timezone()
+    scraper_hour = int(os.getenv("SCRAPER_CRON_HOUR", "2"))
+    scraper_minute = int(os.getenv("SCRAPER_CRON_MINUTE", "0"))
+
+    scheduler = BackgroundScheduler(timezone=tz)
 
     # -----------------------------------------------------
     # NIGHTLY BATCH SCRAPER
     # -----------------------------------------------------
     scheduler.add_job(
         run_batch_scraper_job,
-        CronTrigger(hour=2, minute=0),
+        _cron(scraper_hour, scraper_minute),
         id="batch_job_scraper",
         name="Batch Job Ingestion (Nightly)",
         replace_existing=True,
@@ -333,7 +353,7 @@ def create_scheduler():
     # -----------------------------------------------------
     scheduler.add_job(
         run_daily_alerts,
-        CronTrigger(hour=8, minute=0),
+        _cron(8, 0),
         id="daily_alerts",
         name="Daily Job Alerts",
         replace_existing=True,
@@ -344,7 +364,7 @@ def create_scheduler():
     # -----------------------------------------------------
     scheduler.add_job(
         run_weekly_alerts,
-        CronTrigger(day_of_week="mon", hour=9, minute=0),
+        _cron(9, 0, day_of_week="mon"),
         id="weekly_alerts",
         name="Weekly Job Alerts",
         replace_existing=True,
@@ -355,15 +375,21 @@ def create_scheduler():
     # -----------------------------------------------------
     scheduler.add_job(
         run_cleanup_job,
-        CronTrigger(hour=3, minute=0),
+        _cron(3, 0),
         id="nightly_cleanup",
         name="Nightly Job Lifecycle Cleanup",
         replace_existing=True,
     )
 
-    logger.info("✓ Batch scraper scheduled for 2:00 AM daily")
-    logger.info("✓ Daily alerts scheduled for 8:00 AM daily")
-    logger.info("✓ Weekly alerts scheduled for Monday 9:00 AM")
-    logger.info("✓ Nightly cleanup scheduled for 3:00 AM daily")
+    tz_label = getattr(tz, "key", str(tz))
+    logger.info(
+        "✓ Batch scraper scheduled for %02d:%02d daily (%s)",
+        scraper_hour,
+        scraper_minute,
+        tz_label,
+    )
+    logger.info("✓ Daily alerts scheduled for 8:00 AM daily (%s)", tz_label)
+    logger.info("✓ Weekly alerts scheduled for Monday 9:00 AM (%s)", tz_label)
+    logger.info("✓ Nightly cleanup scheduled for 3:00 AM daily (%s)", tz_label)
 
     return scheduler

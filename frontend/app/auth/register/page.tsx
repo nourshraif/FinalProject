@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { User, Building2, Loader2 } from "lucide-react";
 import { Logo } from "@/components/Logo";
@@ -10,6 +10,7 @@ import { useToast } from "@/context/ToastContext";
 import { registerUser } from "@/lib/api";
 import type { User as AuthUser } from "@/context/AuthContext";
 import GoogleButton from "@/components/GoogleButton";
+import { postAuthPathFromNext } from "@/lib/match-auth";
 
 type UserType = "jobseeker" | "company";
 
@@ -33,25 +34,34 @@ function loggedInDashboardPath(u: AuthUser): string {
   return u.user_type === "company" ? "/dashboard/company" : "/dashboard/jobseeker";
 }
 
-export default function RegisterPage() {
+function RegisterPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { login, isLoggedIn, user: authUser } = useAuth();
   const { showToast } = useToast();
+  const nextUrl = searchParams.get("next");
+  const typeParam = searchParams.get("type");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [userType, setUserType] = useState<UserType>("jobseeker");
+  const [userType, setUserType] = useState<UserType>(
+    typeParam === "company" ? "company" : "jobseeker"
+  );
   const [companyName, setCompanyName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const strength = getPasswordStrength(password);
 
+  function postRegisterPath(u: AuthUser): string {
+    return postAuthPathFromNext(nextUrl, loggedInDashboardPath(u));
+  }
+
   useEffect(() => {
     if (!isLoggedIn || !authUser) return;
-    router.replace(loggedInDashboardPath(authUser));
-  }, [isLoggedIn, authUser, router]);
+    router.replace(postRegisterPath(authUser));
+  }, [isLoggedIn, authUser, router, nextUrl]);
 
   if (isLoggedIn && authUser) {
     return (
@@ -114,7 +124,7 @@ export default function RegisterPage() {
       };
       login(res.access_token, user);
       showToast("Account created successfully", "success");
-      router.push(loggedInDashboardPath(user));
+      router.push(postRegisterPath(user));
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Registration failed";
       setError(msg);
@@ -331,7 +341,11 @@ export default function RegisterPage() {
         <p className="mt-6 text-center text-sm text-vertex-muted">
           Already have an account?{" "}
           <Link
-            href="/auth/login"
+            href={
+              nextUrl
+                ? `/auth/login?next=${encodeURIComponent(nextUrl)}`
+                : "/auth/login"
+            }
             className="font-medium hover:underline"
             style={{ color: "#6366f1" }}
           >
@@ -340,5 +354,13 @@ export default function RegisterPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function RegisterPageWrapper() {
+  return (
+    <Suspense fallback={null}>
+      <RegisterPage />
+    </Suspense>
   );
 }

@@ -28,8 +28,10 @@ import type {
   PlatformSettings,
 } from "@/types";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-const API_BASE = BASE_URL;
+/** Same-origin /api when behind nginx; localhost:8000 for local SSR/dev. */
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL ??
+  (typeof window !== "undefined" ? "" : "http://localhost:8000");
 
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -383,6 +385,7 @@ export interface AdminStats {
   total_jobseekers: number;
   total_companies: number;
   total_jobs: number;
+  total_job_boards: number;
   total_applications: number;
   total_contact_requests: number;
   new_users_today: number;
@@ -749,6 +752,79 @@ export async function cleanupInactiveJobs(
   }>(res);
 }
 
+export interface ScraperSource {
+  id: number;
+  source_name: string;
+  source_key: string;
+  base_url: string;
+  scraper_type: string;
+  api_endpoint?: string | null;
+  is_active: boolean;
+  scrape_interval_hours: number;
+  created_at?: string;
+}
+
+export type ScraperSourceInput = {
+  source_name: string;
+  source_key: string;
+  base_url: string;
+  scraper_type: string;
+  api_endpoint?: string;
+  is_active?: boolean;
+  scrape_interval_hours?: number;
+};
+
+export async function adminGetScraperSources(token: string): Promise<ScraperSource[]> {
+  const res = await fetch(`${API_BASE}/api/admin/scrapers/`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await handleResponse<ScraperSource[] | { sources?: ScraperSource[] }>(res);
+  if (Array.isArray(data)) return data;
+  return data.sources ?? [];
+}
+
+export async function adminCreateScraperSource(
+  token: string,
+  payload: ScraperSourceInput
+): Promise<{ message: string; id: number }> {
+  const res = await fetch(`${API_BASE}/api/admin/scrapers/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<{ message: string; id: number }>(res);
+}
+
+export async function adminUpdateScraperSource(
+  token: string,
+  sourceId: number,
+  payload: Partial<ScraperSourceInput>
+): Promise<{ message: string }> {
+  const res = await fetch(`${API_BASE}/api/admin/scrapers/${sourceId}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<{ message: string }>(res);
+}
+
+export async function adminDeleteScraperSource(
+  token: string,
+  sourceId: number
+): Promise<{ message: string }> {
+  const res = await fetch(`${API_BASE}/api/admin/scrapers/${sourceId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return handleResponse<{ message: string }>(res);
+}
+
 
 // ---------------------------------------------------------------------------
 // Company Portal
@@ -852,7 +928,7 @@ export async function getGoogleAuthUrl(
   userType: string = "jobseeker"
 ): Promise<string> {
   const res = await fetch(
-    `${BASE_URL}/api/auth/google?user_type=${encodeURIComponent(userType)}`
+    `${API_BASE}/api/auth/google?user_type=${encodeURIComponent(userType)}`
   );
   const data = await handleResponse<{ url: string }>(res);
   return data.url;
@@ -862,7 +938,7 @@ export async function loginUser(
   email: string,
   password: string
 ): Promise<TokenResponse> {
-  const res = await fetch(`${BASE_URL}/api/auth/login`, {
+  const res = await fetch(`${API_BASE}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
@@ -873,7 +949,7 @@ export async function loginUser(
 export async function registerUser(
   data: RegisterRequest
 ): Promise<TokenResponse> {
-  const res = await fetch(`${BASE_URL}/api/auth/register`, {
+  const res = await fetch(`${API_BASE}/api/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -882,14 +958,14 @@ export async function registerUser(
 }
 
 export async function getMe(token: string): Promise<User> {
-  const res = await fetch(`${BASE_URL}/api/auth/me`, {
+  const res = await fetch(`${API_BASE}/api/auth/me`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   return handleResponse<User>(res);
 }
 
 export async function forgotPassword(email: string): Promise<{ message: string }> {
-  const res = await fetch(`${BASE_URL}/api/auth/forgot-password`, {
+  const res = await fetch(`${API_BASE}/api/auth/forgot-password`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email }),
@@ -901,7 +977,7 @@ export async function resetPassword(
   token: string,
   newPassword: string
 ): Promise<{ success: boolean; message: string }> {
-  const res = await fetch(`${BASE_URL}/api/auth/reset-password`, {
+  const res = await fetch(`${API_BASE}/api/auth/reset-password`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token, new_password: newPassword }),
@@ -974,10 +1050,28 @@ export async function uploadProfileCV(
     body: formData,
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(
-      typeof err.detail === "string" ? err.detail : "Upload failed"
-    );
+    const text = await res.text();
+    let message = text || `Upload failed (${res.status})`;
+    try {
+      const err = JSON.parse(text) as { detail?: unknown };
+      const d = err.detail;
+      if (typeof d === "string") {
+        message = d;
+      } else if (Array.isArray(d)) {
+        message = d
+          .map((item) =>
+            item && typeof item === "object" && "msg" in item
+              ? String((item as { msg: string }).msg)
+              : String(item)
+          )
+          .join("; ");
+      }
+    } catch {
+      if (res.status === 504) {
+        message = "Request timed out. The server may still be loading — try again in a moment.";
+      }
+    }
+    throw new Error(message);
   }
   return res.json();
 }

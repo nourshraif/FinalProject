@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Inter, Manrope } from "next/font/google";
 import { Toaster } from "sonner";
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
@@ -10,17 +9,6 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ScrollToTop } from "@/components/ScrollToTop";
 import { StitchBackdrop } from "@/components/StitchBackdrop";
 import ChatBot from "@/components/ChatBot";
-
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-body",
-});
-
-const manrope = Manrope({
-  subsets: ["latin"],
-  variable: "--font-headline",
-  weight: ["400", "500", "600", "700", "800"],
-});
 
 export const metadata: Metadata = {
   title: "Vertex | Talent Matching",
@@ -35,13 +23,19 @@ export default function RootLayout({
   return (
     <html lang="en" data-theme="dark">
       <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Manrope:wght@400;500;600;700;800&display=swap"
+        />
         <link
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0"
         />
       </head>
       <body
-        className={`${inter.variable} ${manrope.variable} ${inter.className} font-body flex min-h-screen flex-col selection:bg-v-primary/30`}
+        className="font-body flex min-h-screen flex-col selection:bg-v-primary/30"
       >
         <StitchBackdrop />
         <AuthProvider>

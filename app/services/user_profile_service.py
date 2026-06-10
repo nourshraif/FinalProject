@@ -9,6 +9,19 @@ from typing import List, Optional, Dict
 import numpy as np
 from app.database.db import get_connection
 
+# Pro/Business jobseekers rank higher when companies search candidates.
+PROFILE_BOOST_RANK_BONUS = 12.0
+
+
+def _has_profile_boost(plan: Optional[str]) -> bool:
+    return (plan or "free").strip().lower() in ("pro", "business")
+
+
+def _candidate_rank_score(keyword_score: float, plan: Optional[str]) -> float:
+    if _has_profile_boost(plan):
+        return min(100.0, keyword_score + PROFILE_BOOST_RANK_BONUS)
+    return keyword_score
+
 
 # ---------------------------------------------------------------------------
 # Save / Upsert a user profile
@@ -93,11 +106,12 @@ def find_matching_candidates(
                 up.cv_filename,
                 up.created_at,
                 u.id AS user_id,
+                u.plan AS user_plan,
                 up.profile_slug,
                 up.location,
                 up.years_experience
             FROM user_profiles up
-            LEFT JOIN users u ON u.email = up.email
+            LEFT JOIN users u ON u.email = up.email AND u.user_type = 'jobseeker'
             ORDER BY up.created_at DESC
             LIMIT %s
             """,
@@ -120,6 +134,7 @@ def find_matching_candidates(
             cv_filename,
             created_at,
             user_id,
+            user_plan,
             profile_slug,
             location,
             years_experience,
@@ -132,6 +147,7 @@ def find_matching_candidates(
         if len(matched) < min_keyword_matches:
             continue
 
+        score_pct = round(keyword_score * 100, 1)
         candidates.append(
             {
                 "id": pid,
@@ -141,7 +157,9 @@ def find_matching_candidates(
                 "cv_filename": cv_filename,
                 "created_at": created_at,
                 "matched_skills": matched,
-                "keyword_score": round(keyword_score * 100, 1),
+                "keyword_score": score_pct,
+                "profile_boosted": _has_profile_boost(user_plan),
+                "_rank_score": _candidate_rank_score(score_pct, user_plan),
                 "user_id": user_id,
                 "profile_slug": profile_slug,
                 "location": location,
@@ -149,7 +167,9 @@ def find_matching_candidates(
             }
         )
 
-    candidates.sort(key=lambda x: x["keyword_score"], reverse=True)
+    candidates.sort(key=lambda x: x["_rank_score"], reverse=True)
+    for c in candidates:
+        c.pop("_rank_score", None)
     return candidates[:top_k]
 
 
