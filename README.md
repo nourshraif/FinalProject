@@ -24,9 +24,28 @@ cp frontend/.env.example frontend/.env.local
 # Edit frontend/.env.local with your values
 ```
 
-### 3. Start the database
+### 3. Start the stack
+
+**Option A — Full stack in Docker (recommended for production-like testing)**
+
 ```bash
-docker compose up -d
+# One-time: build the Python base image
+docker build -f Dockerfile.base -t finalproject-base .
+
+# Build frontend bundle, then build the frontend image
+cd frontend && npm install && npm run build && cd ..
+docker build -t finalproject-frontend:latest ./frontend
+
+# Start postgres + backend + frontend + nginx
+docker compose up -d --build
+```
+
+Open **http://localhost** (nginx proxies API and frontend).
+
+**Option B — Database only (local dev with uvicorn + npm run dev)**
+
+```bash
+docker compose up -d postgres
 ```
 
 ### 4. Set up Python environment
@@ -66,9 +85,11 @@ npm run dev
 ```
 
 ### 9. Open the app
-```bash
-http://localhost:3000
-```
+
+| Mode | URL |
+|------|-----|
+| Local dev (Option B) | http://localhost:3000 |
+| Docker full stack (Option A) | http://localhost |
  
  ### 10. Optional: seed jobs and build embeddings
  ```bash
@@ -92,6 +113,12 @@ http://localhost:3000
 
 ### Latest (Unreleased)
 
+- Implemented **3-tier company pricing** (Free / Growth / Business) with enforced limits in `api/plan_limits.py`:
+  - **Free:** 1 active job, 3 contact requests/month, receive applicants, basic pipeline (Applied / Rejected)
+  - **Growth** (company `pro` plan, ~$29/mo): 5 jobs, 20 contact requests/month, full hiring pipeline, save up to 25 candidates, featured job boost, hiring analytics
+  - **Business** (~$49/mo): unlimited jobs, contact requests, and saves; candidate search; search history
+- Added **`GET /api/company/plan-usage`** for current plan limits and usage counts.
+- Updated **pricing page**, **PlanGate**, billing labels, and admin platform settings for Growth limits/prices.
 - Added **Skills Gap Analyzer** flow with new endpoints (`/api/skills-gap/analyze`, `/api/skills-gap/analyze-job/{job_id}`) and a dedicated `/skills-gap` page for job seekers.
 - Added **plan-based feature gating** (Free/Pro/Business) across key workflows such as full match visibility, saved jobs, application tracker, candidate search, contact request limits, and company posting limits.
 - Introduced **new Lebanon-focused scrapers** for HireLebanese and CareersAndJobsInLebanon, integrated into the scraper service pipeline.
@@ -169,7 +196,7 @@ http://localhost:3000
 
 | Technology | Purpose |
 |------------|---------|
-| **Docker & Docker Compose** | PostgreSQL + pgvector |
+| **Docker & Docker Compose** | PostgreSQL + pgvector; optional full stack (backend, frontend, nginx) |
 | **Makefile** | Scraper + DB workflow (optional) |
 
 ---
@@ -199,14 +226,15 @@ http://localhost:3000
 ### For Companies
 
 - **Company profile** — Company name, website, industry, size, description, contact name
-- **Posted jobs management** — Create, list, update, delete, and activate/deactivate company job postings
+- **Posted jobs management** — Create, list, update, delete, and activate/deactivate job postings (tier-based active job limits)
 - **Skill-match notifications on post** — When a company posts a job, matched job seekers receive notifications
-- **Candidate search** — Search by required skills; keyword + semantic (vector) matching; configurable top-k and min matches
-- **Saved candidates** — Save candidates from search; view saved list with client-side search
-- **Private notes** — Add or edit notes per saved candidate (500 chars); notes modal with save/cancel
-- **Contact workflow** — Send contact requests to candidates and track sent requests
+- **Applicant pipeline** — Review applications per posted job; full pipeline (Reviewing → Interview → Offer) on Growth+
+- **Candidate search** — Business plan: search by required skills with keyword + semantic matching
+- **Saved candidates** — Growth: up to 25; Business: unlimited; private notes per candidate (500 chars)
+- **Contact workflow** — Send contact requests to candidates and track sent requests (monthly limits on Free/Growth)
+- **Hiring analytics** — Growth+ dashboard (`/analytics`) for searches, outreach, and applications
 - **Talent pool (admin)** — View all candidates in the system (email, name, skills, CV filename)
-- **Dashboard** — Candidate pool count, saved candidates count, recently saved candidates (last 3), quick skill search, links to search, talent pool, profile
+- **Dashboard** — Candidate pool count, saved candidates, recent activity, quick links to search and profile
 
 ### Platform & Data
 
@@ -215,7 +243,26 @@ http://localhost:3000
 - **Role-based access** — Separate routes and API guards for job seeker vs company
 - **Google OAuth** — Google sign-in flow with callback and account bootstrap
 - **Email flows** — Welcome, password reset, contact request, acceptance, and alert emails
-- **Subscriptions & billing** — Stripe checkout, subscription status, cancel-at-period-end, webhook sync
+- **Subscriptions & billing** — Stripe checkout (job seeker Pro, company Growth/Business), subscription status, cancel-at-period-end, webhook sync
+
+### Subscription plans
+
+#### Job seekers
+
+| Plan | Price | Highlights |
+|------|-------|------------|
+| **Free** | $0 | CV upload, browse/apply, basic profile |
+| **Pro** | ~$12/mo | Unlimited matches, skills gap, application tracker, job alerts, profile boost |
+
+#### Companies
+
+| Plan | Price | Highlights |
+|------|-------|------------|
+| **Free** | $0 | 1 active job, 3 contact requests/mo, receive applicants, basic pipeline |
+| **Growth** | ~$29/mo | 5 jobs, 20 contact requests/mo, full pipeline, 25 saved candidates, job boost, analytics |
+| **Business** | ~$49/mo | Unlimited jobs/contacts/saves, candidate search, search history |
+
+Growth is stored as plan `pro` for company accounts; Business is plan `business`. Limits are configurable in **Admin → Platform Settings**.
 - **Analytics** — Role-specific analytics endpoints for job seekers and companies
 
 ### Admin Panel
@@ -371,9 +418,14 @@ Create `.env` from `env.example`. Main variables:
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID | *(from [Google Cloud Console](https://console.cloud.google.com/apis/credentials))* |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret | *(same credentials)* |
 | `GOOGLE_REDIRECT_URI` | OAuth callback URL | `http://localhost:8000/api/auth/google/callback` (default) |
-| `FRONTEND_URL` | Frontend origin for OAuth redirects | `http://localhost:3000` (default) |
+| `APP_URL` | Public app URL (Stripe redirects) | `http://localhost:3000` (dev) or `http://localhost` (Docker/nginx) |
+| `NEXT_PUBLIC_API_URL` | Frontend → API base URL | `http://localhost:8000` (dev) or `http://localhost` (Docker/nginx) |
+| `STRIPE_SECRET_KEY` | Stripe secret key | *(from Stripe dashboard)* |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret | *(from Stripe webhook config)* |
 
-Frontend: set `NEXT_PUBLIC_API_URL` in `frontend/.env.local` if the API is not at `http://localhost:8000`.
+Frontend: set `NEXT_PUBLIC_API_URL` in `frontend/.env.local` (local dev) or bake it at Docker build time. When using nginx on port 80, use `http://localhost` so API calls go through the reverse proxy.
+
+Growth/Business prices and Free/Growth limits can also be tuned via **Admin → Platform Settings** (`growth_*` and `free_*` keys in `platform_settings`).
 
 ---
 
@@ -383,7 +435,8 @@ Frontend: set `NEXT_PUBLIC_API_URL` in `frontend/.env.local` if the API is not a
 FinalProject/
 ├── api/
 │   ├── __init__.py
-│   └── main.py                 # FastAPI app, all routes, auth, company/jobseeker APIs
+│   ├── main.py                 # FastAPI app, all routes, auth, company/jobseeker APIs
+│   └── plan_limits.py          # Subscription tier limits (Free / Growth / Business)
 ├── app/
 │   ├── database/
 │   │   └── db.py               # DB connection, init_database, CRUD (users, jobs, profiles, saved jobs, saved candidates)
@@ -426,7 +479,10 @@ FinalProject/
 │   └── dev.sh                   # Start backend + frontend (Unix)
 ├── logs/                        # Scraper and scheduler status JSON logs
 ├── uploads/                     # Uploaded CVs and file storage
-├── docker-compose.yml          # PostgreSQL + pgvector
+├── docker-compose.yml          # Postgres + backend + frontend + nginx
+├── Dockerfile                  # Backend image (requires finalproject-base)
+├── Dockerfile.base             # Python deps + embedding model cache
+├── frontend/Dockerfile         # Next.js standalone image
 ├── requirements.txt
 ├── env.example
 ├── Makefile                    # Docker scraper workflow (optional)
@@ -444,7 +500,7 @@ FinalProject/
 - **Job seeker profile:** `POST /api/jobseeker/save-profile`, `GET /api/profile`, `PUT /api/profile`, `PUT /api/profile/skills`, `GET /api/profile/slug`, `PUT /api/profile/visibility`, `GET /api/public/profile/{slug}`
 - **Applications:** `GET /api/applications`, `POST /api/applications`, `PUT /api/applications/{id}`, `DELETE /api/applications/{id}`
 - **Saved jobs:** `GET /api/saved-jobs`, `POST /api/saved-jobs/{job_id}`, `DELETE /api/saved-jobs/{job_id}`, `GET /api/saved-jobs/check/{job_id}`
-- **Company:** `GET /api/company/profile`, `PUT /api/company/profile`
+- **Company:** `GET /api/company/profile`, `PUT /api/company/profile`, `GET /api/company/plan-usage`
 - **Company candidates:** `POST /api/company/search-candidates`, `GET /api/company/candidate-count`, `GET /api/company/all-candidates`
 - **Company saved candidates:** `GET /api/company/saved-candidates`, `POST /api/company/saved-candidates`, `DELETE /api/company/saved-candidates/{candidate_user_id}`, `PUT /api/company/saved-candidates/notes`
 - **Contact requests:** `POST /api/contact-requests`, `GET /api/contact-requests/received`, `GET /api/contact-requests/sent`, `PUT /api/contact-requests/{request_id}`
@@ -468,7 +524,8 @@ Protected routes use the `Authorization: Bearer <token>` header.
 | `ModuleNotFoundError: No module named 'api'` | Run `uvicorn` from the directory that **contains** the `api` folder (e.g. `FinalProject`). |
 | `relation "jobs" or "user_profiles" does not exist` | Run `python app/database/db.py` once to create all tables. |
 | No jobs / empty match results | Run `python -m scripts.scheduled_scraper` to fetch and embed jobs. |
-| Frontend can’t reach API | Ensure backend is on http://localhost:8000 or set `NEXT_PUBLIC_API_URL` in `frontend/.env.local`. |
+| Frontend can’t reach API | Local dev: backend on http://localhost:8000 and `NEXT_PUBLIC_API_URL=http://localhost:8000`. Docker: use http://localhost and ensure nginx + backend containers are running. |
+| Plan limits not updating after code changes | Rebuild backend: `docker compose up -d --build backend`. Rebuild frontend after UI changes: `cd frontend && npm run build && docker build -t finalproject-frontend:latest ./frontend`. |
 | CORS errors | Backend allows all origins in dev; ensure the request URL matches what the frontend uses. |
 | Chatbot replies with generic error | Ensure backend is running and reachable at `NEXT_PUBLIC_API_URL`; verify `POST /api/chat` responds in Swagger (`/docs`). |
 

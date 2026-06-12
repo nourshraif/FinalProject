@@ -13,7 +13,10 @@ export type PlanGateFeature =
   | "application_tracker"
   | "job_alerts"
   | "search_candidates"
-  | "contact_requests";
+  | "contact_requests"
+  | "save_candidates"
+  | "company_analytics"
+  | "search_history";
 
 const FEATURE_COPY: Record<
   PlanGateFeature,
@@ -50,9 +53,27 @@ const FEATURE_COPY: Record<
     requiredPlan: "business",
   },
   contact_requests: {
+    title: "Upgrade required",
+    description:
+      "You've reached your contact request limit. Upgrade for more outreach.",
+    requiredPlan: "pro",
+  },
+  save_candidates: {
+    title: "Growth feature",
+    description:
+      "Upgrade to Growth to save candidates to your talent pool (up to 25 on Growth, unlimited on Business).",
+    requiredPlan: "pro",
+  },
+  company_analytics: {
+    title: "Growth feature",
+    description:
+      "Upgrade to Growth to unlock hiring analytics and track your recruiting performance.",
+    requiredPlan: "pro",
+  },
+  search_history: {
     title: "Business feature",
     description:
-      "Upgrade to Business to send unlimited contact requests to candidates.",
+      "Upgrade to Business to access search history and recruiting insights.",
     requiredPlan: "business",
   },
 };
@@ -64,17 +85,15 @@ function planMeetsRequired(
 ): boolean {
   const p = (plan || "free").toLowerCase();
   if (required === "business") return p === "business";
-  if (userType === "company") return p === "business";
+  if (userType === "company") return p === "pro" || p === "business";
   return p === "pro" || p === "business";
 }
 
 export interface PlanGateProps {
   feature: PlanGateFeature;
-  /** Ignored if `soft` is true — use `requiredPlan` from feature map unless overridden */
   requiredPlan?: "pro" | "business";
   children: React.ReactNode;
   fallback?: React.ReactNode;
-  /** When true, always render children (limits still enforced by API). */
   soft?: boolean;
 }
 
@@ -156,8 +175,20 @@ export function PlanGate({
     return <>{fallback}</>;
   }
 
+  const isCompany = user?.user_type === "company";
   const planLabel =
-    requiredPlan === "business" ? "Business feature" : "Pro feature";
+    requiredPlan === "business"
+      ? "Business feature"
+      : isCompany
+        ? "Growth feature"
+        : "Pro feature";
+
+  const displayPlan =
+    effectivePlan === "free"
+      ? "Free"
+      : effectivePlan === "pro" && isCompany
+        ? "Growth"
+        : effectivePlan.charAt(0).toUpperCase() + effectivePlan.slice(1);
 
   return (
     <div className="px-4 pt-28 pb-16 md:pt-32">
@@ -165,9 +196,7 @@ export function PlanGate({
         <Lock className="mx-auto h-12 w-12 text-indigo-400" aria-hidden />
         <h2 className="mt-4 text-lg font-bold text-white">{planLabel}</h2>
         <p className="mt-3 text-sm leading-relaxed text-slate-400">{meta.description}</p>
-        <p className="mt-4 text-xs text-slate-500">
-          You are on the {effectivePlan === "free" ? "Free" : effectivePlan.charAt(0).toUpperCase() + effectivePlan.slice(1)} plan
-        </p>
+        <p className="mt-4 text-xs text-slate-500">You are on the {displayPlan} plan</p>
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
           <Link href="/pricing" className="glow-button inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-sm font-semibold text-white">
             Upgrade Now

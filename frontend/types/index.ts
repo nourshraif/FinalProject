@@ -391,5 +391,27 @@ export interface PlatformSettings {
   free_saved_jobs_limit: number;
   free_contact_requests_limit: number;
   free_job_postings_limit: number;
+  growth_job_postings_limit?: number;
+  growth_contact_requests_limit?: number;
+  growth_saved_candidates_limit?: number;
+  growth_monthly_price?: number;
+  growth_annual_price?: number;
   _updated_at?: string;
+}
+
+export interface CompanyPlanUsage {
+  plan: "free" | "pro" | "business";
+  plan_label: string;
+  active_jobs: number;
+  max_active_jobs: number | null;
+  contact_requests_30d: number;
+  max_contact_requests_30d: number | null;
+  saved_candidates: number;
+  max_saved_candidates: number | null;
+  can_search_candidates: boolean;
+  can_search_history: boolean;
+  can_company_analytics: boolean;
+  can_full_pipeline: boolean;
+  has_job_boost: boolean;
+  allowed_pipeline_statuses: string[];
 }

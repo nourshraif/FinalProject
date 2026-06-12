@@ -237,7 +237,7 @@ const NEXT_STATUS: Partial<
 function ApplicantsContent() {
   const params = useParams();
   const jobId = typeof params?.id === "string" ? parseInt(params.id, 10) : NaN;
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { showToast } = useToast();
   const [jobTitle, setJobTitle] = useState("");
   const [apps, setApps] = useState<VertexJobApplication[]>([]);
@@ -257,6 +257,19 @@ function ApplicantsContent() {
   } | null>(null);
   const [offerForm, setOfferForm] = useState<OfferForm>(EMPTY_OFFER_FORM);
   const [offerErrors, setOfferErrors] = useState<Record<string, string>>({});
+
+  const canFullPipeline =
+    user?.is_admin || user?.plan === "pro" || user?.plan === "business";
+
+  const pipelineFilters = canFullPipeline
+    ? PIPELINE
+    : PIPELINE.filter((p) => ["all", "applied", "rejected"].includes(p.value));
+
+  function statusActions(status: VertexApplicationStatus) {
+    const opts = NEXT_STATUS[status] || [];
+    if (canFullPipeline) return opts;
+    return opts.filter((o) => o.value === "rejected");
+  }
 
   const load = useCallback(() => {
     if (!token || Number.isNaN(jobId)) return;
@@ -442,10 +455,19 @@ function ApplicantsContent() {
           </Link>
           <h1 className="mt-2 text-3xl font-bold text-white">Applicants</h1>
           <p className="text-sm text-vertex-muted">{jobTitle}</p>
+          {!canFullPipeline && (
+            <p className="mt-3 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 text-xs text-indigo-200">
+              Free plan: basic pipeline only (Applied / Rejected).{" "}
+              <Link href="/pricing" className="font-semibold underline">
+                Upgrade to Growth
+              </Link>{" "}
+              for Reviewing, Interview, and Offer stages.
+            </p>
+          )}
         </div>
 
         <div className="mb-6 flex flex-wrap gap-2">
-          {PIPELINE.map(({ value, label }) => {
+          {pipelineFilters.map(({ value, label }) => {
             const count = value === "all" ? counts.all : counts[value];
             return (
               <button
@@ -563,7 +585,7 @@ function ApplicantsContent() {
                 </div>
 
                 <div className="mt-4 flex flex-wrap gap-2">
-                  {(NEXT_STATUS[app.status] || []).map((opt) => (
+                  {(statusActions(app.status as VertexApplicationStatus) || []).map((opt) => (
                     <button
                       key={opt.value}
                       type="button"

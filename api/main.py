@@ -63,6 +63,7 @@ from app.database.db import (
     count_saved_jobs_for_user as db_count_saved_jobs_for_user,
     count_company_active_posted_jobs as db_count_company_active_posted_jobs,
     count_company_contact_requests_last_30_days as db_count_company_contact_requests_last_30_days,
+    count_company_saved_candidates as db_count_company_saved_candidates,
     get_company_profile as db_get_company_profile,
     upsert_company_profile as db_upsert_company_profile,
     get_saved_candidates as db_get_saved_candidates,
@@ -604,66 +605,36 @@ async def get_current_user_optional(
         return None
 
 
-def check_plan_access(current_user: dict, feature: str) -> bool:
-    """Return True if the user's plan allows this feature."""
-    plan = (current_user.get("plan") or "free").strip().lower()
-    if plan not in ("free", "pro", "business"):
-        plan = "free"
-    user_type = (current_user.get("user_type") or "").strip().lower()
-
-    JOBSEEKER_FREE_FEATURES = [
-        "apply_jobs",
-        "view_profile",
-        "upload_cv",
-        "browse_jobs",
-        "save_jobs",
-    ]
-    JOBSEEKER_PRO_FEATURES = [
-        "view_matches",
-        "skills_gap",
-        "priority_matching",
-        "profile_boost",
-        "application_tracker",
-        "job_alerts",
-    ]
-    COMPANY_FREE_FEATURES = [
-        "post_job_1",
-        "contact_requests_3",
-    ]
-    COMPANY_PRO_FEATURES = [
-        "search_candidates",
-        "save_candidates",
-        "unlimited_contact_requests",
-        "search_history",
-        "analytics",
-        "unlimited_jobs",
-    ]
-
-    if user_type == "jobseeker":
-        if feature in JOBSEEKER_FREE_FEATURES:
-            return True
-        if feature in JOBSEEKER_PRO_FEATURES:
-            return plan in ("pro", "business")
-
-    if user_type == "company":
-        if feature in COMPANY_FREE_FEATURES:
-            return True
-        if feature in COMPANY_PRO_FEATURES:
-            return plan == "business"
-
-    return False
+from api.plan_limits import (
+    check_plan_access,
+    company_plan_label,
+    company_usage_summary,
+    max_active_jobs,
+    max_contact_requests_30d,
+    max_saved_candidates,
+    allowed_pipeline_statuses,
+    has_job_boost,
+    plan_required_for_feature,
+    can_company_analytics,
+)
 
 
 def require_plan(current_user: dict, feature: str, upgrade_to: str = "pro") -> None:
     if not check_plan_access(current_user, feature):
         plan = (current_user.get("plan") or "free").strip().lower()
+        user_type = (current_user.get("user_type") or "").strip().lower()
+        required = upgrade_to
+        if user_type == "company" and upgrade_to == "pro":
+            required = "growth"
+        elif user_type == "company" and upgrade_to == "business":
+            required = "business"
         raise HTTPException(
             status_code=403,
             detail={
                 "error": "plan_required",
-                "message": f"This feature requires a {upgrade_to} plan",
+                "message": f"This feature requires a {required.title()} plan",
                 "current_plan": plan,
-                "required_plan": upgrade_to,
+                "required_plan": required,
                 "upgrade_url": "/pricing",
             },
         )
@@ -1146,6 +1117,11 @@ class PlatformSettingsUpdate(BaseModel):
     free_saved_jobs_limit: Optional[int] = None
     free_contact_requests_limit: Optional[int] = None
     free_job_postings_limit: Optional[int] = None
+    growth_job_postings_limit: Optional[int] = None
+    growth_contact_requests_limit: Optional[int] = None
+    growth_saved_candidates_limit: Optional[int] = None
+    growth_monthly_price: Optional[int] = None
+    growth_annual_price: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------
@@ -2162,6 +2138,18 @@ def company_update_application(
     status = (body.status or "").strip().lower()
     if status not in VERTEX_APPLICATION_STATUSES or status == "withdrawn":
         raise HTTPException(status_code=400, detail="Invalid status")
+    allowed = allowed_pipeline_statuses(current_user)
+    if status not in allowed:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "plan_required",
+                "message": "Upgrade to Growth for the full hiring pipeline (Reviewing, Interview, Offer).",
+                "current_plan": (current_user.get("plan") or "free"),
+                "required_plan": "growth",
+                "upgrade_url": "/pricing",
+            },
+        )
     app_before = db_get_posted_job_application_by_id(application_id, current_user["id"])
     if not app_before:
         raise HTTPException(status_code=404, detail="Application not found")
@@ -2258,19 +2246,28 @@ def post_posted_job(
     if not company_name:
         raise HTTPException(status_code=400, detail="Company name is required")
     active_ct = db_count_company_active_posted_jobs(current_user["id"])
-    if not check_plan_access(current_user, "unlimited_jobs") and active_ct >= 1:
+    job_limit = max_active_jobs(current_user)
+    if job_limit is not None and active_ct >= job_limit:
+        plan = (current_user.get("plan") or "free").strip().lower()
+        required = "growth" if plan == "free" else "business"
+        limit_label = job_limit
         raise HTTPException(
             status_code=403,
             detail={
                 "error": "plan_required",
-                "message": "Free plan allows 1 active job posting. Upgrade to Business for unlimited postings.",
-                "current_plan": (current_user.get("plan") or "free"),
-                "required_plan": "business",
+                "message": (
+                    f"Your plan allows {limit_label} active job posting(s). "
+                    f"Upgrade to {required.title()} for more."
+                ),
+                "current_plan": plan,
+                "required_plan": required,
                 "upgrade_url": "/pricing",
             },
         )
     data = body.model_dump()
     data["company_name"] = company_name
+    if has_job_boost(current_user):
+        data["is_featured"] = True
     try:
         new_job_id = db_create_posted_job(current_user["id"], data)
 
@@ -2932,6 +2929,18 @@ def put_company_profile(
     return profile
 
 
+@app.get("/api/company/plan-usage")
+def get_company_plan_usage(current_user: dict = Depends(get_current_user)):
+    if current_user.get("user_type") != "company":
+        raise HTTPException(status_code=403, detail="Company access only")
+    return company_usage_summary(
+        current_user,
+        active_jobs=db_count_company_active_posted_jobs(current_user["id"]),
+        contact_requests_30d=db_count_company_contact_requests_last_30_days(current_user["id"]),
+        saved_candidates=db_count_company_saved_candidates(current_user["id"]),
+    )
+
+
 # ---------------------------------------------------------------------------
 # GET /api/company/saved-candidates
 # ---------------------------------------------------------------------------
@@ -2939,7 +2948,7 @@ def put_company_profile(
 def get_saved_candidates_route(current_user: dict = Depends(get_current_user)):
     if current_user.get("user_type") != "company":
         raise HTTPException(status_code=403, detail="Company access only")
-    require_plan(current_user, "save_candidates", upgrade_to="business")
+    require_plan(current_user, "save_candidates", upgrade_to="pro")
     return db_get_saved_candidates(current_user["id"])
 
 
@@ -2953,7 +2962,25 @@ def post_save_candidate(
 ):
     if current_user.get("user_type") != "company":
         raise HTTPException(status_code=403, detail="Company access only")
-    require_plan(current_user, "save_candidates", upgrade_to="business")
+    require_plan(current_user, "save_candidates", upgrade_to="pro")
+    save_limit = max_saved_candidates(current_user)
+    if save_limit is not None:
+        current_count = db_count_company_saved_candidates(current_user["id"])
+        if current_count >= save_limit:
+            plan = (current_user.get("plan") or "free").strip().lower()
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "plan_required",
+                    "message": (
+                        f"Your plan allows saving up to {save_limit} candidates. "
+                        "Upgrade to Business for unlimited saves."
+                    ),
+                    "current_plan": plan,
+                    "required_plan": "business" if plan == "pro" else "growth",
+                    "upgrade_url": "/pricing",
+                },
+            )
     db_save_candidate(current_user["id"], body.candidate_user_id)
     return {"success": True, "saved": True}
 
@@ -3037,14 +3064,20 @@ def post_contact_request(
     if current_user.get("user_type") != "company":
         raise HTTPException(status_code=403, detail="Company access only")
     sent_30d = db_count_company_contact_requests_last_30_days(current_user["id"])
-    if not check_plan_access(current_user, "unlimited_contact_requests") and sent_30d >= 3:
+    contact_limit = max_contact_requests_30d(current_user)
+    if contact_limit is not None and sent_30d >= contact_limit:
+        plan = (current_user.get("plan") or "free").strip().lower()
+        required = "growth" if plan == "free" else "business"
         raise HTTPException(
             status_code=403,
             detail={
                 "error": "plan_required",
-                "message": "Free plan allows 3 contact requests per 30 days. Upgrade to Business for unlimited requests.",
-                "current_plan": (current_user.get("plan") or "free"),
-                "required_plan": "business",
+                "message": (
+                    f"Your plan allows {contact_limit} contact requests per 30 days. "
+                    f"Upgrade to {required.title()} for more."
+                ),
+                "current_plan": plan,
+                "required_plan": required,
                 "upgrade_url": "/pricing",
             },
         )
@@ -3419,6 +3452,37 @@ def create_checkout(
         "pro": {"monthly": 1200, "annually": 12000},
         "business": {"monthly": 4900, "annually": 46800},
     }
+    if plan == "pro" and current_user.get("user_type") == "company":
+        from app.database.db import get_plan_config
+
+        cfg = get_plan_config()
+        growth_monthly = int(cfg.get("growth_monthly_price", 29))
+        growth_annual_monthly = int(cfg.get("growth_annual_price", 23))
+        prices["pro"] = {
+            "monthly": growth_monthly * 100,
+            "annually": growth_annual_monthly * 12 * 100,
+        }
+    elif plan == "business":
+        from app.database.db import get_plan_config
+
+        cfg = get_plan_config()
+        biz_monthly = int(cfg.get("business_monthly_price", 49))
+        biz_annual_monthly = int(cfg.get("business_annual_price", 39))
+        prices["business"] = {
+            "monthly": biz_monthly * 100,
+            "annually": biz_annual_monthly * 12 * 100,
+        }
+    elif plan == "pro":
+        from app.database.db import get_plan_config
+
+        cfg = get_plan_config()
+        pro_monthly = int(cfg.get("pro_monthly_price", 12))
+        pro_annual_monthly = int(cfg.get("pro_annual_price", 10))
+        prices["pro"] = {
+            "monthly": pro_monthly * 100,
+            "annually": pro_annual_monthly * 12 * 100,
+        }
+
     amount = prices[plan][billing_cycle]
     interval = "month" if billing_cycle == "monthly" else "year"
 
@@ -3430,8 +3494,16 @@ def create_checkout(
                 "price_data": {
                     "currency": "usd",
                     "product_data": {
-                        "name": f"Vertex {plan.title()}",
-                        "description": f"Vertex {plan.title()} Plan",
+                        "name": (
+                            f"Vertex Growth"
+                            if plan == "pro" and current_user.get("user_type") == "company"
+                            else f"Vertex {plan.title()}"
+                        ),
+                        "description": (
+                            "Vertex Growth Plan for hiring teams"
+                            if plan == "pro" and current_user.get("user_type") == "company"
+                            else f"Vertex {plan.title()} Plan"
+                        ),
                     },
                     "unit_amount": amount,
                     "recurring": {"interval": interval},
@@ -3589,7 +3661,7 @@ def get_analytics_jobseeker(current_user: dict = Depends(get_current_user)):
 def get_analytics_company(current_user: dict = Depends(get_current_user)):
     if current_user.get("user_type") != "company":
         raise HTTPException(status_code=403, detail="Company access only")
-    require_plan(current_user, "analytics", upgrade_to="business")
+    require_plan(current_user, "company_analytics", upgrade_to="pro")
     return db_get_company_analytics(current_user["id"])
 
 

@@ -1444,6 +1444,22 @@ def count_company_contact_requests_last_30_days(company_user_id: int) -> int:
         conn.close()
 
 
+def count_company_saved_candidates(company_user_id: int) -> int:
+    """Saved candidates for a company."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT COUNT(*) FROM saved_candidates WHERE company_user_id = %s;",
+            (company_user_id,),
+        )
+        row = cur.fetchone()
+        return int(row[0]) if row and row[0] is not None else 0
+    finally:
+        cur.close()
+        conn.close()
+
+
 def get_company_profile(user_id: int) -> Optional[dict]:
     """
     Return company_profiles row joined with users (email, full_name).
@@ -4002,9 +4018,9 @@ def create_posted_job(company_user_id: int, data: dict) -> int:
                 company_user_id, title, company_name, location, job_type,
                 experience_level, salary_min, salary_max, salary_currency,
                 description, requirements, benefits, skills_required,
-                application_url, application_email, expires_at
+                application_url, application_email, expires_at, is_featured
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (
@@ -4024,6 +4040,7 @@ def create_posted_job(company_user_id: int, data: dict) -> int:
                 (data.get("application_url") or "").strip() or None,
                 (data.get("application_email") or "").strip() or None,
                 expires_at,
+                bool(data.get("is_featured")),
             ),
         )
         job_id = cur.fetchone()[0]
@@ -5200,6 +5217,11 @@ DEFAULT_PLAN_CONFIG = {
     "free_saved_jobs_limit": 5,
     "free_contact_requests_limit": 3,
     "free_job_postings_limit": 1,
+    "growth_job_postings_limit": 5,
+    "growth_contact_requests_limit": 20,
+    "growth_saved_candidates_limit": 25,
+    "growth_monthly_price": 29,
+    "growth_annual_price": 23,
 }
 
 

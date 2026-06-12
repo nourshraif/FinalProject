@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Search, X } from "lucide-react";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { PlanGate } from "@/components/PlanGate";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import {
@@ -324,7 +325,9 @@ function HistoryContent() {
 export default function CompanyHistoryPage() {
   return (
     <ProtectedRoute requiredRole="company">
-      <HistoryContent />
+      <PlanGate feature="search_history" requiredPlan="business">
+        <HistoryContent />
+      </PlanGate>
     </ProtectedRoute>
   );
 }

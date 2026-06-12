@@ -17,6 +17,11 @@ const FIELDS: { key: keyof PlatformSettings; label: string; prefix?: string }[] 
   { key: "business_annual_price", label: "Business annual", prefix: "$" },
   { key: "free_job_matches_limit", label: "Free job matches shown" },
   { key: "free_saved_jobs_limit", label: "Free saved jobs limit" },
+  { key: "growth_monthly_price", label: "Growth monthly", prefix: "$" },
+  { key: "growth_annual_price", label: "Growth annual (per mo)", prefix: "$" },
+  { key: "growth_job_postings_limit", label: "Growth active jobs" },
+  { key: "growth_contact_requests_limit", label: "Growth contact requests / mo" },
+  { key: "growth_saved_candidates_limit", label: "Growth saved candidates" },
   { key: "free_contact_requests_limit", label: "Free contact requests / month" },
   { key: "free_job_postings_limit", label: "Free job postings limit" },
 ];

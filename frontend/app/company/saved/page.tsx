@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Bookmark, X } from "lucide-react";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { PlanGate } from "@/components/PlanGate";
 import { ContactRequestModal } from "@/components/ContactRequestModal";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
@@ -394,7 +395,9 @@ function SavedContent() {
 export default function CompanySavedPage() {
   return (
     <ProtectedRoute requiredRole="company">
-      <SavedContent />
+      <PlanGate feature="save_candidates" requiredPlan="pro">
+        <SavedContent />
+      </PlanGate>
     </ProtectedRoute>
   );
 }

@@ -61,9 +61,13 @@ function BillingContent() {
 
   const planLabel =
     sub?.plan === "business"
-      ? "Business Plan"
+      ? user?.user_type === "company"
+        ? "Business Plan"
+        : "Business Plan"
       : sub?.plan === "pro"
-        ? "Pro Plan"
+        ? user?.user_type === "company"
+          ? "Growth Plan"
+          : "Pro Plan"
         : "Free Plan";
   const planIcon =
     sub?.plan === "business"
@@ -126,17 +130,29 @@ function BillingContent() {
     "Profile boost",
   ];
   const businessFeatures = [
-    "Everything in Pro",
+    "Everything in Growth",
     "Unlimited candidate searches",
     "Unlimited contact requests",
-    "Saved candidates & history",
+    "Unlimited saved candidates",
+    "Search history & analytics",
+    "Unlimited job postings",
     "Priority support",
+  ];
+  const growthFeatures = [
+    "Up to 5 active job postings",
+    "20 contact requests per month",
+    "Full hiring pipeline",
+    "Save up to 25 candidates",
+    "Featured job boost",
+    "Hiring analytics",
   ];
   const features =
     sub?.plan === "business"
       ? businessFeatures
       : sub?.plan === "pro"
-        ? proFeatures
+        ? user?.user_type === "company"
+          ? growthFeatures
+          : proFeatures
         : freeFeatures;
 
   return (

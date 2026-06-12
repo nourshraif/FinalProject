@@ -26,6 +26,7 @@ import type {
   AdminJobRow,
   Announcement,
   PlatformSettings,
+  CompanyPlanUsage,
 } from "@/types";
 
 /** Same-origin /api when behind nginx; localhost:8000 for local SSR/dev. */
@@ -1522,6 +1523,13 @@ export async function getCompanyAnalytics(
     headers: { Authorization: `Bearer ${token}` },
   });
   return handleResponse<CompanyAnalytics>(res);
+}
+
+export async function getCompanyPlanUsage(token: string): Promise<CompanyPlanUsage> {
+  const res = await fetch(`${API_BASE}/api/company/plan-usage`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return handleResponse<CompanyPlanUsage>(res);
 }
 
 // ---------------------------------------------------------------------------

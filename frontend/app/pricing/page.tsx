@@ -43,8 +43,16 @@ export default function PricingPage() {
   const [isLoading, setIsLoading] = useState<"pro" | "business" | null>(null);
 
   async function handleProUpgrade() {
+    if (isLoggedIn && user?.user_type === "jobseeker" && planType === "companies") {
+      showToast("Growth plan is for company accounts only.", "error");
+      return;
+    }
+    if (isLoggedIn && user?.user_type === "company" && planType === "jobseekers") {
+      showToast("Pro plan is for job seekers. See company plans.", "error");
+      return;
+    }
     if (!isLoggedIn) {
-      router.push("/auth/register?plan=pro");
+      router.push(planType === "companies" ? "/auth/register?plan=pro&type=company" : "/auth/register?plan=pro");
       return;
     }
     if (!token) return;
@@ -83,10 +91,13 @@ export default function PricingPage() {
 
   const proMonthly = 12;
   const proAnnual = 10;
+  const growthMonthly = 29;
+  const growthAnnual = 23;
   const businessMonthly = 49;
   const businessAnnual = 39;
 
   const proPrice = billingCycle === "monthly" ? proMonthly : proAnnual;
+  const growthPrice = billingCycle === "monthly" ? growthMonthly : growthAnnual;
   const businessPrice = billingCycle === "monthly" ? businessMonthly : businessAnnual;
 
   const freeFeaturesJobSeekers = [
@@ -101,11 +112,36 @@ export default function PricingPage() {
   ];
 
   const freeFeaturesCompanies = [
-    { text: "Post 1 job listing", included: true },
+    { text: "Company profile & 1 active job", included: true },
+    { text: "Receive & view applicants", included: true },
+    { text: "Basic pipeline (Applied / Rejected)", included: true },
     { text: "3 contact requests per month", included: true },
-    { text: "Search candidates (Business only)", included: false },
-    { text: "Save candidates (Business only)", included: false },
-    { text: "Analytics (Business only)", included: false },
+    { text: "Full hiring pipeline (Growth)", included: false },
+    { text: "Save candidates (Growth)", included: false },
+    { text: "Candidate search (Business)", included: false },
+    { text: "Analytics (Growth)", included: false },
+  ];
+
+  const growthFeaturesCompanies = [
+    "Everything in Free",
+    "Up to 5 active job postings",
+    "20 contact requests per month",
+    "Full hiring pipeline",
+    "Save up to 25 candidates",
+    "Featured job boost",
+    "Hiring analytics dashboard",
+    { text: "Candidate search (Business)", included: false },
+    { text: "Search history (Business)", included: false },
+  ];
+
+  const businessFeaturesCompanies = [
+    "Everything in Growth",
+    "Unlimited job postings",
+    "Unlimited candidate searches",
+    "Unlimited contact requests",
+    "Unlimited saved candidates",
+    "Search history & advanced analytics",
+    "Priority support",
   ];
 
   const proFeaturesJobSeekers = [
@@ -116,24 +152,6 @@ export default function PricingPage() {
     "Profile boost in searches",
     "Application tracker",
     "Daily job alerts",
-  ];
-
-  const growthFeaturesCompanies = [
-    "Everything in Free",
-    "Higher job visibility",
-    "Email support",
-    { text: "Search candidates (Business)", included: false },
-    { text: "Unlimited contact requests", included: false },
-    { text: "Search history & analytics", included: false },
-  ];
-
-  const businessFeaturesCompanies = [
-    "Everything in Free",
-    "Unlimited candidate searches",
-    "Unlimited contact requests",
-    "Save unlimited candidates",
-    "Search history & analytics",
-    "Unlimited job postings",
   ];
 
   return (
@@ -311,7 +329,7 @@ export default function PricingPage() {
                 </span>
               )}
               <span className="text-5xl font-bold text-white">
-                ${planType === "jobseekers" ? proPrice : "29"}
+                ${planType === "jobseekers" ? proPrice : growthPrice}
               </span>
               <span className="ml-1 text-base" style={{ color: "var(--text-secondary)" }}>
                 /month
@@ -364,7 +382,7 @@ export default function PricingPage() {
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : null}
               Start {planType === "jobseekers" ? "Pro" : "Growth"} — $
-              {planType === "jobseekers" ? proPrice : "29"}
+              {planType === "jobseekers" ? proPrice : growthPrice}
               /mo
             </button>
           </div>
@@ -453,12 +471,77 @@ export default function PricingPage() {
                   </th>
                   <th className="p-3 text-center text-sm font-bold text-white">Free</th>
                   <th className="p-3 text-center text-sm font-bold" style={{ color: "#6366f1" }}>
-                    Pro
+                    {planType === "companies" ? "Growth" : "Pro"}
                   </th>
                   <th className="p-3 text-center text-sm font-bold text-white">Business</th>
                 </tr>
               </thead>
               <tbody className="text-sm">
+                {planType === "companies" ? (
+                  <>
+                    <tr style={{ background: "rgba(255,255,255,0.02)" }}>
+                      <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Active job postings</td>
+                      <td className="p-3 text-center text-white">1</td>
+                      <td className="p-3 text-center text-white">5</td>
+                      <td className="p-3 text-center text-white">Unlimited</td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Contact requests</td>
+                      <td className="p-3 text-center text-white">3/mo</td>
+                      <td className="p-3 text-center text-white">20/mo</td>
+                      <td className="p-3 text-center text-white">Unlimited</td>
+                    </tr>
+                    <tr style={{ background: "rgba(255,255,255,0.02)" }}>
+                      <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Receive applicants</td>
+                      <td className="p-3 text-center"><Check className="inline h-4 w-4" style={{ color: "#22c55e" }} /></td>
+                      <td className="p-3 text-center"><Check className="inline h-4 w-4" style={{ color: "#22c55e" }} /></td>
+                      <td className="p-3 text-center"><Check className="inline h-4 w-4" style={{ color: "#22c55e" }} /></td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Full hiring pipeline</td>
+                      <td className="p-3 text-center"><X className="inline h-4 w-4" style={{ color: "#ef4444" }} /></td>
+                      <td className="p-3 text-center"><Check className="inline h-4 w-4" style={{ color: "#22c55e" }} /></td>
+                      <td className="p-3 text-center"><Check className="inline h-4 w-4" style={{ color: "#22c55e" }} /></td>
+                    </tr>
+                    <tr style={{ background: "rgba(255,255,255,0.02)" }}>
+                      <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Save candidates</td>
+                      <td className="p-3 text-center"><X className="inline h-4 w-4" style={{ color: "#ef4444" }} /></td>
+                      <td className="p-3 text-center text-white">25</td>
+                      <td className="p-3 text-center text-white">Unlimited</td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Candidate search</td>
+                      <td className="p-3 text-center"><X className="inline h-4 w-4" style={{ color: "#ef4444" }} /></td>
+                      <td className="p-3 text-center"><X className="inline h-4 w-4" style={{ color: "#ef4444" }} /></td>
+                      <td className="p-3 text-center"><Check className="inline h-4 w-4" style={{ color: "#22c55e" }} /></td>
+                    </tr>
+                    <tr style={{ background: "rgba(255,255,255,0.02)" }}>
+                      <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Search history</td>
+                      <td className="p-3 text-center"><X className="inline h-4 w-4" style={{ color: "#ef4444" }} /></td>
+                      <td className="p-3 text-center"><X className="inline h-4 w-4" style={{ color: "#ef4444" }} /></td>
+                      <td className="p-3 text-center"><Check className="inline h-4 w-4" style={{ color: "#22c55e" }} /></td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Hiring analytics</td>
+                      <td className="p-3 text-center"><X className="inline h-4 w-4" style={{ color: "#ef4444" }} /></td>
+                      <td className="p-3 text-center"><Check className="inline h-4 w-4" style={{ color: "#22c55e" }} /></td>
+                      <td className="p-3 text-center"><Check className="inline h-4 w-4" style={{ color: "#22c55e" }} /></td>
+                    </tr>
+                    <tr style={{ background: "rgba(255,255,255,0.02)" }}>
+                      <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Featured job boost</td>
+                      <td className="p-3 text-center"><X className="inline h-4 w-4" style={{ color: "#ef4444" }} /></td>
+                      <td className="p-3 text-center"><Check className="inline h-4 w-4" style={{ color: "#22c55e" }} /></td>
+                      <td className="p-3 text-center"><Check className="inline h-4 w-4" style={{ color: "#22c55e" }} /></td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Support</td>
+                      <td className="p-3 text-center text-white">Community</td>
+                      <td className="p-3 text-center text-white">Email</td>
+                      <td className="p-3 text-center text-white">Priority</td>
+                    </tr>
+                  </>
+                ) : (
+                  <>
                 <tr style={{ background: "rgba(255,255,255,0.02)" }}>
                   <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>CV Uploads</td>
                   <td className="p-3 text-center text-white">1</td>
@@ -583,6 +666,8 @@ export default function PricingPage() {
                   <td className="p-3 text-center text-white">48hrs</td>
                   <td className="p-3 text-center text-white">24hrs</td>
                 </tr>
+                  </>
+                )}
               </tbody>
             </table>
           </div>

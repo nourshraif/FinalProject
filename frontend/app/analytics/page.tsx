@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { PlanGate } from "@/components/PlanGate";
 import {
   getJobseekerAnalytics,
   getCompanyAnalytics,
@@ -569,7 +570,19 @@ function AnalyticsContent() {
 export default function AnalyticsPage() {
   return (
     <ProtectedRoute requiredRole="any">
-      <AnalyticsContent />
+      <AnalyticsPageGate />
     </ProtectedRoute>
   );
+}
+
+function AnalyticsPageGate() {
+  const { user } = useAuth();
+  if (user?.user_type === "company") {
+    return (
+      <PlanGate feature="company_analytics" requiredPlan="pro">
+        <AnalyticsContent />
+      </PlanGate>
+    );
+  }
+  return <AnalyticsContent />;
 }
