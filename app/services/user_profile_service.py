@@ -9,18 +9,11 @@ from typing import List, Optional, Dict
 import numpy as np
 from app.database.db import get_connection
 
-# Pro/Business jobseekers rank higher when companies search candidates.
-PROFILE_BOOST_RANK_BONUS = 12.0
+# Pro/Business jobseekers are listed above Free jobseekers in candidate search.
 
 
 def _has_profile_boost(plan: Optional[str]) -> bool:
     return (plan or "free").strip().lower() in ("pro", "business")
-
-
-def _candidate_rank_score(keyword_score: float, plan: Optional[str]) -> float:
-    if _has_profile_boost(plan):
-        return min(100.0, keyword_score + PROFILE_BOOST_RANK_BONUS)
-    return keyword_score
 
 
 # ---------------------------------------------------------------------------
@@ -159,7 +152,6 @@ def find_matching_candidates(
                 "matched_skills": matched,
                 "keyword_score": score_pct,
                 "profile_boosted": _has_profile_boost(user_plan),
-                "_rank_score": _candidate_rank_score(score_pct, user_plan),
                 "user_id": user_id,
                 "profile_slug": profile_slug,
                 "location": location,
@@ -167,9 +159,7 @@ def find_matching_candidates(
             }
         )
 
-    candidates.sort(key=lambda x: x["_rank_score"], reverse=True)
-    for c in candidates:
-        c.pop("_rank_score", None)
+    candidates.sort(key=lambda x: (x["profile_boosted"], x["keyword_score"]), reverse=True)
     return candidates[:top_k]
 
 
