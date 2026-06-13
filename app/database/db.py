@@ -316,6 +316,33 @@ def ensure_expired_application_support() -> None:
         conn.close()
 
 
+def ensure_saved_jobs_supports_posted_jobs() -> None:
+    """
+    Schema migration (safe to run on every start):
+
+    `saved_jobs.job_id` used to have a FK to `jobs(id)`, which silently
+    rejected attempts to save a company-posted job (those are referenced
+    using a negative id, `pj.id * -1`, matching the convention used by the
+    matching pipeline so scraped jobs and posted jobs share one id-space).
+    Drop that FK so both positive ids (scraped jobs) and negative ids
+    (posted jobs) can be saved.
+    """
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            ALTER TABLE saved_jobs
+            DROP CONSTRAINT IF EXISTS saved_jobs_job_id_fkey
+        """)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
 def ensure_vertex_application_tables() -> None:
     """Create Vertex job application pipeline tables (safe on every API start)."""
     conn = get_connection()
@@ -1300,7 +1327,13 @@ def delete_application(app_id: int, user_id: int) -> bool:
 
 
 def get_saved_jobs(user_id: int) -> list:
-    """Return list of job dicts (from jobs table) with saved_at, ordered by saved_at DESC."""
+    """Return list of job dicts with saved_at, ordered by saved_at DESC.
+
+    `saved_jobs.job_id` can be a positive id (a row in `jobs`, scraped job
+    boards) or a negative id (a row in `posted_jobs`, company-posted jobs,
+    stored as `pj.id * -1` to match the convention used by the matching
+    pipeline). Both kinds are unioned together here.
+    """
     conn = get_connection()
     cur = conn.cursor()
     try:
@@ -1310,10 +1343,21 @@ def get_saved_jobs(user_id: int) -> list:
                    j.job_url, j.scraped_at, sj.saved_at, j.is_active
             FROM jobs j
             JOIN saved_jobs sj ON j.id = sj.job_id
+            WHERE sj.user_id = %s AND sj.job_id > 0
+
+            UNION ALL
+
+            SELECT (pj.id * -1) AS id, 'company_posted' AS source, pj.title AS job_title,
+                   pj.company_name AS company, pj.location, pj.description,
+                   COALESCE(pj.application_url, '') AS job_url, pj.created_at AS scraped_at,
+                   sj.saved_at, pj.is_active
+            FROM posted_jobs pj
+            JOIN saved_jobs sj ON sj.job_id = (pj.id * -1)
             WHERE sj.user_id = %s
-            ORDER BY sj.saved_at DESC;
+
+            ORDER BY saved_at DESC;
             """,
-            (user_id,),
+            (user_id, user_id),
         )
         rows = cur.fetchall()
         cols = [
@@ -3792,10 +3836,45 @@ def get_job_locations(limit: int = 50) -> list:
 
 
 def get_job_by_id(job_id: int) -> Optional[dict]:
-    """Return scraped job from jobs table by id."""
+    """Return a job by id.
+
+    Positive ids come from the `jobs` table (scraped job boards). Negative
+    ids represent company-posted jobs (the match pipeline encodes posted
+    job `pj.id` as `pj.id * -1` so they can share a single id-space with
+    scraped jobs). For negative ids, look up `posted_jobs` instead and
+    return a dict shaped like a scraped job.
+    """
     conn = get_connection()
     cur = conn.cursor()
     try:
+        if job_id < 0:
+            cur.execute(
+                """
+                SELECT id, title, company_name, location, description,
+                       application_url, created_at
+                FROM posted_jobs
+                WHERE id = %s AND is_active = TRUE
+                """,
+                (-job_id,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            posted_id, title, company, location, description, application_url, created_at = row
+            out = {
+                "id": -posted_id,
+                "source": "company_posted",
+                "job_title": title,
+                "company": company,
+                "location": location,
+                "description": description,
+                "job_url": application_url or f"/jobs/{posted_id}",
+                "scraped_at": created_at,
+            }
+            if out.get("scraped_at") and hasattr(out["scraped_at"], "isoformat"):
+                out["scraped_at"] = out["scraped_at"].isoformat()
+            return out
+
         cur.execute(
             """
             SELECT id, source, job_title, company, location, description, job_url, scraped_at
