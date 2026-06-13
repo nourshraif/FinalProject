@@ -212,6 +212,7 @@ async def lifespan(app: FastAPI):
         ensure_notification_application_types,
         create_archive_tables,
         ensure_expired_application_support,
+        ensure_saved_jobs_supports_posted_jobs,
     )
 
     ensure_admin_platform_tables()
@@ -219,6 +220,7 @@ async def lifespan(app: FastAPI):
     ensure_notification_application_types()
     create_archive_tables()
     ensure_expired_application_support()
+    ensure_saved_jobs_supports_posted_jobs()
     print("Vertex application tables ready")
 
     try:
@@ -2842,7 +2844,10 @@ def post_save_job(job_id: int, current_user: dict = Depends(get_current_user)):
     """Save a job for the current user."""
     if current_user.get("user_type") != "jobseeker":
         raise HTTPException(status_code=403, detail="Job seeker access only")
-    db_save_job(current_user["id"], job_id)
+    if job_id == 0 or not db_get_job_by_id(job_id):
+        raise HTTPException(status_code=404, detail="Job not found")
+    if not db_save_job(current_user["id"], job_id):
+        raise HTTPException(status_code=500, detail="Could not save job")
     return {"success": True, "saved": True}
 
 
