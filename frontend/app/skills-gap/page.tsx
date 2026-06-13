@@ -18,7 +18,7 @@ function SkillsGapContent() {
   const jobId = useMemo(() => {
     if (!jobIdParam) return null;
     const parsed = Number(jobIdParam);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    return Number.isFinite(parsed) && parsed !== 0 ? parsed : null;
   }, [jobIdParam]);
 
   const [job, setJob] = useState<ScrapedJob | null>(null);
