@@ -309,14 +309,23 @@ function SavedContent() {
                         job_url: job.job_url,
                       }}
                     />
-                    <a
-                      href={job.job_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="ghost-button rounded-lg px-3 py-1.5 text-xs"
-                    >
-                      View Job
-                    </a>
+                    {job.source === "company_posted" || job.id < 0 ? (
+                      <Link
+                        href={`/jobs/${Math.abs(job.id)}`}
+                        className="ghost-button rounded-lg px-3 py-1.5 text-xs"
+                      >
+                        View Job
+                      </Link>
+                    ) : (
+                      <a
+                        href={job.job_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="ghost-button rounded-lg px-3 py-1.5 text-xs"
+                      >
+                        View Job
+                      </a>
+                    )}
                   </div>
                 </div>
               </div>
