@@ -1,6 +1,7 @@
 "use client";
 
 import type { Job } from "@/types";
+import Link from "next/link";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SaveButton } from "@/components/SaveButton";
@@ -120,12 +121,21 @@ export function JobCard(props: JobCardProps) {
       </CardContent>
       <CardFooter className="pt-2">
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="default" size="sm" className="gap-1.5" asChild>
-            <a href={url} target="_blank" rel="noopener noreferrer">
-              View Job
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
-          </Button>
+          {vertexJob ? (
+            <Button variant="default" size="sm" className="gap-1.5" asChild>
+              <Link href={`/jobs/${vertexJob.id}`}>
+                View Job
+                <ExternalLink className="h-3.5 w-3.5" />
+              </Link>
+            </Button>
+          ) : (
+            <Button variant="default" size="sm" className="gap-1.5" asChild>
+              <a href={url} target="_blank" rel="noopener noreferrer">
+                View Job
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            </Button>
+          )}
           {vertexJob ? (
             <ApplyOnVertexButton
               job={{
@@ -203,7 +213,7 @@ export function JobCardFromJob({
       vertexJob={
         isVertex
           ? {
-              id: job.id,
+              id: Math.abs(job.id),
               title: job.title,
               company_name: job.company,
               location: job.location,
