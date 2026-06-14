@@ -1,10 +1,13 @@
 # app/database/db.py
 
 import re
+import json
 import psycopg2
 import os
+from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List, Dict, Any
+from psycopg2.extras import Json
 #from .db import get_db, get_connection
 # Load .env from project root (folder containing app/)
 if getattr(os, "_db_env_loaded", None) is None:
@@ -243,6 +246,24 @@ def cleanup_old_notifications() -> int:
         conn.close()
 
 
+def ensure_subscription_cancel_at_period_end() -> None:
+    """Add cancel_at_period_end flag for Stripe cancel-at-period-end flow."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            ALTER TABLE subscriptions
+            ADD COLUMN IF NOT EXISTS cancel_at_period_end BOOLEAN DEFAULT FALSE
+        """)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
 def ensure_expired_application_support() -> None:
     """
     Schema migration (safe to run on every start) that enables clean job expiry:
@@ -338,6 +359,96 @@ def ensure_saved_jobs_supports_posted_jobs() -> None:
     except Exception:
         conn.rollback()
         raise
+    finally:
+        cur.close()
+        conn.close()
+
+
+def ensure_user_match_runs_table() -> None:
+    """Store each user's most recent job match run (safe on every API start)."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_match_runs (
+                user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                skills TEXT[] NOT NULL DEFAULT '{}',
+                total_matched INTEGER NOT NULL DEFAULT 0,
+                jobs JSONB NOT NULL DEFAULT '[]',
+                ran_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_user_match_runs_ran_at
+            ON user_match_runs(ran_at DESC);
+        """)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
+def save_user_match_run(
+    user_id: int,
+    skills: List[str],
+    total_matched: int,
+    jobs: List[Dict[str, Any]],
+) -> bool:
+    """Upsert the latest match run for a user."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            INSERT INTO user_match_runs (user_id, skills, total_matched, jobs, ran_at)
+            VALUES (%s, %s, %s, %s, NOW())
+            ON CONFLICT (user_id) DO UPDATE SET
+                skills = EXCLUDED.skills,
+                total_matched = EXCLUDED.total_matched,
+                jobs = EXCLUDED.jobs,
+                ran_at = NOW()
+            """,
+            (user_id, skills, total_matched, Json(jobs)),
+        )
+        conn.commit()
+        return True
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_user_match_run(user_id: int) -> Optional[dict]:
+    """Return the user's most recent match run, or None if never matched."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT skills, total_matched, jobs, ran_at
+            FROM user_match_runs
+            WHERE user_id = %s
+            """,
+            (user_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        skills, total_matched, jobs, ran_at = row
+        if isinstance(jobs, str):
+            jobs = json.loads(jobs)
+        ran_at_str = ran_at.isoformat() if hasattr(ran_at, "isoformat") else str(ran_at)
+        return {
+            "skills": list(skills or []),
+            "total_matched": int(total_matched or 0),
+            "jobs": jobs if isinstance(jobs, list) else [],
+            "ran_at": ran_at_str,
+        }
     finally:
         cur.close()
         conn.close()
@@ -1621,7 +1732,16 @@ def get_saved_candidates(company_user_id: int) -> list:
         )
         rows = cur.fetchall()
         cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, row)) for row in rows]
+        accepted_ids = get_accepted_contact_candidate_ids(company_user_id)
+        result = []
+        for row in rows:
+            item = dict(zip(cols, row))
+            revealed = item.get("candidate_user_id") in accepted_ids
+            item["email_revealed"] = revealed
+            if not revealed:
+                item["email"] = None
+            result.append(item)
+        return result
     finally:
         cur.close()
         conn.close()
@@ -1881,9 +2001,27 @@ def get_company_requests(company_user_id: int) -> list:
         cols = [d[0] for d in cur.description]
         result = [dict(zip(cols, row)) for row in rows]
         for r in result:
-            if r.get("status") != "accepted":
+            if (r.get("status") or "").strip().lower() != "accepted":
                 r["candidate_email"] = None
         return result
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_accepted_contact_candidate_ids(company_user_id: int) -> set:
+    """Candidate user IDs where the company has an accepted contact request."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT candidate_user_id FROM contact_requests
+            WHERE company_user_id = %s AND LOWER(TRIM(status)) = 'accepted'
+            """,
+            (company_user_id,),
+        )
+        return {row[0] for row in cur.fetchall()}
     finally:
         cur.close()
         conn.close()
@@ -3098,27 +3236,63 @@ def get_recent_activity(limit: int = 10) -> list:
 # Subscriptions (Stripe)
 # ---------------------------------------------------------------------------
 
+def _subscription_period_end_dt(value) -> Optional[datetime]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None) if value.tzinfo else value
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).replace(tzinfo=None)
+    except (TypeError, ValueError):
+        return None
+
+
 def get_user_subscription(user_id: int) -> Optional[dict]:
     """Return subscription row for user_id or None."""
     conn = get_connection()
     cur = conn.cursor()
     try:
         cur.execute(
-            "SELECT id, user_id, stripe_customer_id, stripe_subscription_id, plan, status, current_period_end, created_at, updated_at FROM subscriptions WHERE user_id = %s",
+            """
+            SELECT id, user_id, stripe_customer_id, stripe_subscription_id, plan, status,
+                   current_period_end, cancel_at_period_end, created_at, updated_at
+            FROM subscriptions WHERE user_id = %s
+            """,
             (user_id,),
         )
         row = cur.fetchone()
         if row is None:
             return None
-        cols = ["id", "user_id", "stripe_customer_id", "stripe_subscription_id", "plan", "status", "current_period_end", "created_at", "updated_at"]
+        cols = [
+            "id", "user_id", "stripe_customer_id", "stripe_subscription_id", "plan", "status",
+            "current_period_end", "cancel_at_period_end", "created_at", "updated_at",
+        ]
         out = dict(zip(cols, row))
         for k in ("current_period_end", "created_at", "updated_at"):
             if out.get(k) and hasattr(out[k], "isoformat"):
                 out[k] = out[k].isoformat()
+        out["cancel_at_period_end"] = bool(out.get("cancel_at_period_end"))
+        if out.get("cancel_at_period_end"):
+            end = _subscription_period_end_dt(out.get("current_period_end"))
+            if end is not None and end <= datetime.utcnow():
+                cancel_subscription(user_id)
+                return None
         return out
     finally:
         cur.close()
         conn.close()
+
+
+def get_effective_user_plan(user_id: int, stored_plan: str = "free") -> str:
+    """Paid subscription tier until it ends; otherwise users.plan."""
+    sub = get_user_subscription(user_id)
+    if sub:
+        plan = (sub.get("plan") or "").strip().lower()
+        status = (sub.get("status") or "").strip().lower()
+        if plan in ("pro", "business") and status in ("active", "trialing"):
+            return plan
+    normalized = (stored_plan or "free").strip().lower()
+    return normalized if normalized in ("free", "pro", "business") else "free"
 
 
 def upsert_subscription(
@@ -3136,14 +3310,15 @@ def upsert_subscription(
         cur.execute(
             """
             INSERT INTO subscriptions
-                (user_id, stripe_customer_id, stripe_subscription_id, plan, status, current_period_end, updated_at)
-            VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                (user_id, stripe_customer_id, stripe_subscription_id, plan, status, current_period_end, cancel_at_period_end, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, FALSE, NOW())
             ON CONFLICT (user_id) DO UPDATE SET
                 stripe_customer_id = EXCLUDED.stripe_customer_id,
                 stripe_subscription_id = EXCLUDED.stripe_subscription_id,
                 plan = EXCLUDED.plan,
                 status = EXCLUDED.status,
                 current_period_end = EXCLUDED.current_period_end,
+                cancel_at_period_end = FALSE,
                 updated_at = NOW();
             """,
             (user_id, stripe_customer_id, stripe_subscription_id, plan, status, current_period_end),
@@ -3159,18 +3334,99 @@ def upsert_subscription(
         conn.close()
 
 
-def cancel_subscription(user_id: int) -> bool:
-    """Set subscription status to canceled and users.plan to free. Returns True."""
+def schedule_subscription_cancellation(user_id: int, current_period_end=None) -> bool:
+    """Mark subscription to end at period close; keep plan active until then."""
     conn = get_connection()
     cur = conn.cursor()
     try:
         cur.execute(
-            "UPDATE subscriptions SET status = 'canceled', updated_at = NOW() WHERE user_id = %s",
+            """
+            UPDATE subscriptions
+            SET cancel_at_period_end = TRUE,
+                status = 'active',
+                current_period_end = COALESCE(%s, current_period_end),
+                updated_at = NOW()
+            WHERE user_id = %s
+            """,
+            (current_period_end, user_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    except Exception:
+        conn.rollback()
+        return False
+    finally:
+        cur.close()
+        conn.close()
+
+
+def cancel_subscription(user_id: int) -> bool:
+    """End subscription immediately and revert user to Free."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            UPDATE subscriptions
+            SET status = 'canceled',
+                cancel_at_period_end = FALSE,
+                updated_at = NOW()
+            WHERE user_id = %s
+            """,
             (user_id,),
         )
         cur.execute("UPDATE users SET plan = 'free' WHERE id = %s", (user_id,))
         conn.commit()
         return True
+    except Exception:
+        conn.rollback()
+        return False
+    finally:
+        cur.close()
+        conn.close()
+
+
+def sync_subscription_from_stripe(
+    user_id: int,
+    *,
+    status: str,
+    current_period_end,
+    cancel_at_period_end: bool,
+    plan: Optional[str] = None,
+) -> bool:
+    """Sync subscription row from Stripe webhook or API without downgrading early."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        if plan:
+            cur.execute(
+                """
+                UPDATE subscriptions
+                SET status = %s,
+                    current_period_end = %s,
+                    cancel_at_period_end = %s,
+                    plan = %s,
+                    updated_at = NOW()
+                WHERE user_id = %s
+                """,
+                (status, current_period_end, cancel_at_period_end, plan, user_id),
+            )
+            if status == "active" and not cancel_at_period_end:
+                cur.execute("UPDATE users SET plan = %s WHERE id = %s", (plan, user_id))
+        else:
+            cur.execute(
+                """
+                UPDATE subscriptions
+                SET status = %s,
+                    current_period_end = %s,
+                    cancel_at_period_end = %s,
+                    updated_at = NOW()
+                WHERE user_id = %s
+                """,
+                (status, current_period_end, cancel_at_period_end, user_id),
+            )
+        conn.commit()
+        return cur.rowcount > 0
     except Exception:
         conn.rollback()
         return False
@@ -3284,11 +3540,28 @@ def get_jobseeker_analytics(user_id: int) -> dict:
 
 
 def get_company_analytics(user_id: int) -> dict:
-    """Return analytics dict for a company."""
+    """Return analytics for a company: hiring funnel (Growth+) and outreach (Business)."""
     conn = get_connection()
     cur = conn.cursor()
     try:
         out = {
+            "applications_by_status": {
+                "applied": 0,
+                "reviewing": 0,
+                "interviewing": 0,
+                "offer": 0,
+                "rejected": 0,
+                "withdrawn": 0,
+            },
+            "applications_over_time": [],
+            "total_applications": 0,
+            "total_job_views": 0,
+            "active_jobs": 0,
+            "application_rate": 0.0,
+            "interview_rate": 0.0,
+            "offer_rate": 0.0,
+            "top_jobs": [],
+            # Business outreach metrics
             "searches_over_time": [],
             "top_searched_skills": [],
             "saved_candidates_count": 0,
@@ -3297,6 +3570,108 @@ def get_company_analytics(user_id: int) -> dict:
             "avg_results_per_search": 0.0,
             "total_searches": 0,
         }
+
+        cur.execute(
+            """
+            SELECT COUNT(*) FILTER (WHERE is_active = TRUE)
+            FROM posted_jobs
+            WHERE company_user_id = %s
+            """,
+            (user_id,),
+        )
+        out["active_jobs"] = cur.fetchone()[0] or 0
+
+        cur.execute(
+            """
+            SELECT COALESCE(SUM(views_count), 0)
+            FROM posted_jobs
+            WHERE company_user_id = %s
+            """,
+            (user_id,),
+        )
+        out["total_job_views"] = int(cur.fetchone()[0] or 0)
+
+        cur.execute(
+            """
+            SELECT a.status, COUNT(*)
+            FROM posted_job_applications a
+            JOIN posted_jobs j ON j.id = a.posted_job_id
+            WHERE j.company_user_id = %s
+            GROUP BY a.status
+            """,
+            (user_id,),
+        )
+        for row in cur.fetchall():
+            status, count = row[0], row[1]
+            if status in out["applications_by_status"]:
+                out["applications_by_status"][status] = count
+        out["total_applications"] = sum(out["applications_by_status"].values())
+
+        cur.execute(
+            """
+            SELECT DATE(a.applied_at) AS date, COUNT(*)
+            FROM posted_job_applications a
+            JOIN posted_jobs j ON j.id = a.posted_job_id
+            WHERE j.company_user_id = %s
+              AND a.applied_at > NOW() - INTERVAL '30 days'
+            GROUP BY DATE(a.applied_at)
+            ORDER BY date ASC
+            """,
+            (user_id,),
+        )
+        for row in cur.fetchall():
+            d, c = row[0], row[1]
+            out["applications_over_time"].append(
+                {
+                    "date": d.isoformat()[:10] if hasattr(d, "isoformat") else str(d)[:10],
+                    "count": c,
+                }
+            )
+
+        cur.execute(
+            """
+            SELECT j.id, j.job_title, j.applications_count, j.views_count
+            FROM posted_jobs j
+            WHERE j.company_user_id = %s
+            ORDER BY j.applications_count DESC, j.views_count DESC
+            LIMIT 5
+            """,
+            (user_id,),
+        )
+        for row in cur.fetchall():
+            job_id, title, apps, views = row[0], row[1], row[2] or 0, row[3] or 0
+            conversion = round((apps / views) * 100, 1) if views > 0 else 0.0
+            out["top_jobs"].append(
+                {
+                    "posted_job_id": job_id,
+                    "job_title": title or "Untitled role",
+                    "applications_count": apps,
+                    "views_count": views,
+                    "conversion_rate": conversion,
+                }
+            )
+
+        pipeline_total = (
+            out["applications_by_status"]["applied"]
+            + out["applications_by_status"]["reviewing"]
+            + out["applications_by_status"]["interviewing"]
+            + out["applications_by_status"]["offer"]
+            + out["applications_by_status"]["rejected"]
+        )
+        if out["total_job_views"] > 0:
+            out["application_rate"] = round(
+                (out["total_applications"] / out["total_job_views"]) * 100, 1
+            )
+        if pipeline_total > 0:
+            advanced = (
+                out["applications_by_status"]["interviewing"]
+                + out["applications_by_status"]["offer"]
+            )
+            out["interview_rate"] = round((advanced / pipeline_total) * 100, 1)
+            out["offer_rate"] = round(
+                (out["applications_by_status"]["offer"] / pipeline_total) * 100, 1
+            )
+
         cur.execute(
             """
             SELECT DATE(searched_at) AS date, COUNT(*)
@@ -3309,7 +3684,12 @@ def get_company_analytics(user_id: int) -> dict:
         )
         for row in cur.fetchall():
             d, c = row[0], row[1]
-            out["searches_over_time"].append({"date": d.isoformat()[:10] if hasattr(d, "isoformat") else str(d)[:10], "count": c})
+            out["searches_over_time"].append(
+                {
+                    "date": d.isoformat()[:10] if hasattr(d, "isoformat") else str(d)[:10],
+                    "count": c,
+                }
+            )
         cur.execute(
             """
             SELECT skill, COUNT(*) AS count
@@ -5294,10 +5674,8 @@ DEFAULT_PLAN_CONFIG = {
     "business_annual_price": 39,
     "free_job_matches_limit": 3,
     "free_saved_jobs_limit": 5,
-    "free_contact_requests_limit": 3,
     "free_job_postings_limit": 1,
     "growth_job_postings_limit": 5,
-    "growth_contact_requests_limit": 20,
     "growth_saved_candidates_limit": 25,
     "growth_monthly_price": 29,
     "growth_annual_price": 23,

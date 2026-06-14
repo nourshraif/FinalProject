@@ -11,6 +11,7 @@ import {
   toggleJobActive,
   deletePostedJob,
 } from "@/lib/api";
+import { CompanyJobLimitAlert, CompanyPostJobButton } from "@/components/CompanyJobLimitAlert";
 import type { PostedJob } from "@/types";
 
 function daysAgo(createdAt: string): string {
@@ -121,13 +122,12 @@ function CompanyJobsContent() {
       <div className="mx-auto max-w-[1000px] px-6">
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <h1 className="text-3xl font-bold text-white">My Job Postings</h1>
-          <Link
-            href="/company/post-job"
-            className="glow-button shrink-0 rounded-lg px-5 py-2.5 font-medium text-white"
-          >
+          <CompanyPostJobButton className="glow-button shrink-0 rounded-lg px-5 py-2.5 font-medium text-white">
             Post New Job
-          </Link>
+          </CompanyPostJobButton>
         </div>
+
+        <CompanyJobLimitAlert className="mb-8" />
 
         <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="glass-card rounded-xl p-4">

@@ -68,7 +68,7 @@ export default function TermsPage() {
             <li>Post only legitimate job opportunities</li>
             <li>No misleading job descriptions</li>
             <li>Free plan limited to 1 active job posting</li>
-            <li>3 contact requests per month on free plan</li>
+            <li>Outbound contact requests require a Business plan</li>
             <li>Contact candidates respectfully</li>
           </ul>
         </Section>

@@ -12,7 +12,8 @@ import { cn } from "@/lib/utils";
 export interface CandidateCardProps {
   rank: number;
   full_name: string;
-  email: string;
+  email?: string | null;
+  email_revealed?: boolean;
   matched_skills: string[];
   skills: string[];
   keyword_score: number;
@@ -81,13 +82,20 @@ export function CandidateCard(props: CandidateCardProps) {
                 </span>
               ) : null}
             </div>
-            <a
-              href={`mailto:${email}`}
-              className="flex items-center gap-1.5 text-sm text-vertex-muted hover:text-vertex-white"
-            >
-              <Mail className="h-3.5 w-3.5" />
-              {email}
-            </a>
+            {email ? (
+              <a
+                href={`mailto:${email}`}
+                className="flex items-center gap-1.5 text-sm text-vertex-muted hover:text-vertex-white"
+              >
+                <Mail className="h-3.5 w-3.5" />
+                {email}
+              </a>
+            ) : (
+              <p className="flex items-center gap-1.5 text-xs text-vertex-muted">
+                <Mail className="h-3.5 w-3.5 shrink-0" />
+                Email hidden until the candidate accepts your contact request
+              </p>
+            )}
             {profile_slug && (
               <Link
                 href={`/u/${profile_slug}`}
@@ -245,6 +253,7 @@ export function CandidateCardFromApi({
       rank={candidate.rank}
       full_name={candidate.full_name}
       email={candidate.email}
+      email_revealed={candidate.email_revealed}
       matched_skills={candidate.matched_skills}
       skills={candidate.skills}
       keyword_score={candidate.keyword_score}

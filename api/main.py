@@ -46,6 +46,7 @@ from app.routes.admin_scrapers import router as scraper_router
 from app.database.db import (
     get_user_by_email,
     get_user_by_id,
+    get_effective_user_plan,
     create_user,
     get_connection,
     get_user_profile as db_get_user_profile,
@@ -67,6 +68,7 @@ from app.database.db import (
     get_company_profile as db_get_company_profile,
     upsert_company_profile as db_upsert_company_profile,
     get_saved_candidates as db_get_saved_candidates,
+    get_accepted_contact_candidate_ids as db_get_accepted_contact_candidate_ids,
     save_candidate as db_save_candidate,
     unsave_candidate as db_unsave_candidate,
     update_candidate_notes as db_update_candidate_notes,
@@ -117,6 +119,8 @@ from app.database.db import (
     get_user_subscription as db_get_user_subscription,
     upsert_subscription as db_upsert_subscription,
     cancel_subscription as db_cancel_subscription,
+    schedule_subscription_cancellation as db_schedule_subscription_cancellation,
+    sync_subscription_from_stripe as db_sync_subscription_from_stripe,
     get_user_id_by_stripe_subscription_id as db_get_user_id_by_stripe_subscription_id,
     get_jobseeker_analytics as db_get_jobseeker_analytics,
     get_company_analytics as db_get_company_analytics,
@@ -153,6 +157,8 @@ from app.database.db import (
     mark_all_notifications_read as db_mark_all_notifications_read,
     delete_notification as db_delete_notification,
     search_jobs_with_company_priority as db_search_jobs_with_company_priority,
+    save_user_match_run as db_save_user_match_run,
+    get_user_match_run as db_get_user_match_run,
 )
 from api.email_service import (
     send_welcome_email,
@@ -198,6 +204,52 @@ STRIPE_PRO_PRICE_ID = os.getenv("STRIPE_PRO_PRICE_ID", "")
 STRIPE_BUSINESS_PRICE_ID = os.getenv("STRIPE_BUSINESS_PRICE_ID", "")
 APP_URL = os.getenv("APP_URL", "http://localhost:3000")
 
+
+def _coerce_period_end(value) -> Optional[datetime]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None) if value.tzinfo else value
+    if isinstance(value, (int, float)):
+        try:
+            return datetime.utcfromtimestamp(int(value))
+        except (TypeError, ValueError, OSError):
+            return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).replace(tzinfo=None)
+    except (TypeError, ValueError):
+        return None
+
+
+def _stripe_subscription_period_end(sub) -> Optional[datetime]:
+    """Read billing period end from Stripe Subscription (legacy or item-level fields)."""
+    if sub is None:
+        return None
+
+    def _get(obj, key, default=None):
+        try:
+            if hasattr(obj, "get"):
+                return obj.get(key, default)
+            return getattr(obj, key, default)
+        except Exception:
+            return default
+
+    for key in ("current_period_end", "cancel_at"):
+        dt = _coerce_period_end(_get(sub, key))
+        if dt is not None:
+            return dt
+
+    items = _get(sub, "items")
+    data = _get(items, "data") if items is not None else None
+    if data:
+        for item in data:
+            dt = _coerce_period_end(_get(item, "current_period_end"))
+            if dt is not None:
+                return dt
+
+    return None
+
+
 # ---------------------------------------------------------------------------
 # App + Job alerts scheduler
 # ---------------------------------------------------------------------------
@@ -213,6 +265,8 @@ async def lifespan(app: FastAPI):
         create_archive_tables,
         ensure_expired_application_support,
         ensure_saved_jobs_supports_posted_jobs,
+        ensure_user_match_runs_table,
+        ensure_subscription_cancel_at_period_end,
     )
 
     ensure_admin_platform_tables()
@@ -221,6 +275,8 @@ async def lifespan(app: FastAPI):
     create_archive_tables()
     ensure_expired_application_support()
     ensure_saved_jobs_supports_posted_jobs()
+    ensure_user_match_runs_table()
+    ensure_subscription_cancel_at_period_end()
     print("Vertex application tables ready")
 
     try:
@@ -306,6 +362,7 @@ class MatchJobsResponse(BaseModel):
     jobs: List[JobMatchResponse]
     total_matched: int = 0
     upgrade_message: Optional[str] = None
+    ran_at: Optional[str] = None
 
 
 class JobsStatsResponse(BaseModel):
@@ -331,7 +388,8 @@ class SearchCandidatesRequest(BaseModel):
 class CandidateResponse(BaseModel):
     rank: int
     full_name: str
-    email: str
+    email: Optional[str] = None
+    email_revealed: bool = False
     skills: List[str]
     matched_skills: List[str]
     keyword_score: float
@@ -587,6 +645,7 @@ async def get_current_user(
         user = get_user_by_id(user_id)
         if user is None:
             raise HTTPException(status_code=401, detail="User not found")
+        user["plan"] = get_effective_user_plan(user_id, user.get("plan"))
         return user
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
@@ -602,7 +661,11 @@ async def get_current_user_optional(
         user_id = payload.get("user_id")
         if user_id is None:
             return None
-        return get_user_by_id(int(user_id))
+        user = get_user_by_id(int(user_id))
+        if user is None:
+            return None
+        user["plan"] = get_effective_user_plan(user["id"], user.get("plan"))
+        return user
     except (JWTError, TypeError, ValueError):
         return None
 
@@ -1117,10 +1180,8 @@ class PlatformSettingsUpdate(BaseModel):
     business_annual_price: Optional[int] = None
     free_job_matches_limit: Optional[int] = None
     free_saved_jobs_limit: Optional[int] = None
-    free_contact_requests_limit: Optional[int] = None
     free_job_postings_limit: Optional[int] = None
     growth_job_postings_limit: Optional[int] = None
-    growth_contact_requests_limit: Optional[int] = None
     growth_saved_candidates_limit: Optional[int] = None
     growth_monthly_price: Optional[int] = None
     growth_annual_price: Optional[int] = None
@@ -1580,13 +1641,15 @@ def _extract_skills_from_cv_bytes(content: bytes, filename: str = "") -> Tuple[L
     return skills, used_fallback
 
 
+def _normalize_match_score(raw_percentage: float) -> float:
+    """Rescale raw hybrid similarity to the same display score used on the match page."""
+    r = max(0.0, min(1.0, float(raw_percentage) / 100.0))
+    return round(45.0 + math.sqrt(r) * 50.0, 1)
+
+
 def _normalize_matching_job(j: dict) -> JobMatchResponse:
     raw = j.get("match_percentage") or (j.get("similarity_score", 0) * 100)
-    # Cosine/hybrid similarity scores land in a conservative ~20-50% range.
-    # Rescale with sqrt so relative ranking is preserved but numbers feel
-    # human-friendly: raw 25 → ~70 %, raw 40 → ~77 %, raw 60 → ~84 %.
-    r = max(0.0, min(1.0, float(raw) / 100.0))
-    score = round(45.0 + math.sqrt(r) * 50.0, 1)
+    score = _normalize_match_score(raw)
     tags = []
     st = j.get("skills_text") or ""
     if st:
@@ -1617,14 +1680,40 @@ def _match_jobs_from_skills(skills: List[str]) -> List[JobMatchResponse]:
             vector_weight=0.6,
             keyword_weight=0.4,
         )
-        print(f"DEBUG: matcher returned {len(jobs)} jobs")   # ← add this
-        if jobs:
-            print(f"DEBUG: first job keys: {jobs[0].keys()}")  # ← add this
     finally:
         matcher.close()
     normalized = [_normalize_matching_job(j) for j in jobs]
-    print(f"DEBUG: normalized {len(normalized)} jobs")        # ← add this
     return normalized
+
+
+def _apply_match_plan_gating(
+    full: List[JobMatchResponse],
+    current_user: Optional[dict],
+) -> MatchJobsResponse:
+    total = len(full)
+    if current_user is not None and check_plan_access(current_user, "view_matches"):
+        return MatchJobsResponse(jobs=full, total_matched=total, upgrade_message=None)
+    if current_user is None:
+        upgrade_message = (
+            "Sign up free to preview your top 3 matches"
+            if total > 0
+            else None
+        )
+        return MatchJobsResponse(jobs=[], total_matched=total, upgrade_message=upgrade_message)
+    upgrade_message = "Upgrade to Pro to see all matches" if total > 3 else None
+    return MatchJobsResponse(jobs=full[:3], total_matched=total, upgrade_message=upgrade_message)
+
+
+def _jobs_from_stored(stored: list) -> List[JobMatchResponse]:
+    jobs: List[JobMatchResponse] = []
+    for item in stored or []:
+        if not isinstance(item, dict):
+            continue
+        try:
+            jobs.append(JobMatchResponse(**item))
+        except Exception:
+            continue
+    return jobs
 
 
 # ---------------------------------------------------------------------------
@@ -1709,22 +1798,35 @@ async def match_jobs(
 
     try:
         full = _match_jobs_from_skills(skills)
-        total = len(full)
-        if current_user is not None and check_plan_access(current_user, "view_matches"):
-            return MatchJobsResponse(jobs=full, total_matched=total, upgrade_message=None)
-        if current_user is None:
-            upgrade_message = (
-                "Sign up free to preview your top 3 matches"
-                if total > 0
-                else None
+        if current_user is not None:
+            db_save_user_match_run(
+                user_id=current_user["id"],
+                skills=skills,
+                total_matched=len(full),
+                jobs=[job.model_dump() for job in full],
             )
-            return MatchJobsResponse(jobs=[], total_matched=total, upgrade_message=upgrade_message)
-        upgrade_message = "Upgrade to Pro to see all matches" if total > 3 else None
-        return MatchJobsResponse(jobs=full[:3], total_matched=total, upgrade_message=upgrade_message)
+            stored = db_get_user_match_run(current_user["id"])
+            response = _apply_match_plan_gating(full, current_user)
+            if stored:
+                response.ran_at = stored.get("ran_at")
+            return response
+        return _apply_match_plan_gating(full, current_user)
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/match-jobs/last", response_model=MatchJobsResponse)
+def get_last_match_jobs(current_user: dict = Depends(get_current_user)):
+    """Return the user's most recent match run, with plan gating applied."""
+    stored = db_get_user_match_run(current_user["id"])
+    if not stored:
+        return MatchJobsResponse(jobs=[], total_matched=0, upgrade_message=None, ran_at=None)
+    full = _jobs_from_stored(stored.get("jobs") or [])
+    response = _apply_match_plan_gating(full, current_user)
+    response.ran_at = stored.get("ran_at")
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -1761,12 +1863,27 @@ def skills_gap_analyze_job(job_id: int, current_user: dict = Depends(get_current
         raise HTTPException(status_code=400, detail="Please add skills to your profile first")
 
     try:
+        from app.services.vector_matching_service import VectorSkillMatcher
+
+        matcher = VectorSkillMatcher()
+        try:
+            raw_match_pct = matcher.score_job_hybrid(
+                cv_skills=user_skills,
+                job_id=job_id,
+                vector_weight=0.6,
+                keyword_weight=0.4,
+            )
+        finally:
+            matcher.close()
+
         analysis = analyze_job_specific_gap(
             user_skills=user_skills,
             job_title=job.get("job_title") or "",
             job_description=job.get("description") or "",
             job_requirements="",
         )
+        if raw_match_pct is not None:
+            analysis["match_percentage"] = _normalize_match_score(raw_match_pct)
         return analysis
     except HTTPException:
         raise
@@ -2527,14 +2644,18 @@ def search_candidates(
         if body.max_experience is not None:
             candidates = [c for c in candidates if (c.get("years_experience") is None or c.get("years_experience") <= body.max_experience)]
 
+        accepted_ids = db_get_accepted_contact_candidate_ids(current_user["id"])
         result = []
         for i, c in enumerate(candidates, start=1):
             created_at = c.get("created_at")
+            candidate_user_id = c.get("user_id")
+            revealed = candidate_user_id in accepted_ids if candidate_user_id else False
             result.append(
                 CandidateResponse(
                     rank=i,
                     full_name=c.get("full_name") or "—",
-                    email=c.get("email") or "",
+                    email=c.get("email") if revealed else None,
+                    email_revealed=revealed,
                     skills=c.get("skills") or [],
                     matched_skills=c.get("matched_skills") or [],
                     keyword_score=float(c.get("keyword_score", 0)),
@@ -2575,14 +2696,21 @@ def candidate_count():
 # GET /api/company/all-candidates
 # ---------------------------------------------------------------------------
 @app.get("/api/company/all-candidates")
-def all_candidates(limit: int = 50):
+def all_candidates(
+    limit: int = 50,
+    current_user: dict = Depends(get_current_user),
+):
+    if current_user.get("user_type") != "company":
+        raise HTTPException(status_code=403, detail="Company access only")
+    require_plan(current_user, "search_candidates", upgrade_to="business")
     try:
         from app.services.user_profile_service import get_all_profiles
         profiles = get_all_profiles(limit=min(limit, 100))
         return [
             {
                 "id": p["id"],
-                "email": p["email"],
+                "email": None,
+                "email_revealed": False,
                 "full_name": p["full_name"],
                 "skills": p["skills"],
                 "skills_count": len(p.get("skills") or []),
@@ -2938,12 +3066,17 @@ def put_company_profile(
 def get_company_plan_usage(current_user: dict = Depends(get_current_user)):
     if current_user.get("user_type") != "company":
         raise HTTPException(status_code=403, detail="Company access only")
-    return company_usage_summary(
+    sub = db_get_user_subscription(current_user["id"])
+    usage = company_usage_summary(
         current_user,
         active_jobs=db_count_company_active_posted_jobs(current_user["id"]),
         contact_requests_30d=db_count_company_contact_requests_last_30_days(current_user["id"]),
         saved_candidates=db_count_company_saved_candidates(current_user["id"]),
     )
+    if sub:
+        usage["cancel_at_period_end"] = bool(sub.get("cancel_at_period_end"))
+        usage["current_period_end"] = sub.get("current_period_end")
+    return usage
 
 
 # ---------------------------------------------------------------------------
@@ -2953,7 +3086,7 @@ def get_company_plan_usage(current_user: dict = Depends(get_current_user)):
 def get_saved_candidates_route(current_user: dict = Depends(get_current_user)):
     if current_user.get("user_type") != "company":
         raise HTTPException(status_code=403, detail="Company access only")
-    require_plan(current_user, "save_candidates", upgrade_to="pro")
+    require_plan(current_user, "save_candidates", upgrade_to="business")
     return db_get_saved_candidates(current_user["id"])
 
 
@@ -2967,7 +3100,7 @@ def post_save_candidate(
 ):
     if current_user.get("user_type") != "company":
         raise HTTPException(status_code=403, detail="Company access only")
-    require_plan(current_user, "save_candidates", upgrade_to="pro")
+    require_plan(current_user, "save_candidates", upgrade_to="business")
     save_limit = max_saved_candidates(current_user)
     if save_limit is not None:
         current_count = db_count_company_saved_candidates(current_user["id"])
@@ -2982,7 +3115,7 @@ def post_save_candidate(
                         "Upgrade to Business for unlimited saves."
                     ),
                     "current_plan": plan,
-                    "required_plan": "business" if plan == "pro" else "growth",
+                    "required_plan": "business",
                     "upgrade_url": "/pricing",
                 },
             )
@@ -3070,19 +3203,32 @@ def post_contact_request(
         raise HTTPException(status_code=403, detail="Company access only")
     sent_30d = db_count_company_contact_requests_last_30_days(current_user["id"])
     contact_limit = max_contact_requests_30d(current_user)
+    plan = (current_user.get("plan") or "free").strip().lower()
+    if contact_limit is not None and contact_limit == 0:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "plan_required",
+                "message": (
+                    "Contact requests are a Business feature. Search candidates and send outreach, "
+                    "or on Free and Growth manage applicants who apply to your job postings."
+                ),
+                "current_plan": plan,
+                "required_plan": "business",
+                "upgrade_url": "/pricing",
+            },
+        )
     if contact_limit is not None and sent_30d >= contact_limit:
-        plan = (current_user.get("plan") or "free").strip().lower()
-        required = "growth" if plan == "free" else "business"
         raise HTTPException(
             status_code=403,
             detail={
                 "error": "plan_required",
                 "message": (
                     f"Your plan allows {contact_limit} contact requests per 30 days. "
-                    f"Upgrade to {required.title()} for more."
+                    "Upgrade to Business for unlimited outreach."
                 ),
                 "current_plan": plan,
-                "required_plan": required,
+                "required_plan": "business",
                 "upgrade_url": "/pricing",
             },
         )
@@ -3587,8 +3733,8 @@ def verify_checkout_session(
         raise HTTPException(status_code=400, detail="Session is missing subscription data")
 
     try:
-        sub = stripe.Subscription.retrieve(subscription_id)
-        period_end = datetime.fromtimestamp(sub["current_period_end"])
+        sub = stripe.Subscription.retrieve(subscription_id, expand=["items.data"])
+        period_end = _stripe_subscription_period_end(sub)
     except Exception:
         period_end = None
 
@@ -3602,16 +3748,48 @@ def verify_checkout_session(
 @app.post("/api/payments/cancel")
 def cancel_subscription_route(current_user: dict = Depends(get_current_user)):
     sub = db_get_user_subscription(current_user["id"])
-    if sub and sub.get("stripe_subscription_id"):
+    if not sub or (sub.get("plan") or "free") == "free":
+        raise HTTPException(status_code=400, detail="No active paid subscription to cancel")
+
+    if sub.get("cancel_at_period_end"):
+        return {
+            "success": True,
+            "plan": sub.get("plan"),
+            "status": sub.get("status") or "active",
+            "cancel_at_period_end": True,
+            "current_period_end": sub.get("current_period_end"),
+        }
+
+    period_end = _coerce_period_end(sub.get("current_period_end"))
+    stripe_sub_id = sub.get("stripe_subscription_id")
+
+    if stripe_sub_id:
         try:
-            stripe.Subscription.modify(
-                sub["stripe_subscription_id"],
+            updated = stripe.Subscription.modify(
+                stripe_sub_id,
                 cancel_at_period_end=True,
+                expand=["items.data"],
             )
-        except Exception:
-            pass
-    db_cancel_subscription(current_user["id"])
-    return {"success": True}
+            period_end = _stripe_subscription_period_end(updated) or period_end
+        except stripe.error.StripeError as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Could not cancel subscription with Stripe: {exc.user_message or str(exc)}",
+            ) from exc
+    elif period_end is None:
+        period_end = datetime.utcnow() + timedelta(days=30)
+
+    if not db_schedule_subscription_cancellation(current_user["id"], period_end):
+        raise HTTPException(status_code=500, detail="Failed to schedule cancellation")
+
+    end_iso = period_end.isoformat() if hasattr(period_end, "isoformat") else period_end
+    return {
+        "success": True,
+        "plan": sub.get("plan"),
+        "status": "active",
+        "cancel_at_period_end": True,
+        "current_period_end": end_iso,
+    }
 
 
 @app.post("/api/payments/webhook")
@@ -3636,11 +3814,32 @@ async def stripe_webhook(request: Request):
             return {"received": True}
         subscription_id = session["subscription"]
         customer_id = session["customer"]
-        sub = stripe.Subscription.retrieve(subscription_id)
-        period_end = datetime.fromtimestamp(sub["current_period_end"])
+        sub = stripe.Subscription.retrieve(subscription_id, expand=["items.data"])
+        period_end = _stripe_subscription_period_end(sub)
         db_upsert_subscription(
             user_id, customer_id, subscription_id, plan, "active", period_end
         )
+
+    if event["type"] == "customer.subscription.updated":
+        sub_obj = event["data"]["object"]
+        subscription_id = sub_obj["id"]
+        user_id = db_get_user_id_by_stripe_subscription_id(subscription_id)
+        if user_id is not None:
+            status = (sub_obj.get("status") or "active").strip().lower()
+            cancel_at_end = bool(sub_obj.get("cancel_at_period_end"))
+            period_end = _stripe_subscription_period_end(sub_obj)
+            if status in ("canceled", "unpaid", "incomplete_expired"):
+                db_cancel_subscription(user_id)
+            else:
+                metadata = sub_obj.get("metadata") or {}
+                plan = (metadata.get("plan") or "").strip().lower() or None
+                db_sync_subscription_from_stripe(
+                    user_id,
+                    status="active" if status in ("active", "trialing") else status,
+                    current_period_end=period_end,
+                    cancel_at_period_end=cancel_at_end,
+                    plan=plan if plan in ("pro", "business") else None,
+                )
 
     if event["type"] == "customer.subscription.deleted":
         subscription_id = event["data"]["object"]["id"]
@@ -3667,7 +3866,11 @@ def get_analytics_company(current_user: dict = Depends(get_current_user)):
     if current_user.get("user_type") != "company":
         raise HTTPException(status_code=403, detail="Company access only")
     require_plan(current_user, "company_analytics", upgrade_to="pro")
-    return db_get_company_analytics(current_user["id"])
+    from api.plan_limits import can_search_candidates
+
+    data = db_get_company_analytics(current_user["id"])
+    data["includes_outreach_analytics"] = can_search_candidates(current_user)
+    return data
 
 
 # ---------------------------------------------------------------------------

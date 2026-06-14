@@ -2,9 +2,9 @@
 Plan limits for Vertex subscriptions (job seekers + companies).
 
 Company tiers (recommended pricing model):
-  - Free: 1 job, 3 contact requests/mo, basic pipeline, receive applicants
-  - Growth (plan=pro): 5 jobs, 20 contacts/mo, full pipeline, 25 saves, job boost, analytics
-  - Business: unlimited jobs/contacts/saves, candidate search, search history
+  - Free: 1 job, basic pipeline, receive applicants — no outbound contact requests
+  - Growth (plan=pro): 5 jobs, full pipeline, job boost, hiring funnel analytics
+  - Business: search, save, unlimited contact requests, unlimited jobs
 """
 
 from __future__ import annotations
@@ -61,16 +61,20 @@ def max_active_jobs(user: dict) -> Optional[int]:
 
 
 def max_contact_requests_30d(user: dict) -> Optional[int]:
-    """None means unlimited."""
+    """None = unlimited (Business). 0 = not allowed (Free, Growth)."""
     if (user.get("user_type") or "").strip().lower() != "company":
         return None
     plan = _normalize_plan(user)
-    cfg = get_plan_config()
     if plan == "business":
         return None
-    if plan == "pro":
-        return int(cfg.get("growth_contact_requests_limit", 20))
-    return int(cfg.get("free_contact_requests_limit", 3))
+    return 0
+
+
+def can_send_contact_requests(user: dict) -> bool:
+    """Outbound contact requests — Business only."""
+    if (user.get("user_type") or "").strip().lower() != "company":
+        return False
+    return _normalize_plan(user) == "business"
 
 
 def max_saved_candidates(user: dict) -> Optional[int]:
@@ -81,8 +85,6 @@ def max_saved_candidates(user: dict) -> Optional[int]:
     cfg = get_plan_config()
     if plan == "business":
         return None
-    if plan == "pro":
-        return int(cfg.get("growth_saved_candidates_limit", 25))
     return 0
 
 
@@ -147,12 +149,10 @@ def check_plan_access(user: Optional[dict], feature: str) -> bool:
         "job_alerts",
     ]
     COMPANY_GROWTH_FEATURES = [
-        "save_candidates",
         "full_pipeline",
         "job_boost",
         "company_analytics",
         "growth_jobs",
-        "growth_contact_requests",
     ]
     COMPANY_BUSINESS_FEATURES = [
         "search_candidates",
@@ -172,13 +172,13 @@ def check_plan_access(user: Optional[dict], feature: str) -> bool:
         return False
 
     if user_type == "company":
-        if feature in ("post_job_1", "contact_requests_3", "receive_applicants"):
+        if feature in ("post_job_1", "receive_applicants"):
             return True
+        if feature in ("contact_requests", "send_contact_requests"):
+            return plan == "business"
         if feature in COMPANY_GROWTH_FEATURES:
             return plan in ("pro", "business")
         if feature in COMPANY_BUSINESS_FEATURES:
-            if feature == "save_candidates" and plan == "pro":
-                return True
             return plan == "business"
         return False
 
@@ -188,9 +188,9 @@ def check_plan_access(user: Optional[dict], feature: str) -> bool:
 def plan_required_for_feature(user: dict, feature: str) -> str:
     user_type = (user.get("user_type") or "").strip().lower()
     if user_type == "company":
-        if feature in ("search_candidates", "search_history", "unlimited_jobs", "unlimited_contact_requests"):
+        if feature in ("search_candidates", "search_history", "unlimited_jobs", "unlimited_contact_requests", "save_candidates", "send_contact_requests"):
             return "business"
-        if feature in ("save_candidates", "full_pipeline", "company_analytics", "growth_jobs", "growth_contact_requests"):
+        if feature in ("full_pipeline", "company_analytics", "growth_jobs"):
             return "pro"
     return "pro"
 
@@ -220,5 +220,8 @@ def company_usage_summary(
         "can_company_analytics": can_company_analytics(user),
         "can_full_pipeline": can_full_pipeline(user),
         "has_job_boost": has_job_boost(user),
+        "can_send_contact_requests": can_send_contact_requests(user),
         "allowed_pipeline_statuses": sorted(allowed_pipeline_statuses(user)),
+        "cancel_at_period_end": False,
+        "current_period_end": None,
     }

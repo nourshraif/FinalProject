@@ -7,13 +7,14 @@ import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { ConfirmModal } from "@/components/ConfirmModal";
+import { getPlanLabel } from "@/lib/plan";
 import { getSubscription, cancelSubscription } from "@/lib/api";
 import type { Subscription } from "@/types";
 import { Check } from "lucide-react";
 
 function BillingContent() {
   const router = useRouter();
-  const { token, user } = useAuth();
+  const { token, user, refreshUser } = useAuth();
   const { showToast } = useToast();
   const [sub, setSub] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
@@ -28,7 +29,12 @@ function BillingContent() {
     }
     setLoading(true);
     getSubscription(token)
-      .then(setSub)
+      .then((s) => {
+        setSub(s);
+        if (s.plan && s.plan !== "free") {
+          refreshUser().catch(() => undefined);
+        }
+      })
       .catch((e) => {
         setSub({ plan: "free", status: "active" });
         const msg =
@@ -40,7 +46,7 @@ function BillingContent() {
         showToast(msg, "error");
       })
       .finally(() => setLoading(false));
-  }, [token, showToast]);
+  }, [token, showToast, refreshUser]);
 
   useEffect(() => {
     load();
@@ -50,35 +56,37 @@ function BillingContent() {
     if (!token) return;
     setCanceling(true);
     cancelSubscription(token)
-      .then(() => {
-        setSub({ plan: "free", status: "active" });
+      .then((result) => {
+        setSub({
+          plan: (result.plan as Subscription["plan"]) || effectivePlan,
+          status: (result.status as Subscription["status"]) || "active",
+          cancel_at_period_end: true,
+          current_period_end: result.current_period_end || sub?.current_period_end,
+        });
         setCancelModalOpen(false);
-        showToast("Subscription canceled. Access until period end.", "success");
+        showToast(
+          result.current_period_end
+            ? `Subscription canceled. Your ${planLabel} access continues until ${new Date(result.current_period_end).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}.`
+            : "Subscription canceled. Your plan stays active until the end of the billing period.",
+          "success"
+        );
       })
       .catch((e) => showToast(e instanceof Error ? e.message : "Failed to cancel", "error"))
       .finally(() => setCanceling(false));
   }
 
-  const planLabel =
-    sub?.plan === "business"
-      ? user?.user_type === "company"
-        ? "Business Plan"
-        : "Business Plan"
-      : sub?.plan === "pro"
-        ? user?.user_type === "company"
-          ? "Growth Plan"
-          : "Pro Plan"
-        : "Free Plan";
+  const effectivePlan = sub?.plan || user?.plan || "free";
+  const planLabel = getPlanLabel(effectivePlan, user?.user_type);
   const planIcon =
-    sub?.plan === "business"
+    effectivePlan === "business"
       ? "🏢"
-      : sub?.plan === "pro"
+      : effectivePlan === "pro"
         ? "🚀"
         : "⚡";
   const planNameClass =
-    sub?.plan === "business"
+    effectivePlan === "business"
       ? "text-cyan-400"
-      : sub?.plan === "pro"
+      : effectivePlan === "pro"
         ? "gradient-text"
         : "text-white";
   const periodEnd = sub?.current_period_end
@@ -88,9 +96,17 @@ function BillingContent() {
         day: "numeric",
       })
     : null;
+  const isPaid = effectivePlan === "pro" || effectivePlan === "business";
+  const cancelScheduled = Boolean(sub?.cancel_at_period_end);
 
   const statusBadge = () => {
     const s = sub?.status || "active";
+    if (cancelScheduled && s === "active")
+      return (
+        <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-xs font-medium text-amber-400">
+          Cancels{periodEnd ? ` ${periodEnd}` : " at period end"}
+        </span>
+      );
     if (s === "active")
       return (
         <span className="rounded-full bg-green-500/20 px-2 py-0.5 text-xs font-medium text-green-400">
@@ -132,24 +148,23 @@ function BillingContent() {
   const businessFeatures = [
     "Everything in Growth",
     "Unlimited candidate searches",
+    "Save candidates from search",
     "Unlimited contact requests",
     "Unlimited saved candidates",
-    "Search history & analytics",
+    "Outreach & advanced analytics",
     "Unlimited job postings",
     "Priority support",
   ];
   const growthFeatures = [
     "Up to 5 active job postings",
-    "20 contact requests per month",
     "Full hiring pipeline",
-    "Save up to 25 candidates",
     "Featured job boost",
-    "Hiring analytics",
+    "Hiring funnel analytics",
   ];
   const features =
-    sub?.plan === "business"
+    effectivePlan === "business"
       ? businessFeatures
-      : sub?.plan === "pro"
+      : effectivePlan === "pro"
         ? user?.user_type === "company"
           ? growthFeatures
           : proFeatures
@@ -173,30 +188,41 @@ function BillingContent() {
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <span className="text-2xl">{planIcon}</span>
-                <h2 className={`text-xl font-bold ${planNameClass}`}>
-                  {planLabel}
-                </h2>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className={`text-xl font-bold ${planNameClass}`}>
+                      {planLabel} Plan
+                    </h2>
+                  </div>
+                </div>
                 {statusBadge()}
               </div>
             </div>
-            {periodEnd && (sub?.plan === "pro" || sub?.plan === "business") && (
+            {periodEnd && isPaid && (
               <p className="mt-3 text-sm text-vertex-muted">
-                Current period ends: {periodEnd}
+                {cancelScheduled
+                  ? `Your plan stays active until ${periodEnd}, then reverts to Free.`
+                  : `Current period ends: ${periodEnd}`}
               </p>
             )}
-            {sub?.plan === "free" && (
+            {effectivePlan === "free" && (
               <p className="mt-3 text-sm text-vertex-muted">
                 Upgrade to unlock more features
               </p>
             )}
             <div className="mt-6 flex gap-3">
-              {sub?.plan === "free" ? (
+              {effectivePlan === "free" ? (
                 <Link
                   href="/pricing"
                   className="glow-button rounded-lg px-4 py-2.5 text-sm font-medium text-white"
                 >
                   Upgrade Now
                 </Link>
+              ) : cancelScheduled ? (
+                <p className="text-sm text-amber-400/90">
+                  Cancellation scheduled — you keep {planLabel} access until{" "}
+                  {periodEnd || "the end of your billing period"}.
+                </p>
               ) : (
                 <button
                   type="button"
@@ -227,20 +253,20 @@ function BillingContent() {
           {/* Upgrade / downgrade card */}
           <div className="glass-card mt-6 rounded-2xl p-8">
             <h3 className="text-lg font-bold text-white">
-              {sub?.plan === "free"
+              {effectivePlan === "free"
                 ? "Upgrade"
-                : sub?.plan === "pro" && user?.user_type === "company"
+                : effectivePlan === "pro" && user?.user_type === "company"
                   ? "Upgrade to Business"
                   : "You're on our best plan"}
             </h3>
-            {sub?.plan === "free" && (
+            {effectivePlan === "free" && (
               <p className="mt-2 text-sm text-vertex-muted">
                 {user?.user_type === "company"
-                  ? "Pro and Business plans available on the pricing page."
+                  ? "Growth and Business plans are available on the pricing page."
                   : "Pro plan is available on the pricing page."}
               </p>
             )}
-            {sub?.plan === "pro" && user?.user_type === "company" && (
+            {effectivePlan === "pro" && user?.user_type === "company" && (
               <Link
                 href="/pricing"
                 className="mt-4 inline-block rounded-lg bg-cyan-500/20 px-4 py-2.5 text-sm font-medium text-cyan-400 hover:bg-cyan-500/30"
@@ -248,7 +274,7 @@ function BillingContent() {
                 Upgrade to Business
               </Link>
             )}
-            {sub?.plan === "free" && (
+            {effectivePlan === "free" && (
               <Link
                 href="/pricing"
                 className="mt-4 inline-block rounded-lg px-4 py-2.5 text-sm font-medium text-vertex-muted hover:text-vertex-white"

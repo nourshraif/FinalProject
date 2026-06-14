@@ -295,12 +295,14 @@ function SavedContent() {
                     >
                       Contact
                     </button>
-                    <a
-                      href={`mailto:${c.email ?? ""}`}
-                      className="ghost-button rounded-lg px-3 py-1.5 text-xs"
-                    >
-                      Email
-                    </a>
+                    {c.email ? (
+                      <a
+                        href={`mailto:${c.email}`}
+                        className="ghost-button rounded-lg px-3 py-1.5 text-xs"
+                      >
+                        Email
+                      </a>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -345,7 +347,11 @@ function SavedContent() {
               </button>
             </div>
             <p className="mt-2 text-sm text-vertex-muted">
-              📧 {selectedCandidate.email}
+              {selectedCandidate.email ? (
+                <>📧 {selectedCandidate.email}</>
+              ) : (
+                <>Email hidden until the candidate accepts your contact request.</>
+              )}
             </p>
             <textarea
               className="vertex-input mt-4 w-full resize-none rounded-lg px-3 py-2 text-sm text-white"
@@ -395,7 +401,7 @@ function SavedContent() {
 export default function CompanySavedPage() {
   return (
     <ProtectedRoute requiredRole="company">
-      <PlanGate feature="save_candidates" requiredPlan="pro">
+      <PlanGate feature="save_candidates" requiredPlan="business">
         <SavedContent />
       </PlanGate>
     </ProtectedRoute>

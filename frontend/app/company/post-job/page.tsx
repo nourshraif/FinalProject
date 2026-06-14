@@ -6,10 +6,12 @@ import Link from "next/link";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
-import { getCompanyProfile, createPostedJob } from "@/lib/api";
+import { getCompanyProfile, createPostedJob, getCompanyPlanUsage } from "@/lib/api";
 import { PostedJobCard } from "@/components/PostedJobCard";
 import { QuickSkillSelector } from "@/components/QuickSkillSelector";
-import type { PostedJob } from "@/types";
+import { CompanyJobLimitAlert } from "@/components/CompanyJobLimitAlert";
+import { isJobPostingLimitReached } from "@/lib/company-plan";
+import type { PostedJob, CompanyPlanUsage } from "@/types";
 
 const JOB_TYPES = ["full-time", "part-time", "contract", "internship", "remote"] as const;
 const EXPERIENCE_LEVELS = ["junior", "mid", "senior", "lead", "any"] as const;
@@ -44,6 +46,10 @@ function PostJobContent() {
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [preview, setPreview] = useState(false);
   const [newSkill, setNewSkill] = useState("");
+  const [planUsage, setPlanUsage] = useState<CompanyPlanUsage | null>(null);
+  const [planUsageLoading, setPlanUsageLoading] = useState(true);
+
+  const atJobLimit = planUsage ? isJobPostingLimitReached(planUsage) : false;
 
   const loadProfile = useCallback(() => {
     if (!token) return;
@@ -62,6 +68,19 @@ function PostJobContent() {
   useEffect(() => {
     loadProfile();
   }, [loadProfile]);
+
+  useEffect(() => {
+    if (!token) {
+      setPlanUsage(null);
+      setPlanUsageLoading(false);
+      return;
+    }
+    setPlanUsageLoading(true);
+    getCompanyPlanUsage(token)
+      .then(setPlanUsage)
+      .catch(() => setPlanUsage(null))
+      .finally(() => setPlanUsageLoading(false));
+  }, [token]);
 
   const update = (key: string, value: unknown) => {
     setForm((f) => ({ ...f, [key]: value }));
@@ -121,6 +140,10 @@ function PostJobContent() {
       return;
     }
     if (!token) return;
+    if (atJobLimit) {
+      showToast("Upgrade to Growth to post more jobs", "error");
+      return;
+    }
     setLoading(true);
     const payload: Record<string, unknown> = {
       title,
@@ -161,7 +184,19 @@ function PostJobContent() {
           </p>
         </div>
 
-        {preview ? (
+        <CompanyJobLimitAlert className="mb-8" />
+
+        {!planUsageLoading && atJobLimit ? (
+          <div className="glass-card rounded-2xl border border-white/[0.06] p-8 text-center">
+            <p className="text-sm text-slate-400">
+              You can edit existing postings from{" "}
+              <Link href="/company/jobs" className="font-medium text-indigo-400 hover:underline">
+                My Job Postings
+              </Link>
+              .
+            </p>
+          </div>
+        ) : preview ? (
           <div className="space-y-6">
             <div className="flex justify-end">
               <button

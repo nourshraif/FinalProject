@@ -4,8 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { useAuth } from "@/context/AuthContext";
-import { getSentRequests } from "@/lib/api";
-import type { ContactRequest } from "@/types";
+import { getSentRequests, getCompanyPlanUsage } from "@/lib/api";
+import type { ContactRequest, CompanyPlanUsage } from "@/types";
+import { canSendContactRequests } from "@/lib/company-plan";
 import { toast } from "sonner";
 
 type FilterTab = "all" | "pending" | "accepted" | "declined";
@@ -20,14 +21,18 @@ function getInitials(name: string): string {
 function SentRequestsContent() {
   const { token } = useAuth();
   const [requests, setRequests] = useState<ContactRequest[]>([]);
+  const [planUsage, setPlanUsage] = useState<CompanyPlanUsage | null>(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterTab>("all");
 
   const load = useCallback(() => {
     if (!token) return;
     setLoading(true);
-    getSentRequests(token)
-      .then((list) => setRequests(Array.isArray(list) ? list : []))
+    Promise.all([getSentRequests(token), getCompanyPlanUsage(token)])
+      .then(([list, usage]) => {
+        setRequests(Array.isArray(list) ? list : []);
+        setPlanUsage(usage);
+      })
       .catch((e) => {
         setRequests([]);
         toast.error(e instanceof Error ? e.message : "Failed to load requests");
@@ -58,15 +63,36 @@ function SentRequestsContent() {
     { key: "declined", label: "Declined" },
   ];
 
+  const canSend = canSendContactRequests(planUsage);
+
   return (
     <div className="min-h-screen pt-24 pb-12">
       <div className="mx-auto max-w-[900px] px-6">
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-white">Sent Requests</h1>
           <p className="mt-1 text-sm text-vertex-muted">
-            Contact requests you sent to candidates
+            {canSend
+              ? "Contact requests you sent to candidates"
+              : "View past outreach — new contact requests require Business"}
           </p>
         </div>
+
+        {!canSend && (
+          <div
+            className="mb-6 rounded-xl border p-4 text-sm"
+            style={{
+              borderColor: "rgba(99,102,241,0.3)",
+              background: "rgba(99,102,241,0.08)",
+              color: "#c7d2fe",
+            }}
+          >
+            Contact requests are a Business feature. On Free and Growth, candidates apply to your
+            job postings — use the hiring pipeline to review and manage them.{" "}
+            <Link href="/pricing" className="font-medium text-indigo-300 hover:underline">
+              Upgrade to Business
+            </Link>
+          </div>
+        )}
 
         <div className="mb-6 flex flex-wrap gap-2">
           {tabs.map(({ key, label }) => {
@@ -103,12 +129,31 @@ function SentRequestsContent() {
             <p className="mt-4 text-lg font-bold text-white">
               No requests sent yet
             </p>
-            <Link
-              href="/company/search"
-              className="glow-button mt-6 rounded-lg px-6 py-2.5 text-sm font-medium text-white"
-            >
-              Search Candidates
-            </Link>
+            {canSend ? (
+              <>
+                <p className="mt-2 max-w-md text-sm text-vertex-muted">
+                  Find candidates on Business and send unlimited outreach.
+                </p>
+                <Link
+                  href="/pricing"
+                  className="glow-button mt-6 rounded-lg px-6 py-2.5 text-sm font-medium text-white"
+                >
+                  Upgrade to Business
+                </Link>
+              </>
+            ) : (
+              <>
+                <p className="mt-2 max-w-md text-sm text-vertex-muted">
+                  Manage candidates who apply to your jobs from the dashboard and job postings.
+                </p>
+                <Link
+                  href="/company/jobs"
+                  className="glow-button mt-6 rounded-lg px-6 py-2.5 text-sm font-medium text-white"
+                >
+                  View my jobs
+                </Link>
+              </>
+            )}
           </div>
         ) : filtered.length === 0 ? (
           <p className="py-12 text-center text-sm text-vertex-muted">

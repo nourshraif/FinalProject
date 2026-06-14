@@ -44,7 +44,7 @@ function MatchScoreBadge({ score }: { score: number }) {
       )}
       title="Match score"
     >
-      {score}%
+      {Number(score).toFixed(1)}%
     </span>
   );
 }
@@ -155,7 +155,7 @@ export function JobCard(props: JobCardProps) {
               }}
             />
           )}
-          {showAnalyzeGap && jobId != null && (
+          {showAnalyzeGap && jobId != null && jobId !== 0 && (
             <button
               type="button"
               className="ghost-button rounded-lg px-3 py-1.5 text-xs font-medium"

@@ -112,6 +112,18 @@ export async function matchJobsWithSkills(
   };
 }
 
+/** Load the user's most recent saved match run. */
+export async function getLastMatches(token: string): Promise<MatchJobsResult> {
+  const res = await fetch(`${API_BASE}/api/match-jobs/last`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await handleResponse<MatchJobsResult>(res);
+  return {
+    ...data,
+    jobs: Array.isArray(data.jobs) ? data.jobs : [],
+  };
+}
+
 /** Get jobs dashboard stats */
 export async function getStats(): Promise<Stats> {
   const res = await fetch(`${API_BASE}/api/jobs/stats`);
@@ -880,9 +892,13 @@ export interface AdminCandidateRow {
   created_at: string;
 }
 
-export async function getAllCandidates(limit = 50): Promise<AdminCandidateRow[]> {
+export async function getAllCandidates(
+  token: string,
+  limit = 50
+): Promise<AdminCandidateRow[]> {
   const res = await fetch(
-    `${API_BASE}/api/company/all-candidates?limit=${limit}`
+    `${API_BASE}/api/company/all-candidates?limit=${limit}`,
+    { headers: { Authorization: `Bearer ${token}` } }
   );
   const list = await handleResponse<Array<Record<string, unknown>>>(res);
   return list.map((p) => ({
@@ -1474,12 +1490,18 @@ export async function verifyCheckoutSession(
 
 export async function cancelSubscription(
   token: string
-): Promise<{ success: boolean }> {
+): Promise<{
+  success: boolean;
+  plan?: string;
+  status?: string;
+  cancel_at_period_end?: boolean;
+  current_period_end?: string;
+}> {
   const res = await fetch(`${API_BASE}/api/payments/cancel`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
   });
-  return handleResponse<{ success: boolean }>(res);
+  return handleResponse(res);
 }
 
 // ---------------------------------------------------------------------------
@@ -1498,6 +1520,29 @@ export interface JobseekerAnalytics {
 }
 
 export interface CompanyAnalytics {
+  applications_by_status: {
+    applied: number;
+    reviewing: number;
+    interviewing: number;
+    offer: number;
+    rejected: number;
+    withdrawn: number;
+  };
+  applications_over_time: { date: string; count: number }[];
+  total_applications: number;
+  total_job_views: number;
+  active_jobs: number;
+  application_rate: number;
+  interview_rate: number;
+  offer_rate: number;
+  top_jobs: {
+    posted_job_id: number;
+    job_title: string;
+    applications_count: number;
+    views_count: number;
+    conversion_rate: number;
+  }[];
+  includes_outreach_analytics: boolean;
   searches_over_time: { date: string; count: number }[];
   top_searched_skills: { skill: string; count: number }[];
   saved_candidates_count: number;

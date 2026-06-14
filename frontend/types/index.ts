@@ -38,7 +38,8 @@ export interface UploadCVResponse {
 export interface Candidate {
   rank: number;
   full_name: string;
-  email: string;
+  email?: string | null;
+  email_revealed?: boolean;
   skills: string[];
   matched_skills: string[];
   keyword_score: number;
@@ -55,7 +56,8 @@ export interface SavedCandidate {
   id: number;
   candidate_user_id: number;
   full_name: string;
-  email: string;
+  email?: string | null;
+  email_revealed?: boolean;
   headline?: string;
   location?: string;
   skills: string[];
@@ -95,6 +97,7 @@ export interface MatchJobsResult {
   jobs: Job[];
   total_matched: number;
   upgrade_message?: string | null;
+  ran_at?: string | null;
 }
 
 export interface RegisterRequest {
@@ -242,6 +245,7 @@ export interface Subscription {
   status: "active" | "canceled" | "past_due" | "trialing";
   stripe_subscription_id?: string;
   current_period_end?: string;
+  cancel_at_period_end?: boolean;
 }
 
 export type VertexApplicationStatus =
@@ -389,10 +393,8 @@ export interface PlatformSettings {
   business_annual_price: number;
   free_job_matches_limit: number;
   free_saved_jobs_limit: number;
-  free_contact_requests_limit: number;
   free_job_postings_limit: number;
   growth_job_postings_limit?: number;
-  growth_contact_requests_limit?: number;
   growth_saved_candidates_limit?: number;
   growth_monthly_price?: number;
   growth_annual_price?: number;
@@ -409,9 +411,12 @@ export interface CompanyPlanUsage {
   saved_candidates: number;
   max_saved_candidates: number | null;
   can_search_candidates: boolean;
+  can_send_contact_requests: boolean;
   can_search_history: boolean;
   can_company_analytics: boolean;
   can_full_pipeline: boolean;
   has_job_boost: boolean;
   allowed_pipeline_statuses: string[];
+  cancel_at_period_end?: boolean;
+  current_period_end?: string | null;
 }

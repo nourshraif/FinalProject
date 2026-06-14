@@ -5,8 +5,10 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
-import { getPublicProfile, type PublicProfile } from "@/lib/api";
+import { getPublicProfile, getCompanyPlanUsage, type PublicProfile } from "@/lib/api";
 import { ContactRequestModal } from "@/components/ContactRequestModal";
+import { canSendContactRequests } from "@/lib/company-plan";
+import type { CompanyPlanUsage } from "@/types";
 import { Share2, Linkedin } from "lucide-react";
 
 function getInitials(fullName: string): string {
@@ -41,6 +43,7 @@ export default function PublicProfilePage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [contactModalOpen, setContactModalOpen] = useState(false);
+  const [planUsage, setPlanUsage] = useState<CompanyPlanUsage | null>(null);
 
   const load = useCallback(() => {
     if (!slug) {
@@ -59,6 +62,16 @@ export default function PublicProfilePage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!token || user?.user_type !== "company") {
+      setPlanUsage(null);
+      return;
+    }
+    getCompanyPlanUsage(token)
+      .then(setPlanUsage)
+      .catch(() => setPlanUsage(null));
+  }, [token, user?.user_type]);
 
   function handleCopyUrl() {
     const url =
@@ -98,6 +111,10 @@ export default function PublicProfilePage() {
 
   const isCompany = isLoggedIn && user?.user_type === "company";
   const isJobseeker = isLoggedIn && user?.user_type === "jobseeker";
+  const companyPlan = (user?.plan ?? "free") as "free" | "pro" | "business";
+  const canContactCandidate =
+    isCompany &&
+    (planUsage ? canSendContactRequests(planUsage) : companyPlan === "business");
 
   return (
     <div className="mx-auto max-w-[800px] px-6 pt-24 pb-16">
@@ -218,7 +235,7 @@ export default function PublicProfilePage() {
             </p>
           </>
         )}
-        {isCompany && (
+        {isCompany && canContactCandidate && (
           <>
             <h2 className="text-lg font-bold text-white">Contact {profile.full_name}</h2>
             {profile.user_id != null && token && (
@@ -239,6 +256,21 @@ export default function PublicProfilePage() {
                 />
               </>
             )}
+          </>
+        )}
+        {isCompany && !canContactCandidate && (
+          <>
+            <h2 className="text-lg font-bold text-white">Outbound outreach</h2>
+            <p className="mt-1 text-sm text-vertex-muted">
+              Contact requests are a Business feature. On Free and Growth, candidates apply to your
+              job postings — use the hiring pipeline to manage them.
+            </p>
+            <Link
+              href="/pricing"
+              className="glow-button mt-4 inline-block rounded-lg px-6 py-2.5 text-sm font-medium text-white"
+            >
+              Upgrade to Business
+            </Link>
           </>
         )}
         {isJobseeker && (

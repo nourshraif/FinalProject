@@ -7,19 +7,28 @@ import { Plus, Briefcase, Users, Clock, TrendingUp, Eye, MapPin, ChevronRight } 
 import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { useAuth } from "@/context/AuthContext";
+import { CurrentPlanBanner } from "@/components/PlanBadge";
+import { CompanyJobLimitAlert, CompanyPostJobButton } from "@/components/CompanyJobLimitAlert";
 import {
   getCompanyProfile,
   getSearchHistory,
   getSentRequests,
   getCompanyAnalytics,
   getCompanyPostedJobs,
+  getSubscription,
+  getCompanyPlanUsage,
+  type CompanyAnalytics,
 } from "@/lib/api";
 import type {
   CompanyProfile,
   SearchHistoryItem,
   ContactRequest,
   PostedJob,
+  Subscription,
+  CompanyPlanUsage,
 } from "@/types";
+import { resolvePlan } from "@/lib/plan";
+import { canSendContactRequests } from "@/lib/company-plan";
 
 function profileCompleteness(p: CompanyProfile | null): number {
   if (!p) return 0;
@@ -44,11 +53,13 @@ function today(): string {
 function CompanyDashboardContent() {
   const { user, token } = useAuth();
   const router = useRouter();
+  const [profileComplete, setProfileComplete] = useState<number | null>(null);
   const [searchHistory, setSearchHistory] = useState<SearchHistoryItem[]>([]);
   const [sentRequests, setSentRequests] = useState<ContactRequest[]>([]);
-  const [profileComplete, setProfileComplete] = useState<number | null>(null);
-  const [searchesChartData, setSearchesChartData] = useState<{ date: string; count: number }[]>([]);
   const [postedJobs, setPostedJobs] = useState<PostedJob[]>([]);
+  const [subscription, setSubscription] = useState<Subscription | null>(null);
+  const [planUsage, setPlanUsage] = useState<CompanyPlanUsage | null>(null);
+  const [companyAnalytics, setCompanyAnalytics] = useState<CompanyAnalytics | null>(null);
 
   useEffect(() => {
     if (user?.is_admin) router.push("/admin");
@@ -68,16 +79,24 @@ function CompanyDashboardContent() {
         .then((data) => setSentRequests(Array.isArray(data) ? data : []))
         .catch(() => setSentRequests([]));
       getCompanyAnalytics(token)
-        .then((d) => {
-          const last7 = (d.searches_over_time || []).slice(-7);
-          setSearchesChartData(last7);
-        })
-        .catch(() => setSearchesChartData([]));
+        .then(setCompanyAnalytics)
+        .catch(() => setCompanyAnalytics(null));
       getCompanyPostedJobs(token)
         .then((list) => setPostedJobs(Array.isArray(list) ? list : []))
         .catch(() => setPostedJobs([]));
+      getSubscription(token)
+        .then(setSubscription)
+        .catch(() =>
+          setSubscription({
+            plan: resolvePlan(user?.plan),
+            status: "active",
+          })
+        );
+      getCompanyPlanUsage(token)
+        .then(setPlanUsage)
+        .catch(() => setPlanUsage(null));
     }
-  }, [token]);
+  }, [token, user?.plan]);
 
   useEffect(() => {
     loadData();
@@ -89,13 +108,30 @@ function CompanyDashboardContent() {
       ? `Profile ${profileComplete}% complete`
       : null;
 
+  const canSearch = Boolean(planUsage?.can_search_candidates);
+  const canSendContacts = canSendContactRequests(planUsage);
+
+  const activityChartData = useMemo(() => {
+    if (!companyAnalytics) return [];
+    const source = canSearch
+      ? companyAnalytics.searches_over_time
+      : companyAnalytics.applications_over_time;
+    return (source || []).slice(-7);
+  }, [companyAnalytics, canSearch]);
+
   const kpis = useMemo(() => {
     const totalApplicants = postedJobs.reduce((s, j) => s + (j.applications_count ?? 0), 0);
     const openRoles = postedJobs.filter((j) => j.is_active).length;
     const pendingRequests = sentRequests.filter((r) => r.status === "pending").length;
-    const searchesThisWeek = searchesChartData.reduce((s, d) => s + d.count, 0);
-    return { totalApplicants, openRoles, pendingRequests, searchesThisWeek };
-  }, [postedJobs, sentRequests, searchesChartData]);
+    const activityThisWeek = activityChartData.reduce((s, d) => s + d.count, 0);
+    const inPipeline =
+      companyAnalytics
+        ? companyAnalytics.applications_by_status.reviewing +
+          companyAnalytics.applications_by_status.interviewing +
+          companyAnalytics.applications_by_status.offer
+        : 0;
+    return { totalApplicants, openRoles, pendingRequests, activityThisWeek, inPipeline };
+  }, [postedJobs, sentRequests, activityChartData, companyAnalytics]);
 
   const pendingRequests = useMemo(
     () => sentRequests.filter((r) => r.status === "pending"),
@@ -110,6 +146,14 @@ function CompanyDashboardContent() {
   return (
     <div className="min-h-screen pb-16 pt-28">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
+
+        <CurrentPlanBanner
+          className="mb-6"
+          plan={subscription?.plan || user?.plan}
+          userType="company"
+          subscriptionStatus={subscription?.status}
+          cancelAtPeriodEnd={subscription?.cancel_at_period_end}
+        />
 
         {/* ── Header ── */}
         <section className="mb-8 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
@@ -128,14 +172,13 @@ function CompanyDashboardContent() {
               </Link>
             )}
           </div>
-          <Link
-            href="/company/post-job"
-            className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow transition hover:bg-indigo-500 active:scale-95"
-          >
+          <CompanyPostJobButton className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow transition hover:bg-indigo-500 active:scale-95">
             <Plus className="h-4 w-4" />
             Post a job
-          </Link>
+          </CompanyPostJobButton>
         </section>
+
+        <CompanyJobLimitAlert className="mb-8" />
 
         {/* ── KPI Strip ── */}
         <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -157,20 +200,20 @@ function CompanyDashboardContent() {
               href: "/company/jobs",
             },
             {
-              label: "Pending requests",
-              value: kpis.pendingRequests,
+              label: canSendContacts ? "Pending requests" : "In pipeline",
+              value: canSendContacts ? kpis.pendingRequests : kpis.inPipeline,
               icon: Clock,
               color: "text-amber-400",
               bg: "bg-amber-500/10",
-              href: "/company/requests",
+              href: canSendContacts ? "/company/requests" : "/company/jobs",
             },
             {
-              label: "Searches this week",
-              value: kpis.searchesThisWeek,
+              label: canSearch ? "Searches this week" : "Applications this week",
+              value: kpis.activityThisWeek,
               icon: TrendingUp,
               color: "text-sky-400",
               bg: "bg-sky-500/10",
-              href: "/company/search",
+              href: canSearch ? "/company/search" : "/analytics",
             },
           ].map(({ label, value, icon: Icon, color, bg, href }) => (
             <Link
@@ -287,7 +330,19 @@ function CompanyDashboardContent() {
             {pendingRequests.length === 0 ? (
               <div className="flex flex-col items-center gap-2 py-14 text-center">
                 <Clock className="h-8 w-8 text-v-onSurfaceVariant/40" />
-                <p className="text-sm text-v-onSurfaceVariant">No pending requests.</p>
+                <p className="text-sm text-v-onSurfaceVariant">
+                  {canSendContacts
+                    ? "No pending requests."
+                    : "Outbound contact requests are a Business feature."}
+                </p>
+                {!canSendContacts && (
+                  <Link
+                    href="/company/jobs"
+                    className="text-xs font-medium text-indigo-400 hover:underline"
+                  >
+                    Manage job applicants →
+                  </Link>
+                )}
               </div>
             ) : (
               <div className="divide-y divide-white/5">
@@ -319,16 +374,22 @@ function CompanyDashboardContent() {
           </div>
         </div>
 
-        {/* ── Search activity chart ── */}
+        {/* ── Activity chart ── */}
         <div className="glass-card rounded-2xl">
           <div className="border-b border-white/5 px-6 py-4">
-            <h2 className="font-semibold text-indigo-50">Candidate search activity</h2>
-            <p className="text-xs text-v-onSurfaceVariant">Searches performed over the last 7 days</p>
+            <h2 className="font-semibold text-indigo-50">
+              {canSearch ? "Candidate search activity" : "Application activity"}
+            </h2>
+            <p className="text-xs text-v-onSurfaceVariant">
+              {canSearch
+                ? "Searches performed over the last 7 days"
+                : "Applications received over the last 7 days"}
+            </p>
           </div>
           <div className="px-6 py-5">
-            {searchesChartData.length > 0 ? (
+            {activityChartData.length > 0 ? (
               <ResponsiveContainer width="100%" height={120}>
-                <AreaChart data={searchesChartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                <AreaChart data={activityChartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
                   <defs>
                     <linearGradient id="searchGradient" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#6366f1" stopOpacity={0.3} />
@@ -369,10 +430,19 @@ function CompanyDashboardContent() {
               </ResponsiveContainer>
             ) : (
               <p className="py-8 text-center text-sm text-v-onSurfaceVariant">
-                Run a candidate search to start tracking activity.
+                {canSearch
+                  ? "Run a candidate search to start tracking activity."
+                  : "Post a job to start receiving applications."}
               </p>
             )}
           </div>
+          {!canSearch && planUsage?.can_company_analytics && (
+            <div className="border-t border-white/5 px-6 py-3 text-center">
+              <Link href="/analytics" className="text-xs font-medium text-indigo-400 hover:underline">
+                View full hiring analytics →
+              </Link>
+            </div>
+          )}
         </div>
 
       </div>

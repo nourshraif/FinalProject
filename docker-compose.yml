@@ -44,9 +44,6 @@ services:
       # Model is mounted from host cache — do not contact huggingface.co at runtime
       HF_HUB_OFFLINE: "1"
       TRANSFORMERS_OFFLINE: "1"
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
     volumes:
       - uploads-data:/app/uploads
       # Share host HuggingFace cache so the embedding model does not re-download in Docker

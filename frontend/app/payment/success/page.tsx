@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import type { User } from "@/context/AuthContext";
 import { verifyCheckoutSession } from "@/lib/api";
+import { getPlanLabel } from "@/lib/plan";
 
 function postPaymentPath(user: User | null, verifiedPlan: string): string {
   const plan = verifiedPlan.toLowerCase();
@@ -90,10 +91,13 @@ function PaymentSuccessPage() {
     return () => clearInterval(t);
   }, [router, verifying, error, destination]);
 
+  const planDisplay = getPlanLabel(verifiedPlan, user?.user_type);
   const subtext =
     verifiedPlan === "business"
       ? "You now have unlimited candidate searches and contact requests."
-      : "Your Pro plan is active — we're taking you to all your job matches now.";
+      : user?.user_type === "company"
+        ? "Your Growth plan is active — post jobs, run the full hiring pipeline, and track funnel analytics."
+        : "Your Pro plan is active — we're taking you to all your job matches now.";
 
   if (verifying) {
     return (
@@ -155,7 +159,7 @@ function PaymentSuccessPage() {
         Payment Successful!
       </h1>
       <p className="gradient-text mt-2 text-center text-xl font-medium">
-        Welcome to Vertex {verifiedPlan === "business" ? "Business" : "Pro"}!
+        Welcome to Vertex {planDisplay}!
       </p>
       <p className="mt-3 max-w-md text-center text-sm" style={{ color: "var(--text-secondary)" }}>
         {subtext}

@@ -384,6 +384,104 @@ class VectorSkillMatcher:
             if re.search(rf"\b{re.escape(token)}\b", text):
                 hits += 1
         return hits
+
+    @staticmethod
+    def _split_skill_groups(cv_skills: List[str]) -> Tuple[List[str], List[str], List[str]]:
+        cv_skills_norm = [s.strip() for s in cv_skills if str(s).strip()]
+        tech_skills = [s for s in cv_skills_norm if VectorSkillMatcher._is_technical_skill(s)]
+        soft_skills = [s for s in cv_skills_norm if VectorSkillMatcher._is_soft_skill(s)]
+        other_skills = [s for s in cv_skills_norm if s not in tech_skills and s not in soft_skills]
+        return tech_skills, other_skills, soft_skills
+
+    def _compute_hybrid_score(
+        self,
+        cv_skills: List[str],
+        vector_sim: float,
+        title: str,
+        company: str,
+        location: str,
+        description: str,
+        skills_text: str,
+        vector_weight: float,
+        keyword_weight: float,
+    ) -> Dict[str, float]:
+        tech_skills, other_skills, soft_skills = self._split_skill_groups(cv_skills)
+        full_text = " ".join([
+            str(title or ""),
+            str(company or ""),
+            str(location or ""),
+            str(description or ""),
+            str(skills_text or ""),
+        ]).lower()
+        tech_hits = self._count_keyword_hits(tech_skills, full_text)
+        other_hits = self._count_keyword_hits(other_skills, full_text)
+        soft_hits = self._count_keyword_hits(soft_skills, full_text)
+
+        weighted_hits = (2.5 * tech_hits) + (1.0 * other_hits) + (0.25 * soft_hits)
+        max_possible = (2.5 * len(tech_skills)) + (1.0 * len(other_skills)) + (0.25 * len(soft_skills))
+        keyword_score = (weighted_hits / max_possible) if max_possible > 0 else 0.0
+
+        if tech_skills and tech_hits == 0:
+            keyword_score *= 0.25
+
+        combined_score = (vector_weight * float(vector_sim)) + (keyword_weight * keyword_score)
+        return {
+            "vector_similarity": float(vector_sim),
+            "keyword_score": keyword_score,
+            "combined_score": combined_score,
+            "match_percentage": combined_score * 100,
+        }
+
+    def score_job_hybrid(
+        self,
+        cv_skills: List[str],
+        job_id: int,
+        vector_weight: float = 0.6,
+        keyword_weight: float = 0.4,
+    ) -> Optional[float]:
+        """Return raw hybrid match percentage (0-100) for a single job id."""
+        self._ensure_embeddings_exist()
+        cv_embedding = self.embed_skills(cv_skills)
+
+        if job_id < 0:
+            self.cur.execute(
+                """
+                SELECT pj.title, pj.company_name, pj.location, pj.description,
+                       pje.skills_text, 1 - (pje.embedding <=> %s::vector) AS vector_sim
+                FROM posted_jobs pj
+                JOIN posted_job_embeddings pje ON pj.id = pje.posted_job_id
+                WHERE pj.id = %s AND pj.is_active = TRUE
+                """,
+                (cv_embedding.tolist(), -job_id),
+            )
+        else:
+            self.cur.execute(
+                """
+                SELECT j.job_title, j.company, j.location, j.description,
+                       je.skills_text, 1 - (je.embedding <=> %s::vector) AS vector_sim
+                FROM jobs j
+                JOIN job_embeddings je ON j.id = je.job_id
+                WHERE j.id = %s AND j.is_active = TRUE
+                """,
+                (cv_embedding.tolist(), job_id),
+            )
+
+        row = self.cur.fetchone()
+        if not row:
+            return None
+
+        title, company, location, description, skills_text, vector_sim = row
+        return self._compute_hybrid_score(
+            cv_skills=cv_skills,
+            vector_sim=float(vector_sim),
+            title=title,
+            company=company,
+            location=location,
+            description=description,
+            skills_text=skills_text,
+            vector_weight=vector_weight,
+            keyword_weight=keyword_weight,
+        )["match_percentage"]
     
     def find_matching_jobs_hybrid(self,
                                   cv_skills: List[str],
@@ -407,12 +505,7 @@ class VectorSkillMatcher:
         
         # Get vector matches
         cv_embedding = self.embed_skills(cv_skills)
-        
-        # Split CV skills so technical relevance drives ranking more than soft skills.
-        cv_skills_norm = [s.strip() for s in cv_skills if str(s).strip()]
-        tech_skills = [s for s in cv_skills_norm if self._is_technical_skill(s)]
-        soft_skills = [s for s in cv_skills_norm if self._is_soft_skill(s)]
-        other_skills = [s for s in cv_skills_norm if s not in tech_skills and s not in soft_skills]
+        tech_skills, other_skills, soft_skills = self._split_skill_groups(cv_skills)
         
         self.cur.execute("""
             SELECT
@@ -465,8 +558,18 @@ class VectorSkillMatcher:
         for row in results:
             (job_id, source, title, company, location, description, 
              url, scraped_at, skills_text, vector_sim) = row
-            
-            # Calculate weighted keyword matching score.
+
+            score = self._compute_hybrid_score(
+                cv_skills=cv_skills,
+                vector_sim=float(vector_sim),
+                title=title,
+                company=company,
+                location=location,
+                description=description,
+                skills_text=skills_text,
+                vector_weight=vector_weight,
+                keyword_weight=keyword_weight,
+            )
             full_text = " ".join([
                 str(title or ""),
                 str(company or ""),
@@ -474,21 +577,6 @@ class VectorSkillMatcher:
                 str(description or ""),
                 str(skills_text or ""),
             ]).lower()
-            tech_hits = self._count_keyword_hits(tech_skills, full_text)
-            other_hits = self._count_keyword_hits(other_skills, full_text)
-            soft_hits = self._count_keyword_hits(soft_skills, full_text)
-
-            # Tech skills carry most of the keyword signal, soft skills least.
-            weighted_hits = (2.5 * tech_hits) + (1.0 * other_hits) + (0.25 * soft_hits)
-            max_possible = (2.5 * len(tech_skills)) + (1.0 * len(other_skills)) + (0.25 * len(soft_skills))
-            keyword_score = (weighted_hits / max_possible) if max_possible > 0 else 0.0
-
-            # If user has technical skills but job has none of them, downrank heavily.
-            if tech_skills and tech_hits == 0:
-                keyword_score *= 0.25
-            
-            # Combined score
-            combined_score = (vector_weight * float(vector_sim)) + (keyword_weight * keyword_score)
             
             matching_jobs.append({
                 'job_id': job_id,
@@ -500,15 +588,15 @@ class VectorSkillMatcher:
                 'url': url,
                 'scraped_at': scraped_at,
                 'skills_text': skills_text,
-                'vector_similarity': float(vector_sim),
-                'keyword_score': keyword_score,
+                'vector_similarity': score["vector_similarity"],
+                'keyword_score': score["keyword_score"],
                 'keyword_hits': {
-                    'technical': tech_hits,
-                    'other': other_hits,
-                    'soft': soft_hits,
+                    'technical': self._count_keyword_hits(tech_skills, full_text),
+                    'other': self._count_keyword_hits(other_skills, full_text),
+                    'soft': self._count_keyword_hits(soft_skills, full_text),
                 },
-                'combined_score': combined_score,
-                'match_percentage': combined_score * 100,
+                'combined_score': score["combined_score"],
+                'match_percentage': score["match_percentage"],
                 'cv_skills': cv_skills
             })
         

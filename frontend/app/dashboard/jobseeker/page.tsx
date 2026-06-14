@@ -8,6 +8,7 @@ import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
+import { CurrentPlanBanner } from "@/components/PlanBadge";
 import {
   getStats,
   getProfile,
@@ -17,8 +18,12 @@ import {
   respondToRequest,
   getJobseekerAnalytics,
   getAlertSettings,
+  getSubscription,
+  getLastMatches,
 } from "@/lib/api";
-import type { UserProfile, SavedJob, ContactRequest } from "@/types";
+import type { UserProfile, SavedJob, ContactRequest, Subscription, MatchJobsResult, Job } from "@/types";
+import { JobCardFromJob } from "@/components/JobCard";
+import { resolvePlan } from "@/lib/plan";
 
 function profileCompleteness(p: UserProfile | null): number {
   if (!p) return 0;
@@ -46,6 +51,19 @@ function JobseekerDashboardContent() {
   const [respondingId, setRespondingId] = useState<number | null>(null);
   const [applicationsChartData, setApplicationsChartData] = useState<{ date: string; count: number }[]>([]);
   const [alertsEnabled, setAlertsEnabled] = useState<boolean | null>(null);
+  const [subscription, setSubscription] = useState<Subscription | null>(null);
+  const [lastMatches, setLastMatches] = useState<MatchJobsResult | null>(null);
+
+  const lastMatchJobs: Job[] = lastMatches?.jobs ?? [];
+  const avgMatchScore =
+    lastMatchJobs.length > 0
+      ? lastMatchJobs.reduce((sum, job) => sum + (job.match_score || 0), 0) / lastMatchJobs.length
+      : null;
+  const lastMatchRunLabel = lastMatches?.ran_at
+    ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(
+        new Date(lastMatches.ran_at)
+      )
+    : null;
 
   useEffect(() => {
     if (user?.is_admin) {
@@ -55,8 +73,8 @@ function JobseekerDashboardContent() {
 
   if (user?.is_admin) return null;
 
-  const userPlan = (user?.plan || "free").toLowerCase();
-  const isProOrBusiness = userPlan === "pro" || userPlan === "business";
+  const effectivePlan = resolvePlan(subscription?.plan || user?.plan);
+  const isProOrBusiness = effectivePlan === "pro" || effectivePlan === "business";
   const canUseApplicationTracker = user?.user_type === "jobseeker" && isProOrBusiness;
   const canUseJobAlerts = user?.user_type === "jobseeker" && isProOrBusiness;
 
@@ -104,8 +122,19 @@ function JobseekerDashboardContent() {
       } else {
         setAlertsEnabled(false);
       }
+      getSubscription(token)
+        .then(setSubscription)
+        .catch(() =>
+          setSubscription({
+            plan: resolvePlan(user?.plan),
+            status: "active",
+          })
+        );
+      getLastMatches(token)
+        .then((result) => setLastMatches(result.ran_at ? result : null))
+        .catch(() => setLastMatches(null));
     }
-  }, [token, canUseApplicationTracker, canUseJobAlerts]);
+  }, [token, canUseApplicationTracker, canUseJobAlerts, user?.plan, subscription?.plan]);
 
   const handleRespond = (requestId: number, status: "accepted" | "declined") => {
     if (!token) return;
@@ -131,6 +160,13 @@ function JobseekerDashboardContent() {
   return (
     <div className="min-h-screen pb-24 pt-28 md:pb-12">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
+        <CurrentPlanBanner
+          className="mb-6"
+          plan={subscription?.plan || user?.plan}
+          userType="jobseeker"
+          subscriptionStatus={subscription?.status}
+          cancelAtPeriodEnd={subscription?.cancel_at_period_end}
+        />
         {/* Welcome banner */}
         <section className="mb-8 flex flex-col justify-between gap-6 md:flex-row md:items-end">
           <div className="space-y-1">
@@ -223,9 +259,15 @@ function JobseekerDashboardContent() {
           </div>
           <div className="glass-card relative rounded-2xl p-6">
             <Target className="absolute right-4 top-4 h-5 w-5" style={{ color: "#6366f1" }} />
-            <p className="text-xs text-vertex-muted">Avg Match Score</p>
-            <p className="mt-1 text-2xl font-bold text-vertex-white">—</p>
-            <p className="mt-1 text-xs text-vertex-muted">Upload CV to see matches</p>
+            <p className="text-xs text-vertex-muted">Last Match Score</p>
+            <p className="mt-1 text-2xl font-bold text-vertex-white">
+              {avgMatchScore != null ? `${avgMatchScore.toFixed(1)}%` : "—"}
+            </p>
+            <p className="mt-1 text-xs text-vertex-muted">
+              {lastMatches?.total_matched
+                ? `${lastMatches.total_matched} role${lastMatches.total_matched !== 1 ? "s" : ""} on last run`
+                : "Run the matcher to see scores"}
+            </p>
           </div>
           <div className="glass-card relative rounded-2xl p-6">
             <Bookmark className="absolute right-4 top-4 h-5 w-5" style={{ color: "#6366f1" }} />
@@ -244,6 +286,41 @@ function JobseekerDashboardContent() {
             <p className="mt-1 text-xs text-vertex-muted">Pending requests</p>
           </div>
         </div>
+
+        {lastMatchJobs.length > 0 && (
+          <section className="mb-8">
+            <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold text-vertex-white">Your last matches</h2>
+                <p className="mt-1 text-xs text-vertex-muted">
+                  {lastMatchRunLabel
+                    ? `From your last run on ${lastMatchRunLabel}`
+                    : "From your most recent matching run"}
+                  {lastMatches?.upgrade_message && lastMatches.total_matched
+                    ? ` · showing ${lastMatchJobs.length} of ${lastMatches.total_matched}`
+                    : ""}
+                </p>
+              </div>
+              <Link
+                href="/match"
+                className="text-sm font-medium text-indigo-400 hover:text-indigo-300"
+              >
+                View all on Match page →
+              </Link>
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {lastMatchJobs.slice(0, 3).map((job, index) => (
+                <JobCardFromJob
+                  key={`last-match-${job.id ?? index}`}
+                  job={job}
+                  token={token}
+                  showAnalyzeGap={user?.user_type === "jobseeker"}
+                  isProUser={isProOrBusiness}
+                />
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Action cards: single column on mobile */}
         <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2">

@@ -53,16 +53,16 @@ const FEATURE_COPY: Record<
     requiredPlan: "business",
   },
   contact_requests: {
-    title: "Upgrade required",
+    title: "Business feature",
     description:
-      "You've reached your contact request limit. Upgrade for more outreach.",
-    requiredPlan: "pro",
+      "Outbound contact requests require Business. On Free and Growth, manage applicants who apply to your job postings.",
+    requiredPlan: "business",
   },
   save_candidates: {
-    title: "Growth feature",
+    title: "Business feature",
     description:
-      "Upgrade to Growth to save candidates to your talent pool (up to 25 on Growth, unlimited on Business).",
-    requiredPlan: "pro",
+      "Upgrade to Business to search candidates and save them to your talent pool.",
+    requiredPlan: "business",
   },
   company_analytics: {
     title: "Growth feature",

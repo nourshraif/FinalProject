@@ -12,7 +12,7 @@ import { PlanGate } from "@/components/PlanGate";
 import { CheckCircle2, Lock, Sparkles } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
-import { getProfile, matchJobsWithSkills, updateSkills } from "@/lib/api";
+import { getProfile, getLastMatches, matchJobsWithSkills, updateSkills } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   matchLoginUrl,
@@ -201,6 +201,17 @@ function normalizeJobArray(value: unknown): Job[] {
     .filter((job): job is Job => job !== null && Number.isFinite(job.id));
 }
 
+function formatLastRunAt(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
+
 function MatchPage() {
   const searchParams = useSearchParams();
   const justUnlocked = searchParams.get("unlocked") === "1";
@@ -213,6 +224,8 @@ function MatchPage() {
   const [error, setError] = useState<string | null>(null);
   const [jobsLoading, setJobsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [lastRunAt, setLastRunAt] = useState<string | null>(null);
+  const [viewingSavedResults, setViewingSavedResults] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(Boolean(token));
   const [showOneOffUpload, setShowOneOffUpload] = useState(false);
@@ -255,6 +268,7 @@ const handleMatchComplete = useCallback((result: MatchJobsResult) => {
     setJobs(jobsResult);
     setMatchTotal(typeof result.total_matched === "number" ? result.total_matched : jobsResult.length);
     setMatchUpgradeMessage(result.upgrade_message ?? null);
+    setLastRunAt(result.ran_at ?? null);
     setError(null);
     setHasSearched(true);
   }, []);
@@ -270,6 +284,7 @@ const handleMatchComplete = useCallback((result: MatchJobsResult) => {
 
   const runMatchWithSavedSkills = useCallback(async () => {
     if (!token || !profile?.skills?.length) return;
+    setViewingSavedResults(false);
     setJobsLoading(true);
     setError(null);
     try {
@@ -289,6 +304,37 @@ const handleMatchComplete = useCallback((result: MatchJobsResult) => {
       setJobsLoading(false);
     }
   }, [token, profile, handleMatchComplete, handleMatchError]);
+
+  const loadLastMatches = useCallback(async () => {
+    if (!token) return;
+    setJobsLoading(true);
+    setError(null);
+    try {
+      const result = await getLastMatches(token);
+      if (result.ran_at) {
+        handleMatchComplete(result);
+        setViewingSavedResults(true);
+      }
+    } catch {
+      // No previous run — user can start a new match manually.
+    } finally {
+      setJobsLoading(false);
+    }
+  }, [token, handleMatchComplete]);
+
+  useEffect(() => {
+    if (!token || profileLoading) return;
+    if (autoMatchStarted.current || hasSearched) return;
+    if (justUnlocked || previewAfterAuth || peekPendingMatchSkills()) return;
+    void loadLastMatches();
+  }, [
+    token,
+    profileLoading,
+    hasSearched,
+    justUnlocked,
+    previewAfterAuth,
+    loadLastMatches,
+  ]);
 
   useEffect(() => {
     if (!token || autoMatchStarted.current) return;
@@ -312,6 +358,7 @@ const handleMatchComplete = useCallback((result: MatchJobsResult) => {
     autoMatchStarted.current = true;
 
     async function runAutoMatch() {
+      setViewingSavedResults(false);
       setJobsLoading(true);
       setError(null);
       try {
@@ -589,6 +636,18 @@ const handleMatchComplete = useCallback((result: MatchJobsResult) => {
             <p className="mx-auto mb-4 max-w-2xl text-center text-sm text-vertex-danger">{error}</p>
           )}
 
+          {viewingSavedResults && lastRunAt && jobs.length > 0 && (
+            <div className="mx-auto mb-6 max-w-4xl rounded-2xl border border-indigo-500/25 bg-indigo-500/[0.06] px-5 py-4 text-center">
+              <p className="text-sm text-indigo-100">
+                Showing your last match results from{" "}
+                <span className="font-semibold text-white">{formatLastRunAt(lastRunAt)}</span>
+              </p>
+              <p className="mt-1 text-xs text-slate-400">
+                Run &quot;Find Matching Jobs&quot; again to refresh with the latest listings.
+              </p>
+            </div>
+          )}
+
           {hasSearched && (jobs.length > 0 || guestCountOnly) && (
             <div className="mx-auto mb-6 max-w-5xl space-y-3">
               {guestCountOnly ? (
@@ -683,6 +742,11 @@ const handleMatchComplete = useCallback((result: MatchJobsResult) => {
                   ? `Showing ${filteredJobs.length} of ${matchTotal.toLocaleString()} matches`
                   : `Showing ${filteredJobs.length} of ${jobs.length} matches`}
               </p>
+              {lastRunAt && (
+                <p className="text-center text-xs text-slate-500">
+                  Last matched {formatLastRunAt(lastRunAt)} — run again to refresh results
+                </p>
+              )}
               {showFilterEmpty && (
                 <p className="text-center text-sm text-slate-400">
                   No matches found for your filters.{" "}

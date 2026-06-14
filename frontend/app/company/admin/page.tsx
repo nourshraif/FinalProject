@@ -5,16 +5,18 @@ import { getAllCandidates, type AdminCandidateRow } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { useAuth } from "@/context/AuthContext";
 
-// TODO: add authentication before production
-
-export default function CompanyAdminPage() {
+function CompanyAdminContent() {
+  const { token } = useAuth();
   const [candidates, setCandidates] = useState<AdminCandidateRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getAllCandidates(50)
+    if (!token) return;
+    getAllCandidates(token, 50)
       .then(setCandidates)
       .catch((err) => {
         const msg = err instanceof Error ? err.message : "Failed to load candidates";
@@ -22,7 +24,7 @@ export default function CompanyAdminPage() {
         toast.error(msg);
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [token]);
 
   return (
     <div className="container py-8">
@@ -59,15 +61,10 @@ export default function CompanyAdminPage() {
                 </thead>
                 <tbody>
                   {candidates.map((c) => (
-                    <tr key={c.email} className="border-b border-vertex-border/50">
+                    <tr key={c.id} className="border-b border-vertex-border/50">
                       <td className="py-3 pr-4 font-medium">{c.full_name}</td>
-                      <td className="py-3 pr-4">
-                        <a
-                          href={`mailto:${c.email}`}
-                          className="text-vertex-purple hover:underline"
-                        >
-                          {c.email}
-                        </a>
+                      <td className="py-3 pr-4 text-vertex-muted">
+                        Hidden until contact accepted
                       </td>
                       <td className="py-3 pr-4">{c.skills_count}</td>
                       <td className="py-3">
@@ -89,5 +86,13 @@ export default function CompanyAdminPage() {
         </Card>
       )}
     </div>
+  );
+}
+
+export default function CompanyAdminPage() {
+  return (
+    <ProtectedRoute requiredRole="company">
+      <CompanyAdminContent />
+    </ProtectedRoute>
   );
 }

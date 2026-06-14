@@ -289,7 +289,223 @@ function JobseekerAnalyticsView({ data }: { data: JobseekerAnalytics }) {
   );
 }
 
-function CompanyAnalyticsView({ data }: { data: CompanyAnalytics }) {
+const PIPELINE_COLORS: Record<string, string> = {
+  applied: "#6366f1",
+  reviewing: "#8b5cf6",
+  interviewing: "#f59e0b",
+  offer: "#22c55e",
+  rejected: "#ef4444",
+  withdrawn: "#64748b",
+};
+
+function CompanyHiringAnalyticsSection({ data }: { data: CompanyAnalytics }) {
+  const status = data.applications_by_status;
+  const pipelineTotal =
+    status.applied +
+    status.reviewing +
+    status.interviewing +
+    status.offer +
+    status.rejected;
+
+  const pieData = [
+    { name: "Applied", value: status.applied, color: PIPELINE_COLORS.applied },
+    { name: "Reviewing", value: status.reviewing, color: PIPELINE_COLORS.reviewing },
+    { name: "Interviewing", value: status.interviewing, color: PIPELINE_COLORS.interviewing },
+    { name: "Offer", value: status.offer, color: PIPELINE_COLORS.offer },
+    { name: "Rejected", value: status.rejected, color: PIPELINE_COLORS.rejected },
+  ].filter((d) => d.value > 0);
+
+  return (
+    <>
+      <div className="mb-2">
+        <h2 className="text-lg font-bold text-white">Hiring funnel</h2>
+        <p className="text-xs text-vertex-muted">
+          Performance across your job postings and applicant pipeline
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="glass-card flex items-center gap-4 rounded-xl p-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-white">
+            <Users className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-xs text-vertex-muted">Total applicants</p>
+            <p className="text-xl font-bold text-white">{data.total_applications}</p>
+          </div>
+        </div>
+        <div className="glass-card flex items-center gap-4 rounded-xl p-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-cyan-600 text-white">
+            <TrendingUp className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-xs text-vertex-muted">View → apply rate</p>
+            <p className="text-xl font-bold text-white">{data.application_rate.toFixed(1)}%</p>
+          </div>
+        </div>
+        <div className="glass-card flex items-center gap-4 rounded-xl p-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-600 text-white">
+            <ClipboardList className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-xs text-vertex-muted">Interview rate</p>
+            <p className="text-xl font-bold text-white">{data.interview_rate.toFixed(1)}%</p>
+          </div>
+        </div>
+        <div className="glass-card flex items-center gap-4 rounded-xl p-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-green-600 text-white">
+            <Award className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-xs text-vertex-muted">Offer rate</p>
+            <p className="text-xl font-bold text-white">{data.offer_rate.toFixed(1)}%</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-5">
+        <div className="glass-card rounded-xl p-6 lg:col-span-3">
+          <h3 className="text-lg font-bold text-white">Applications over time</h3>
+          <p className="text-xs text-vertex-muted">Last 30 days</p>
+          {data.applications_over_time.length > 0 ? (
+            <ResponsiveContainer width="100%" height={250} className="mt-4">
+              <AreaChart data={data.applications_over_time}>
+                <defs>
+                  <linearGradient id="hiringArea" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#6366f1" stopOpacity={0.4} />
+                    <stop offset="100%" stopColor="#6366f1" stopOpacity={0.05} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fill: "#94a3b8", fontSize: 11 }}
+                  tickFormatter={(v) => {
+                    const d = new Date(v);
+                    return `${d.getMonth() + 1}/${d.getDate()}`;
+                  }}
+                />
+                <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{
+                    background: "rgba(15,15,25,0.9)",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: "8px",
+                  }}
+                  formatter={(value: number) => [value, "Applications"]}
+                  labelFormatter={(label) => new Date(label).toLocaleDateString()}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="count"
+                  stroke="#6366f1"
+                  fill="url(#hiringArea)"
+                  strokeWidth={2}
+                  fillOpacity={0.2}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <p className="mt-8 text-center text-sm text-vertex-muted">
+              No applications in the last 30 days
+            </p>
+          )}
+        </div>
+
+        <div className="glass-card rounded-xl p-6 lg:col-span-2">
+          <h3 className="text-lg font-bold text-white">Pipeline breakdown</h3>
+          <p className="text-xs text-vertex-muted">{pipelineTotal} active in pipeline</p>
+          {pieData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={250} className="mt-4">
+              <PieChart>
+                <Pie
+                  data={pieData}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={50}
+                  outerRadius={80}
+                  paddingAngle={2}
+                >
+                  {pieData.map((entry) => (
+                    <Cell key={entry.name} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Legend />
+                <Tooltip
+                  contentStyle={{
+                    background: "rgba(15,15,25,0.9)",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: "8px",
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <p className="mt-8 text-center text-sm text-vertex-muted">
+              Post a job to start receiving applicants
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-6 glass-card rounded-xl p-6">
+        <h3 className="text-lg font-bold text-white">Top performing jobs</h3>
+        <p className="text-xs text-vertex-muted">
+          {data.active_jobs} active posting{data.active_jobs === 1 ? "" : "s"} ·{" "}
+          {data.total_job_views.toLocaleString()} total views
+        </p>
+        {data.top_jobs.length > 0 ? (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[480px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-white/10 text-vertex-muted">
+                  <th className="pb-3 pr-4 font-medium">Role</th>
+                  <th className="pb-3 pr-4 font-medium text-right">Views</th>
+                  <th className="pb-3 pr-4 font-medium text-right">Applicants</th>
+                  <th className="pb-3 font-medium text-right">Conversion</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.top_jobs.map((job) => (
+                  <tr key={job.posted_job_id} className="border-b border-white/5">
+                    <td className="py-3 pr-4">
+                      <Link
+                        href={`/company/jobs/${job.posted_job_id}/applicants`}
+                        className="font-medium text-white hover:text-indigo-300"
+                      >
+                        {job.job_title}
+                      </Link>
+                    </td>
+                    <td className="py-3 pr-4 text-right text-vertex-muted">
+                      {job.views_count}
+                    </td>
+                    <td className="py-3 pr-4 text-right text-white">
+                      {job.applications_count}
+                    </td>
+                    <td className="py-3 text-right text-indigo-300">
+                      {job.conversion_rate.toFixed(1)}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="mt-6 text-center text-sm text-vertex-muted">
+            No job postings yet —{" "}
+            <Link href="/company/post-job" className="text-indigo-400 hover:underline">
+              post your first role
+            </Link>
+          </p>
+        )}
+      </div>
+    </>
+  );
+}
+
+function CompanyOutreachAnalyticsSection({ data }: { data: CompanyAnalytics }) {
   const connectionRate =
     data.contact_requests_sent > 0
       ? (data.contact_requests_accepted / data.contact_requests_sent) * 100
@@ -299,31 +515,38 @@ function CompanyAnalyticsView({ data }: { data: CompanyAnalytics }) {
 
   return (
     <>
+      <div className="mb-2 mt-10 border-t border-white/10 pt-10">
+        <h2 className="text-lg font-bold text-white">Recruiting outreach</h2>
+        <p className="text-xs text-vertex-muted">
+          Candidate search, saved talent pool, and contact request performance
+        </p>
+      </div>
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="glass-card flex items-center gap-4 rounded-xl p-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-white" style={{ background: "#06b6d4" }}>
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-cyan-600 text-white">
             <Search className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-xs text-vertex-muted">Total Searches</p>
+            <p className="text-xs text-vertex-muted">Total searches</p>
             <p className="text-xl font-bold text-white">{data.total_searches}</p>
           </div>
         </div>
         <div className="glass-card flex items-center gap-4 rounded-xl p-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-white" style={{ background: "#06b6d4" }}>
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-cyan-600 text-white">
             <TrendingUp className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-xs text-vertex-muted">Avg Results per Search</p>
+            <p className="text-xs text-vertex-muted">Avg results per search</p>
             <p className="text-xl font-bold text-white">{data.avg_results_per_search}</p>
           </div>
         </div>
         <div className="glass-card flex items-center gap-4 rounded-xl p-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-white" style={{ background: "#6366f1" }}>
-            <Users className="h-5 w-5" />
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-white">
+            <Bookmark className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-xs text-vertex-muted">Candidates Saved</p>
+            <p className="text-xs text-vertex-muted">Candidates saved</p>
             <p className="text-xl font-bold text-white">{data.saved_candidates_count}</p>
           </div>
         </div>
@@ -332,7 +555,7 @@ function CompanyAnalyticsView({ data }: { data: CompanyAnalytics }) {
             <CheckCircle className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-xs text-vertex-muted">Connection Rate</p>
+            <p className="text-xs text-vertex-muted">Connection rate</p>
             <p className="text-xl font-bold text-white">{connectionRate.toFixed(1)}%</p>
           </div>
         </div>
@@ -340,7 +563,7 @@ function CompanyAnalyticsView({ data }: { data: CompanyAnalytics }) {
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-5">
         <div className="glass-card rounded-xl p-6 lg:col-span-3">
-          <h3 className="text-lg font-bold text-white">Searches Over Time</h3>
+          <h3 className="text-lg font-bold text-white">Searches over time</h3>
           <p className="text-xs text-vertex-muted">Last 30 days</p>
           {data.searches_over_time.length > 0 ? (
             <ResponsiveContainer width="100%" height={250} className="mt-4">
@@ -387,7 +610,7 @@ function CompanyAnalyticsView({ data }: { data: CompanyAnalytics }) {
           )}
         </div>
         <div className="glass-card rounded-xl p-6 lg:col-span-2">
-          <h3 className="text-lg font-bold text-white">Most Searched Skills</h3>
+          <h3 className="text-lg font-bold text-white">Most searched skills</h3>
           {data.top_searched_skills.length > 0 ? (
             <ResponsiveContainer width="100%" height={250} className="mt-4">
               <BarChart
@@ -424,7 +647,7 @@ function CompanyAnalyticsView({ data }: { data: CompanyAnalytics }) {
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="glass-card rounded-xl p-6">
-          <h3 className="text-lg font-bold text-white">Outreach Funnel</h3>
+          <h3 className="text-lg font-bold text-white">Outreach funnel</h3>
           <div className="mt-4 space-y-3">
             <div>
               <div className="flex justify-between text-sm">
@@ -432,10 +655,7 @@ function CompanyAnalyticsView({ data }: { data: CompanyAnalytics }) {
                 <span className="text-white">{data.contact_requests_sent}</span>
               </div>
               <div className="mt-1 h-8 w-full overflow-hidden rounded bg-white/10">
-                <div
-                  className="h-full rounded bg-indigo-500"
-                  style={{ width: "100%" }}
-                />
+                <div className="h-full rounded bg-indigo-500" style={{ width: "100%" }} />
               </div>
             </div>
             <div>
@@ -452,9 +672,7 @@ function CompanyAnalyticsView({ data }: { data: CompanyAnalytics }) {
               <div className="mt-1 h-8 w-full overflow-hidden rounded bg-white/10">
                 <div
                   className="h-full rounded bg-green-500"
-                  style={{
-                    width: `${(data.contact_requests_accepted / maxSent) * 100}%`,
-                  }}
+                  style={{ width: `${(data.contact_requests_accepted / maxSent) * 100}%` }}
                 />
               </div>
             </div>
@@ -473,7 +691,7 @@ function CompanyAnalyticsView({ data }: { data: CompanyAnalytics }) {
           </div>
         </div>
         <div className="glass-card rounded-xl p-6">
-          <h3 className="text-lg font-bold text-white">Search Performance</h3>
+          <h3 className="text-lg font-bold text-white">Search performance</h3>
           <div className="mt-4 space-y-4">
             <div className="flex items-center justify-between rounded-lg bg-white/5 p-4">
               <span className="text-vertex-muted">Total searches</span>
@@ -485,7 +703,7 @@ function CompanyAnalyticsView({ data }: { data: CompanyAnalytics }) {
             </div>
             {data.top_searched_skills.length > 0 && (
               <div className="rounded-lg bg-white/5 p-4">
-                <p className="text-vertex-muted text-sm">Top skill</p>
+                <p className="text-sm text-vertex-muted">Top skill</p>
                 <p className="mt-1 font-medium text-white">
                   {data.top_searched_skills[0].skill} ({data.top_searched_skills[0].count} searches)
                 </p>
@@ -494,6 +712,37 @@ function CompanyAnalyticsView({ data }: { data: CompanyAnalytics }) {
           </div>
         </div>
       </div>
+    </>
+  );
+}
+
+function CompanyAnalyticsView({ data }: { data: CompanyAnalytics }) {
+  return (
+    <>
+      <CompanyHiringAnalyticsSection data={data} />
+      {data.includes_outreach_analytics ? (
+        <CompanyOutreachAnalyticsSection data={data} />
+      ) : (
+        <div
+          className="mt-10 rounded-xl border p-6 text-center"
+          style={{
+            borderColor: "rgba(99,102,241,0.25)",
+            background: "rgba(99,102,241,0.06)",
+          }}
+        >
+          <h3 className="text-base font-bold text-white">Recruiting outreach analytics</h3>
+          <p className="mx-auto mt-2 max-w-lg text-sm text-vertex-muted">
+            Search activity, saved candidates, and contact request metrics are available on
+            Business — alongside unlimited proactive recruiting.
+          </p>
+          <Link
+            href="/pricing"
+            className="glow-button mt-4 inline-block rounded-lg px-5 py-2.5 text-sm font-medium text-white"
+          >
+            Upgrade to Business
+          </Link>
+        </div>
+      )}
     </>
   );
 }
@@ -551,7 +800,11 @@ function AnalyticsContent() {
   return (
     <div className="mx-auto max-w-[1100px] px-6 pt-24 pb-16">
       <h1 className="text-3xl font-bold text-white">Analytics</h1>
-      <p className="mt-1 text-sm text-vertex-muted">Your activity insights</p>
+      <p className="mt-1 text-sm text-vertex-muted">
+        {user?.user_type === "company"
+          ? "Hiring funnel and recruiting performance"
+          : "Your activity insights"}
+      </p>
 
       {user?.user_type === "jobseeker" && jobseekerData && (
         <div className="mt-8">

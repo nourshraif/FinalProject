@@ -89,7 +89,9 @@ function SkillsGapContent() {
             <>
               <div className="glass-card rounded-2xl border border-white/[0.06] p-6">
                 <p className="text-xs text-slate-400">Match percentage</p>
-                <p className="mt-1 text-3xl font-bold text-white">{analysis.match_percentage}%</p>
+                <p className="mt-1 text-3xl font-bold text-white">
+                  {Number(analysis.match_percentage).toFixed(1)}%
+                </p>
                 <p className="mt-3 text-sm text-slate-300">{analysis.overall_assessment}</p>
                 <p className="mt-2 text-xs text-slate-400">
                   Estimated readiness: <span className="text-slate-200">{analysis.estimated_ready_in}</span>

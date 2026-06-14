@@ -105,7 +105,7 @@ npm run dev
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16+%20pgvector-blue.svg)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-green.svg)](https://www.docker.com/)
 
-**Vertex** is a full-stack job matching and talent platform: job seekers can upload CVs, get skill-based job matches, save jobs, and track applications; companies can search candidates by skills, save candidates, and add private notes.
+**Vertex** is a full-stack job matching and talent platform: job seekers upload CVs, get skill-based matches, and track applications; companies post jobs, manage applicant pipelines, and (on Business) search and outreach to candidates.
 
 ---
 
@@ -114,12 +114,16 @@ npm run dev
 ### Latest (Unreleased)
 
 - Implemented **3-tier company pricing** (Free / Growth / Business) with enforced limits in `api/plan_limits.py`:
-  - **Free:** 1 active job, 3 contact requests/month, receive applicants, basic pipeline (Applied / Rejected)
-  - **Growth** (company `pro` plan, ~$29/mo): 5 jobs, 20 contact requests/month, full hiring pipeline, save up to 25 candidates, featured job boost, hiring analytics
-  - **Business** (~$49/mo): unlimited jobs, contact requests, and saves; candidate search; search history
+  - **Free:** 1 active job, receive applicants, basic pipeline (Applied / Rejected) — no outbound contact requests
+  - **Growth** (plan `pro`): 5 jobs, full pipeline, job boost, **hiring funnel analytics**
+  - **Business:** unlimited jobs; candidate search, save, unlimited contact requests; **hiring funnel + outreach analytics**
+- **Contact requests are Business-only** — Free and Growth manage inbound applicants on job postings; outbound outreach requires Business.
+- **Candidate email privacy** — Job seeker emails are hidden in search/saved candidates and contact-request flows until the candidate **accepts** a contact request. Emails on the **Applicants** page are visible because the candidate applied to your job.
+- **Cancel at period end** — Stripe subscriptions cancel at billing period end; paid features stay active until `current_period_end`, then revert to Free (`cancel_at_period_end` on subscription + billing UI).
+- **Company analytics split** — Growth sees hiring funnel metrics; Business adds search, save, and contact-request analytics (`includes_outreach_analytics` on `GET /api/analytics/company`).
 - Added **`GET /api/company/plan-usage`** for current plan limits and usage counts.
 - Updated **pricing page**, **PlanGate**, billing labels, and admin platform settings for Growth limits/prices.
-- Added **Skills Gap Analyzer** flow with new endpoints (`/api/skills-gap/analyze`, `/api/skills-gap/analyze-job/{job_id}`) and a dedicated `/skills-gap` page for job seekers.
+- Added **Skills Gap Analyzer** flow with new endpoints (`/api/skills-gap/analyze`, `/api/skills-gap/analyze-job/{job_id}`) and a dedicated `/skills-gap` page for job seekers; **Analyze My Gap** on Match page and dashboard last-match cards (Pro).
 - Added **plan-based feature gating** (Free/Pro/Business) across key workflows such as full match visibility, saved jobs, application tracker, candidate search, contact request limits, and company posting limits.
 - Introduced **new Lebanon-focused scrapers** for HireLebanese and CareersAndJobsInLebanon, integrated into the scraper service pipeline.
 - Added new **public product pages**: About, Contact, Privacy Policy, and Terms of Service, plus navigation/footer updates.
@@ -213,28 +217,29 @@ npm run dev
 ### For Job Seekers
 
 - **CV upload** — Upload PDF; skills extracted via Hugging Face API
-- **Job matching** — Match jobs by skills (keyword + semantic similarity)
+- **Job matching** — Match jobs by skills (keyword + semantic similarity); last match run persisted (`GET /api/match-jobs/last`)
+- **Skills Gap Analyzer** — Pro: compare your skills to a target job (`/skills-gap` page; **Analyze My Gap** on Match + dashboard last matches)
 - **Saved jobs** — Bookmark jobs; view and manage saved list with search
-- **Application tracker** — Create and update applications (applied, interviewing, offer, rejected, saved); add notes
+- **Application tracker** — Pro: create and update applications (applied, interviewing, offer, rejected, saved); add notes
 - **Profile** — Edit headline, bio, location, LinkedIn, years of experience, skills
 - **Contact requests inbox** — Receive requests from companies and accept or decline with one click
 - **Notifications center** — In-app notifications with unread count, mark-as-read, and delete support
 - **Job alerts** — Configurable alert settings (immediate/daily/weekly) and test alert endpoint
 - **Public profile link** — Shareable public profile slug with visibility controls
-- **Dashboard** — Quick stats and links to match, tracker, saved, profile
+- **Dashboard** — Quick stats, **Your last matches** (from last matcher run), and links to match, tracker, saved, profile
 
 ### For Companies
 
 - **Company profile** — Company name, website, industry, size, description, contact name
 - **Posted jobs management** — Create, list, update, delete, and activate/deactivate job postings (tier-based active job limits)
 - **Skill-match notifications on post** — When a company posts a job, matched job seekers receive notifications
-- **Applicant pipeline** — Review applications per posted job; full pipeline (Reviewing → Interview → Offer) on Growth+
-- **Candidate search** — Business plan: search by required skills with keyword + semantic matching
-- **Saved candidates** — Growth: up to 25; Business: unlimited; private notes per candidate (500 chars)
-- **Contact workflow** — Send contact requests to candidates and track sent requests (monthly limits on Free/Growth)
-- **Hiring analytics** — Growth+ dashboard (`/analytics`) for searches, outreach, and applications
-- **Talent pool (admin)** — View all candidates in the system (email, name, skills, CV filename)
-- **Dashboard** — Candidate pool count, saved candidates, recent activity, quick links to search and profile
+- **Applicant pipeline** — Review applications per posted job; **unlimited applicants per posting** on all tiers; full pipeline (Reviewing → Interview → Offer) on Growth+
+- **Candidate search** — **Business only:** search by required skills with keyword + semantic matching
+- **Saved candidates** — **Business only** (unlimited); private notes per candidate (500 chars)
+- **Contact workflow** — **Business only:** search candidates and send unlimited contact requests (candidate email revealed only after they accept). **Free & Growth:** manage applicants who apply to your job postings.
+- **Hiring analytics** — **Growth+** at `/analytics`: funnel metrics (applications, pipeline stages, job conversion). **Business** adds outreach analytics (searches, saves, contact requests).
+- **Talent pool** — Business companies can browse registered candidates via search (emails gated until contact accepted); `/company/admin` requires login and does not expose candidate emails
+- **Dashboard** — Applicants, open roles, and activity charts (applications on Growth; search activity on Business); quick links to jobs and analytics
 
 ### Platform & Data
 
@@ -258,12 +263,11 @@ npm run dev
 
 | Plan | Price | Highlights |
 |------|-------|------------|
-| **Free** | $0 | 1 active job, 3 contact requests/mo, receive applicants, basic pipeline |
-| **Growth** | ~$29/mo | 5 jobs, 20 contact requests/mo, full pipeline, 25 saved candidates, job boost, analytics |
-| **Business** | ~$49/mo | Unlimited jobs/contacts/saves, candidate search, search history |
+| **Free** | $0 | 1 active job, **unlimited applicants per job**, receive & review applications, basic pipeline |
+| **Growth** | ~$29/mo | 5 jobs, full pipeline, job boost, hiring funnel analytics |
+| **Business** | ~$49/mo | Unlimited jobs, search & save candidates, unlimited contact requests, outreach analytics |
 
-Growth is stored as plan `pro` for company accounts; Business is plan `business`. Limits are configurable in **Admin → Platform Settings**.
-- **Analytics** — Role-specific analytics endpoints for job seekers and companies
+Growth is stored as plan `pro` for company accounts; Business is plan `business`. Limits are configurable in **Admin → Platform Settings** (job posting limits, Growth/Business prices).
 
 ### Admin Panel
 
@@ -495,7 +499,8 @@ FinalProject/
 
 - **Auth:** `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/google`, `GET /api/auth/google/callback`, `POST /api/auth/forgot-password`, `POST /api/auth/reset-password`, `GET /api/auth/me`
 - **CV:** `POST /api/upload-cv`, `POST /api/profile/upload-cv`
-- **Jobs (scraped):** `POST /api/match-jobs`, `GET /api/jobs/stats`, `GET /api/jobs/search`, `GET /api/jobs/sources`, `GET /api/jobs/locations`
+- **Jobs (scraped):** `POST /api/match-jobs`, `GET /api/match-jobs/last`, `GET /api/jobs/stats`, `GET /api/jobs/search`, `GET /api/jobs/sources`, `GET /api/jobs/locations`
+- **Skills gap:** `POST /api/skills-gap/analyze`, `POST /api/skills-gap/analyze-job/{job_id}`
 - **Posted jobs (company):** `GET /api/jobs/posted`, `GET /api/jobs/posted/{job_id}`, `POST /api/jobs/posted`, `PUT /api/jobs/posted/{job_id}`, `DELETE /api/jobs/posted/{job_id}`, `PUT /api/jobs/posted/{job_id}/toggle`, `GET /api/company/posted-jobs`
 - **Job seeker profile:** `POST /api/jobseeker/save-profile`, `GET /api/profile`, `PUT /api/profile`, `PUT /api/profile/skills`, `GET /api/profile/slug`, `PUT /api/profile/visibility`, `GET /api/public/profile/{slug}`
 - **Applications:** `GET /api/applications`, `POST /api/applications`, `PUT /api/applications/{id}`, `DELETE /api/applications/{id}`
@@ -506,7 +511,7 @@ FinalProject/
 - **Contact requests:** `POST /api/contact-requests`, `GET /api/contact-requests/received`, `GET /api/contact-requests/sent`, `PUT /api/contact-requests/{request_id}`
 - **Notifications:** `GET /api/notifications`, `GET /api/notifications/unread-count`, `PUT /api/notifications/{notification_id}/read`, `PUT /api/notifications/read-all`, `DELETE /api/notifications/{notification_id}`
 - **Alerts:** `GET /api/alerts/settings`, `PUT /api/alerts/settings`, `POST /api/alerts/test`
-- **Payments:** `POST /api/payments/create-checkout`, `GET /api/payments/subscription`, `POST /api/payments/cancel`, `POST /api/payments/webhook`
+- **Payments:** `POST /api/payments/create-checkout`, `POST /api/payments/verify-session`, `GET /api/payments/subscription`, `POST /api/payments/cancel`, `POST /api/payments/webhook`
 - **Analytics:** `GET /api/analytics/jobseeker`, `GET /api/analytics/company`
 - **Admin:** `GET /api/admin/stats`, `GET /api/admin/users`, `PUT /api/admin/users/{user_id}/toggle-active`, `PUT /api/admin/users/{user_id}/make-admin`, `GET /api/admin/activity`, `POST /api/admin/scraper/run`
 - **Scraper:** `POST /api/scraper/run`

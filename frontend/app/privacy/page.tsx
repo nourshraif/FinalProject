@@ -77,7 +77,13 @@ export default function PrivacyPage() {
         <Section title="Who Can See Your Information">
           <ul className="list-disc space-y-1 pl-5">
             <li>Your profile is visible to companies only when you set it to public</li>
-            <li>Your email is never shared until you accept a contact request</li>
+            <li>
+              Your email is not shared with companies until you accept their contact request
+            </li>
+            <li>
+              If you apply to a job posting, the hiring company receives your email as part of
+              your application
+            </li>
             <li>We never sell your personal data</li>
             <li>CV text is processed for skill extraction and stored securely</li>
           </ul>

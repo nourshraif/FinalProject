@@ -300,7 +300,7 @@ export default function CompanySearchPage() {
                 const candidateId = c.user_id ?? (c as { id?: number }).id;
                 return (
                   <CandidateCardFromApi
-                    key={`${c.email}-${c.rank}`}
+                    key={`${c.user_id ?? c.rank}-${c.rank}`}
                     candidate={c}
                     token={token}
                     candidateUserId={candidateId}

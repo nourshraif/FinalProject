@@ -9,6 +9,8 @@ import NotificationBell from "@/components/NotificationBell";
 import { useAuth } from "@/context/AuthContext";
 import { getReceivedRequests, getSubscription, getUnreadCount } from "@/lib/api";
 import type { Subscription } from "@/types";
+import { PlanBadge } from "@/components/PlanBadge";
+import { resolvePlan } from "@/lib/plan";
 import { Menu, X, ChevronDown, ChevronRight, type LucideIcon } from "lucide-react";
 import { publicNav } from "@/lib/public-nav";
 
@@ -266,7 +268,7 @@ export function Navbar() {
 
   useEffect(() => {
     loadSubscription();
-  }, [loadSubscription]);
+  }, [loadSubscription, pathname]);
 
   const loadPendingRequests = useCallback(() => {
     if (!token || user?.user_type !== "jobseeker") return;
@@ -337,6 +339,7 @@ export function Navbar() {
   const isAdmin = Boolean(user?.is_admin);
   const isAdminRoute = pathname.startsWith("/admin");
   const profileHref = isAdmin ? "/admin" : isCompany ? "/company/profile" : "/profile";
+  const effectivePlan = resolvePlan(subscription?.plan || user?.plan);
   // Admins use in-panel tabs only — no Home / Vertex Jobs / Job Boards in the header
   const primary =
     isAdminRoute || (isLoggedIn && isAdmin)
@@ -452,17 +455,15 @@ export function Navbar() {
                   >
                     <div className="border-b border-white/5 px-3 py-2">
                       <p className="truncate text-xs font-medium text-indigo-200/90">{user.full_name}</p>
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {subscription?.plan === "pro" && (
-                          <span className="rounded-full bg-indigo-500/30 px-2 py-0.5 text-[10px] font-medium text-indigo-300">
-                            PRO
-                          </span>
-                        )}
-                        {subscription?.plan === "business" && (
-                          <span className="rounded-full bg-cyan-500/30 px-2 py-0.5 text-[10px] font-medium text-cyan-300">
-                            BIZ
-                          </span>
-                        )}
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <PlanBadge plan={effectivePlan} userType={user.user_type} />
+                        <Link
+                          href="/settings/billing"
+                          onClick={() => setAccountOpen(false)}
+                          className="text-[10px] text-slate-500 transition-colors hover:text-indigo-300"
+                        >
+                          View billing
+                        </Link>
                       </div>
                     </div>
                     {account.map((item) => (
@@ -619,7 +620,14 @@ export function Navbar() {
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-indigo-500/30 bg-v-surfaceContainerHighest text-xs font-semibold text-indigo-200">
                   {getInitials(user?.full_name || "")}
                 </div>
-                <span className="flex-1 truncate text-sm text-v-onSurface">{user?.full_name}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm text-v-onSurface">{user?.full_name}</p>
+                  {user && (
+                    <div className="mt-1">
+                      <PlanBadge plan={effectivePlan} userType={user.user_type} />
+                    </div>
+                  )}
+                </div>
               </div>
             </nav>
           )}
