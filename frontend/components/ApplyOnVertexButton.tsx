@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
@@ -143,75 +144,78 @@ export function ApplyOnVertexButton({
             : "Apply on Vertex"}
       </button>
 
-      {showModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
-        >
-          <div className="glass-card w-full max-w-[500px] rounded-2xl p-8">
-            <div className="mb-4 flex items-start justify-between gap-2">
-              <div>
-                <h2 className="text-xl font-bold text-white">Apply on Vertex</h2>
-                <p className="mt-1 text-sm text-vertex-muted">
-                  {job.title} · {job.company_name}
-                </p>
+      {showModal &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+            style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
+          >
+            <div className="glass-card max-h-[90vh] w-full max-w-[500px] overflow-y-auto rounded-2xl p-8">
+              <div className="mb-4 flex items-start justify-between gap-2">
+                <div>
+                  <h2 className="text-xl font-bold text-white">Apply on Vertex</h2>
+                  <p className="mt-1 text-sm text-vertex-muted">
+                    {job.title} · {job.company_name}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="rounded p-1 text-vertex-muted hover:bg-white/10"
+                  aria-label="Close"
+                >
+                  <X className="h-5 w-5" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowModal(false)}
-                className="rounded p-1 text-vertex-muted hover:bg-white/10"
-                aria-label="Close"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <p className="mb-4 text-sm text-vertex-muted">
-              Your profile and CV will be shared with the hiring company. You can
-              track status in{" "}
-              <Link href="/my-applications" className="text-indigo-300 hover:underline">
-                My Applications
-              </Link>
-              .
-            </p>
-            {hasCv === false && (
-              <p className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
-                Upload your CV on your{" "}
-                <Link href="/profile" className="font-medium underline">
-                  profile
-                </Link>{" "}
-                before applying.
+              <p className="mb-4 text-sm text-vertex-muted">
+                Your profile and CV will be shared with the hiring company. You can
+                track status in{" "}
+                <Link href="/my-applications" className="text-indigo-300 hover:underline">
+                  My Applications
+                </Link>
+                .
               </p>
-            )}
-            <label className="mb-1 block text-xs text-vertex-muted">
-              Cover message (optional)
-            </label>
-            <textarea
-              rows={4}
-              className="vertex-input mb-4 w-full resize-none rounded-lg px-3 py-2 text-sm text-white"
-              placeholder="Why are you a great fit for this role?"
-              value={coverMessage}
-              onChange={(e) => setCoverMessage(e.target.value)}
-            />
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={submit}
-                disabled={submitting || hasCv === false}
-                className="glow-button rounded-lg px-5 py-2.5 text-sm font-medium text-white disabled:opacity-60"
-              >
-                {submitting ? "Submitting..." : "Submit application"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowModal(false)}
-                className="ghost-button rounded-lg px-5 py-2.5 text-sm"
-              >
-                Cancel
-              </button>
+              {hasCv === false && (
+                <p className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+                  Upload your CV on your{" "}
+                  <Link href="/profile" className="font-medium underline">
+                    profile
+                  </Link>{" "}
+                  before applying.
+                </p>
+              )}
+              <label className="mb-1 block text-xs text-vertex-muted">
+                Cover message (optional)
+              </label>
+              <textarea
+                rows={4}
+                className="vertex-input mb-4 w-full resize-none rounded-lg px-3 py-2 text-sm text-white"
+                placeholder="Why are you a great fit for this role?"
+                value={coverMessage}
+                onChange={(e) => setCoverMessage(e.target.value)}
+              />
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={submit}
+                  disabled={submitting || hasCv === false}
+                  className="glow-button rounded-lg px-5 py-2.5 text-sm font-medium text-white disabled:opacity-60"
+                >
+                  {submitting ? "Submitting..." : "Submit application"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="ghost-button rounded-lg px-5 py-2.5 text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </>
   );
 }
