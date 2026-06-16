@@ -557,7 +557,7 @@ export default function PricingPage() {
                 </tr>
                 <tr>
                   <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Job Matches Shown</td>
-                  <td className="p-3 text-center text-white">Top 10</td>
+                  <td className="p-3 text-center text-white">Top 3</td>
                   <td className="p-3 text-center text-white">Unlimited</td>
                   <td className="p-3 text-center text-white">Unlimited</td>
                 </tr>
@@ -575,15 +575,13 @@ export default function PricingPage() {
                   <td className="p-3 text-center">
                     <Check className="inline h-4 w-4" style={{ color: "#22c55e" }} />
                   </td>
-                  <td className="p-3 text-center">
-                    <Check className="inline h-4 w-4" style={{ color: "#22c55e" }} />
-                  </td>
+                  <td className="p-3 text-center text-white">—</td>
                 </tr>
                 <tr style={{ background: "rgba(255,255,255,0.02)" }}>
                   <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Profile Page</td>
                   <td className="p-3 text-center text-white">Basic</td>
                   <td className="p-3 text-center text-white">Advanced</td>
-                  <td className="p-3 text-center text-white">Advanced</td>
+                  <td className="p-3 text-center text-white">—</td>
                 </tr>
                 <tr>
                   <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Profile Boost</td>
@@ -593,85 +591,59 @@ export default function PricingPage() {
                   <td className="p-3 text-center">
                     <Check className="inline h-4 w-4" style={{ color: "#22c55e" }} />
                   </td>
-                  <td className="p-3 text-center">
-                    <Check className="inline h-4 w-4" style={{ color: "#22c55e" }} />
-                  </td>
+                  <td className="p-3 text-center text-white">—</td>
                 </tr>
                 <tr style={{ background: "rgba(255,255,255,0.02)" }}>
-                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Skills Management</td>
+                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Save Jobs</td>
                   <td className="p-3 text-center">
                     <Check className="inline h-4 w-4" style={{ color: "#22c55e" }} />
                   </td>
                   <td className="p-3 text-center">
                     <Check className="inline h-4 w-4" style={{ color: "#22c55e" }} />
                   </td>
-                  <td className="p-3 text-center">
-                    <Check className="inline h-4 w-4" style={{ color: "#22c55e" }} />
-                  </td>
+                  <td className="p-3 text-center text-white">—</td>
                 </tr>
                 <tr>
                   <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Application Tracker</td>
                   <td className="p-3 text-center">
-                    <Check className="inline h-4 w-4" style={{ color: "#22c55e" }} />
+                    <X className="inline h-4 w-4" style={{ color: "#ef4444" }} />
                   </td>
                   <td className="p-3 text-center">
                     <Check className="inline h-4 w-4" style={{ color: "#22c55e" }} />
                   </td>
-                  <td className="p-3 text-center">
-                    <Check className="inline h-4 w-4" style={{ color: "#22c55e" }} />
-                  </td>
+                  <td className="p-3 text-center text-white">—</td>
                 </tr>
                 <tr style={{ background: "rgba(255,255,255,0.02)" }}>
-                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Match Reports</td>
+                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Skills Gap Analyzer</td>
                   <td className="p-3 text-center">
                     <X className="inline h-4 w-4" style={{ color: "#ef4444" }} />
                   </td>
                   <td className="p-3 text-center">
                     <Check className="inline h-4 w-4" style={{ color: "#22c55e" }} />
                   </td>
-                  <td className="p-3 text-center">
-                    <Check className="inline h-4 w-4" style={{ color: "#22c55e" }} />
-                  </td>
+                  <td className="p-3 text-center text-white">—</td>
                 </tr>
                 <tr>
-                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Candidate Searches</td>
-                  <td className="p-3 text-center text-white">10/mo</td>
-                  <td className="p-3 text-center text-white">—</td>
-                  <td className="p-3 text-center text-white">Unlimited</td>
-                </tr>
-                <tr>
-                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Contact Requests</td>
-                  <td className="p-3 text-center text-white">3/mo</td>
-                  <td className="p-3 text-center text-white">—</td>
-                  <td className="p-3 text-center text-white">Unlimited</td>
-                </tr>
-                <tr style={{ background: "rgba(255,255,255,0.02)" }}>
-                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Search History</td>
+                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Priority Matching</td>
                   <td className="p-3 text-center">
                     <X className="inline h-4 w-4" style={{ color: "#ef4444" }} />
                   </td>
-                  <td className="p-3 text-center text-white">—</td>
                   <td className="p-3 text-center">
                     <Check className="inline h-4 w-4" style={{ color: "#22c55e" }} />
                   </td>
-                </tr>
-                <tr>
-                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Team Members</td>
-                  <td className="p-3 text-center text-white">1</td>
                   <td className="p-3 text-center text-white">—</td>
-                  <td className="p-3 text-center text-white">5</td>
                 </tr>
                 <tr style={{ background: "rgba(255,255,255,0.02)" }}>
                   <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Support</td>
                   <td className="p-3 text-center text-white">Community</td>
                   <td className="p-3 text-center text-white">Email</td>
-                  <td className="p-3 text-center text-white">Priority</td>
+                  <td className="p-3 text-center text-white">—</td>
                 </tr>
                 <tr>
-                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Response Time</td>
-                  <td className="p-3 text-center text-white">—</td>
-                  <td className="p-3 text-center text-white">48hrs</td>
-                  <td className="p-3 text-center text-white">24hrs</td>
+                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Business Plan Availability</td>
+                  <td className="p-3 text-center text-white">Not available</td>
+                  <td className="p-3 text-center text-white">Not available</td>
+                  <td className="p-3 text-center text-white">Company only</td>
                 </tr>
                   </>
                 )}

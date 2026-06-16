@@ -134,13 +134,15 @@ function BillingContent() {
 
   const freeFeatures = [
     "Upload 1 CV",
-    "See top 10 job matches",
+    "See top 3 job matches",
+    "Save unlimited jobs",
     "Basic profile page",
-    "Application tracker",
   ];
   const proFeatures = [
     "Unlimited CV uploads",
     "Unlimited job matches",
+    "Skills Gap Analyzer",
+    "Application tracker",
     "Daily job alerts",
     "Priority matching",
     "Profile boost",

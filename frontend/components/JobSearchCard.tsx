@@ -57,13 +57,15 @@ export function JobSearchCard({
         >
           {job.source}
         </span>
-        <SaveButton
-          jobId={job.id}
-          token={token}
-          initialSaved={isSaved}
-          size="sm"
-          showLabel={false}
-        />
+        {token ? (
+          <SaveButton
+            jobId={job.id}
+            token={token}
+            initialSaved={isSaved}
+            size="sm"
+            showLabel={false}
+          />
+        ) : null}
       </div>
       <h3 className="mt-3 text-base font-bold text-white">{title}</h3>
       <p className="mt-1 text-sm text-vertex-muted">{company}</p>

@@ -3630,7 +3630,7 @@ def get_company_analytics(user_id: int) -> dict:
 
         cur.execute(
             """
-            SELECT j.id, j.job_title, j.applications_count, j.views_count
+            SELECT j.id, j.title, j.applications_count, j.views_count
             FROM posted_jobs j
             WHERE j.company_user_id = %s
             ORDER BY j.applications_count DESC, j.views_count DESC

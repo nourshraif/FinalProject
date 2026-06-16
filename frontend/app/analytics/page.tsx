@@ -45,6 +45,90 @@ const STATUS_COLORS: Record<string, string> = {
   rejected: "#ef4444",
 };
 
+const EMPTY_COMPANY_ANALYTICS: CompanyAnalytics = {
+  applications_by_status: {
+    applied: 0,
+    reviewing: 0,
+    interviewing: 0,
+    offer: 0,
+    rejected: 0,
+    withdrawn: 0,
+  },
+  applications_over_time: [],
+  total_applications: 0,
+  total_job_views: 0,
+  active_jobs: 0,
+  application_rate: 0,
+  interview_rate: 0,
+  offer_rate: 0,
+  top_jobs: [],
+  includes_outreach_analytics: false,
+  searches_over_time: [],
+  top_searched_skills: [],
+  saved_candidates_count: 0,
+  contact_requests_sent: 0,
+  contact_requests_accepted: 0,
+  avg_results_per_search: 0,
+  total_searches: 0,
+};
+
+function toNumber(value: unknown, fallback = 0): number {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function fmtPct(value: unknown): string {
+  return toNumber(value).toFixed(1);
+}
+
+function normalizeCompanyAnalytics(
+  data: Partial<CompanyAnalytics> | null | undefined
+): CompanyAnalytics {
+  const status = data?.applications_by_status;
+  return {
+    ...EMPTY_COMPANY_ANALYTICS,
+    ...data,
+    applications_by_status: {
+      applied: toNumber(status?.applied),
+      reviewing: toNumber(status?.reviewing),
+      interviewing: toNumber(status?.interviewing),
+      offer: toNumber(status?.offer),
+      rejected: toNumber(status?.rejected),
+      withdrawn: toNumber(status?.withdrawn),
+    },
+    applications_over_time: Array.isArray(data?.applications_over_time)
+      ? data!.applications_over_time
+      : [],
+    total_applications: toNumber(data?.total_applications),
+    total_job_views: toNumber(data?.total_job_views),
+    active_jobs: toNumber(data?.active_jobs),
+    application_rate: toNumber(data?.application_rate),
+    interview_rate: toNumber(data?.interview_rate),
+    offer_rate: toNumber(data?.offer_rate),
+    top_jobs: Array.isArray(data?.top_jobs)
+      ? data!.top_jobs.map((job) => ({
+          posted_job_id: toNumber(job.posted_job_id),
+          job_title: job.job_title || "Untitled role",
+          applications_count: toNumber(job.applications_count),
+          views_count: toNumber(job.views_count),
+          conversion_rate: toNumber(job.conversion_rate),
+        }))
+      : [],
+    includes_outreach_analytics: Boolean(data?.includes_outreach_analytics),
+    searches_over_time: Array.isArray(data?.searches_over_time)
+      ? data!.searches_over_time
+      : [],
+    top_searched_skills: Array.isArray(data?.top_searched_skills)
+      ? data!.top_searched_skills
+      : [],
+    saved_candidates_count: toNumber(data?.saved_candidates_count),
+    contact_requests_sent: toNumber(data?.contact_requests_sent),
+    contact_requests_accepted: toNumber(data?.contact_requests_accepted),
+    avg_results_per_search: toNumber(data?.avg_results_per_search),
+    total_searches: toNumber(data?.total_searches),
+  };
+}
+
 function JobseekerAnalyticsView({ data }: { data: JobseekerAnalytics }) {
   const totalApps =
     data.applications_by_status.applied +
@@ -340,7 +424,7 @@ function CompanyHiringAnalyticsSection({ data }: { data: CompanyAnalytics }) {
           </div>
           <div>
             <p className="text-xs text-vertex-muted">View → apply rate</p>
-            <p className="text-xl font-bold text-white">{data.application_rate.toFixed(1)}%</p>
+            <p className="text-xl font-bold text-white">{fmtPct(data.application_rate)}%</p>
           </div>
         </div>
         <div className="glass-card flex items-center gap-4 rounded-xl p-4">
@@ -349,7 +433,7 @@ function CompanyHiringAnalyticsSection({ data }: { data: CompanyAnalytics }) {
           </div>
           <div>
             <p className="text-xs text-vertex-muted">Interview rate</p>
-            <p className="text-xl font-bold text-white">{data.interview_rate.toFixed(1)}%</p>
+            <p className="text-xl font-bold text-white">{fmtPct(data.interview_rate)}%</p>
           </div>
         </div>
         <div className="glass-card flex items-center gap-4 rounded-xl p-4">
@@ -358,7 +442,7 @@ function CompanyHiringAnalyticsSection({ data }: { data: CompanyAnalytics }) {
           </div>
           <div>
             <p className="text-xs text-vertex-muted">Offer rate</p>
-            <p className="text-xl font-bold text-white">{data.offer_rate.toFixed(1)}%</p>
+            <p className="text-xl font-bold text-white">{fmtPct(data.offer_rate)}%</p>
           </div>
         </div>
       </div>
@@ -485,7 +569,7 @@ function CompanyHiringAnalyticsSection({ data }: { data: CompanyAnalytics }) {
                       {job.applications_count}
                     </td>
                     <td className="py-3 text-right text-indigo-300">
-                      {job.conversion_rate.toFixed(1)}%
+                      {fmtPct(job.conversion_rate)}%
                     </td>
                   </tr>
                 ))}
@@ -766,11 +850,13 @@ function AnalyticsContent() {
         .then(setJobseekerData)
         .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
         .finally(() => setLoading(false));
-    } else {
+    } else if (user.user_type === "company") {
       getCompanyAnalytics(token)
-        .then(setCompanyData)
+        .then((data) => setCompanyData(normalizeCompanyAnalytics(data)))
         .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
         .finally(() => setLoading(false));
+    } else {
+      setLoading(false);
     }
   }, [token, user]);
 
@@ -778,42 +864,40 @@ function AnalyticsContent() {
     load();
   }, [load]);
 
-  if (loading) {
-    return (
-      <div className="flex min-h-[300px] items-center justify-center">
-        <div
-          className="h-10 w-10 animate-spin rounded-full border-2 border-transparent"
-          style={{ borderTopColor: "#6366f1" }}
-          aria-hidden
-        />
-      </div>
-    );
-  }
-  if (error) {
-    return (
-      <p className="text-center text-vertex-muted">
-        {error}
-      </p>
-    );
-  }
+  const isCompany = user?.user_type === "company";
 
   return (
     <div className="mx-auto max-w-[1100px] px-6 pt-24 pb-16">
       <h1 className="text-3xl font-bold text-white">Analytics</h1>
       <p className="mt-1 text-sm text-vertex-muted">
-        {user?.user_type === "company"
+        {isCompany
           ? "Hiring funnel and recruiting performance"
           : "Your activity insights"}
       </p>
 
-      {user?.user_type === "jobseeker" && jobseekerData && (
+      {loading && (
+        <div className="mt-16 flex justify-center">
+          <div
+            className="h-10 w-10 animate-spin rounded-full border-2 border-transparent"
+            style={{ borderTopColor: "#6366f1" }}
+            aria-hidden
+          />
+        </div>
+      )}
+
+      {!loading && error && (
+        <p className="mt-8 text-center text-vertex-muted">{error}</p>
+      )}
+
+      {!loading && !error && user?.user_type === "jobseeker" && jobseekerData && (
         <div className="mt-8">
           <JobseekerAnalyticsView data={jobseekerData} />
         </div>
       )}
-      {user?.user_type === "company" && companyData && (
+
+      {!loading && !error && isCompany && (
         <div className="mt-8">
-          <CompanyAnalyticsView data={companyData} />
+          <CompanyAnalyticsView data={normalizeCompanyAnalytics(companyData)} />
         </div>
       )}
     </div>
@@ -830,12 +914,26 @@ export default function AnalyticsPage() {
 
 function AnalyticsPageGate() {
   const { user } = useAuth();
-  if (user?.user_type === "company") {
+
+  if (!user) {
+    return (
+      <div className="flex min-h-[300px] items-center justify-center pt-24">
+        <div
+          className="h-10 w-10 animate-spin rounded-full border-2 border-transparent"
+          style={{ borderTopColor: "#6366f1" }}
+          aria-hidden
+        />
+      </div>
+    );
+  }
+
+  if (user.user_type === "company") {
     return (
       <PlanGate feature="company_analytics" requiredPlan="pro">
         <AnalyticsContent />
       </PlanGate>
     );
   }
+
   return <AnalyticsContent />;
 }

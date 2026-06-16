@@ -110,10 +110,6 @@ export function PlanGate({
   const [sub, setSub] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(Boolean(token));
 
-  if (user?.is_admin) {
-    return <>{children}</>;
-  }
-
   useEffect(() => {
     if (!token) {
       setSub(null);
@@ -137,6 +133,10 @@ export function PlanGate({
     };
   }, [token]);
 
+  if (user?.is_admin) {
+    return <>{children}</>;
+  }
+
   if (soft) {
     return <>{children}</>;
   }
@@ -158,13 +158,18 @@ export function PlanGate({
 
   if (loading) {
     return (
-      <div className="px-4 pt-28 pb-16 md:pt-32">
-        <div className="mx-auto max-w-lg animate-pulse rounded-2xl border border-white/[0.06] bg-white/[0.04] p-12" />
+      <div className="flex min-h-[300px] items-center justify-center px-4 pt-28 pb-16 md:pt-32">
+        <div
+          className="h-10 w-10 animate-spin rounded-full border-2 border-transparent"
+          style={{ borderTopColor: "#6366f1" }}
+          aria-hidden
+        />
       </div>
     );
   }
 
-  const effectivePlan = (user?.plan as string | undefined) || sub?.plan || "free";
+  // Prefer the live subscription response; fall back to cached user plan.
+  const effectivePlan = sub?.plan || (user?.plan as string | undefined) || "free";
   const allowed = planMeetsRequired(effectivePlan, requiredPlan, user?.user_type);
 
   if (allowed) {
