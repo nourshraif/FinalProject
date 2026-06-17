@@ -1,15 +1,6 @@
 'use client';
 
 import { useTranslation } from '@/context/TranslationContext';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
 
@@ -41,21 +32,31 @@ export function TranslatedAlert({
   };
 
   return (
-    <AlertDialog open={open} onOpenChange={setOpen}>
-      {trigger && <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>}
-      <AlertDialogContent>
-        <AlertDialogTitle>{t(titleKey)}</AlertDialogTitle>
-        <AlertDialogDescription>{t(descriptionKey)}</AlertDialogDescription>
-        <div className="flex gap-3 justify-end">
-          <AlertDialogCancel>{t(cancelKey)}</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={handleAction}
-            className={isDestructive ? 'bg-destructive text-destructive-foreground' : ''}
-          >
-            {t(actionKey)}
-          </AlertDialogAction>
+    <>
+      {trigger && (
+        <span onClick={() => setOpen(true)} className="inline-flex">
+          {trigger}
+        </span>
+      )}
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-lg border border-vertex-border bg-vertex-card p-6 shadow-lg">
+            <h2 className="text-lg font-semibold text-vertex-white">{t(titleKey)}</h2>
+            <p className="mt-2 text-sm text-vertex-muted">{t(descriptionKey)}</p>
+            <div className="mt-6 flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setOpen(false)}>
+                {t(cancelKey)}
+              </Button>
+              <Button
+                variant={isDestructive ? 'destructive' : 'default'}
+                onClick={handleAction}
+              >
+                {t(actionKey)}
+              </Button>
+            </div>
+          </div>
         </div>
-      </AlertDialogContent>
-    </AlertDialog>
+      )}
+    </>
   );
 }
