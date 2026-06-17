@@ -6,14 +6,13 @@ import { MessageCircle, X, Send, Loader2, Bot, Minimize2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
 import { normalizeChatReplyLinks } from "@/lib/chatLinks";
+import { getApiBase } from "@/lib/api";
 
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
 }
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 function welcomeMessage(fullName?: string, userType?: string) {
   const first = fullName?.split(" ")[0];
@@ -79,7 +78,7 @@ async function callChatAPI(
   token: string | null,
   messages: { role: "user" | "assistant"; content: string }[]
 ): Promise<string> {
-  const response = await fetch(`${API_BASE}/api/chat`, {
+  const response = await fetch(`${getApiBase()}/api/chat`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
-import { uploadProfileCV, getMySlug, updateProfileVisibility } from "@/lib/api";
+import { uploadProfileCV, getMySlug, updateProfileVisibility, getApiBase } from "@/lib/api";
 import { ALLOWED_CV_ACCEPT, ALLOWED_CV_LABEL, isAllowedCvFile } from "@/lib/cv-formats";
 import { SkeletonProfileHeader } from "@/components/Skeleton";
 import { QUICK_SKILLS } from "@/components/QuickSkillSelector";
@@ -53,8 +53,7 @@ function ProfileContent() {
   const [isPublic, setIsPublic] = useState(true);
   const [copyFeedback, setCopyFeedback] = useState(false);
 
-  const BASE_URL =
-    process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const BASE_URL = getApiBase();
 
   useEffect(() => {
     if (user?.is_admin) {

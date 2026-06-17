@@ -30,9 +30,14 @@ import type {
 } from "@/types";
 
 /** Same-origin /api when behind nginx; localhost:8000 for local SSR/dev. */
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ??
-  (typeof window !== "undefined" ? "" : "http://localhost:8000");
+export function getApiBase(): string {
+  if (process.env.NEXT_PUBLIC_API_URL !== undefined && process.env.NEXT_PUBLIC_API_URL !== "") {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  return typeof window !== "undefined" ? "" : "http://localhost:8000";
+}
+
+const API_BASE = getApiBase();
 
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -1613,8 +1618,7 @@ export async function updateAlertSettings(
 }
 
 export async function sendTestAlert(token: string): Promise<{ sent: boolean; jobs_count: number }> {
-  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-  const res = await fetch(`${BASE_URL}/api/alerts/test`, {
+  const res = await fetch(`${getApiBase()}/api/alerts/test`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

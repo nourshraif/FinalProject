@@ -29,8 +29,11 @@ if [[ ! -f .env ]]; then
 fi
 
 if [[ ! -f frontend/.env.local ]]; then
-  echo "WARNING: frontend/.env.local missing — copying from .env.example"
-  cp frontend/.env.example frontend/.env.local
+  echo "WARNING: frontend/.env.local missing — creating production defaults"
+  cat > frontend/.env.local <<'EOF'
+# Same-origin API via nginx (do not use localhost in production builds)
+NEXT_PUBLIC_API_URL=
+EOF
 fi
 
 echo "==> Building Python base image (skip if unchanged: SKIP_BASE_BUILD=1)"

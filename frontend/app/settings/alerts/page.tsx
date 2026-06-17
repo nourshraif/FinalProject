@@ -9,6 +9,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import {
   getAlertSettings,
   updateAlertSettings,
+  getApiBase,
   type AlertSettings,
 } from "@/lib/api";
 import { Zap, Sun, Calendar } from "lucide-react";
@@ -68,10 +69,7 @@ function AlertsContent() {
     if (!token) return;
     setIsTestLoading(true);
     try {
-      const BASE_URL =
-        process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-      const res = await fetch(`${BASE_URL}/api/alerts/test`, {
+      const res = await fetch(`${getApiBase()}/api/alerts/test`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

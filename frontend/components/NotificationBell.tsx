@@ -5,6 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getApiBase } from "@/lib/api";
 
 interface Notification {
   id: number;
@@ -25,8 +26,7 @@ export default function NotificationBell() {
   const [isLoading, setIsLoading] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const BASE_URL =
-    process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const BASE_URL = getApiBase();
 
   async function fetchUnreadCount() {
     if (!token) return;
