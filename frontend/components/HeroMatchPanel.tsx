@@ -95,7 +95,7 @@ function CompanyTeaser() {
   );
 }
 
-export function HeroMatchPanel({ rolesIndexedLabel = "10K+" }: HeroMatchPanelProps) {
+export function HeroMatchPanel({ rolesIndexedLabel = "…" }: HeroMatchPanelProps) {
   return (
     <div className="space-y-4">
       <RolesStatBar count={rolesIndexedLabel} />

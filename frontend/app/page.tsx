@@ -21,19 +21,22 @@ export default function HomePage() {
   const router = useRouter();
   const { isLoggedIn, user } = useAuth();
   const [stats, setStats] = useState<Stats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
 
   useEffect(() => {
     getStats()
       .then((s) => setStats(s))
-      .catch(() => setStats(null));
+      .catch(() => setStats(null))
+      .finally(() => setStatsLoading(false));
   }, []);
 
-  const rolesLabel =
-    stats !== null
+  const rolesLabel = statsLoading
+    ? "…"
+    : stats !== null
       ? stats.total_jobs >= 10000
         ? "10K+"
         : stats.total_jobs.toLocaleString()
-      : "2,194";
+      : "—";
 
   const heroStats = useMemo(
     () => [

@@ -47,17 +47,17 @@ export default function AboutPageClient() {
   }, []);
 
   const statJobs = useMemo(() => {
-    if (typeof totalJobs !== "number") return "988+";
-    return `${totalJobs}+`;
+    if (typeof totalJobs !== "number") return "…";
+    return totalJobs >= 10000 ? "10K+" : totalJobs.toLocaleString();
   }, [totalJobs]);
 
   const statBoards = useMemo(() => {
-    if (typeof jobBoardCount !== "number") return "10+";
+    if (typeof jobBoardCount !== "number") return "…";
     return String(jobBoardCount);
   }, [jobBoardCount]);
 
   const boardsCopy = useMemo(() => {
-    if (typeof jobBoardCount !== "number") return "10+ job boards";
+    if (typeof jobBoardCount !== "number") return "… job boards";
     return `${jobBoardCount} job board${jobBoardCount === 1 ? "" : "s"}`;
   }, [jobBoardCount]);
 
