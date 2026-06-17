@@ -95,6 +95,15 @@ VERTEX_PAGE_HINTS = {
     "find job": "/find-jobs",
     "contact": "/contact",
     "about": "/about",
+    "founder": "/about",
+    "founders": "/about",
+    "innovator": "/about",
+    "innovators": "/about",
+    "who built": "/about",
+    "who made": "/about",
+    "team": "/about",
+    "creator": "/about",
+    "creators": "/about",
     "privacy": "/privacy",
     "terms": "/terms",
     "notification": "/notifications",
@@ -255,6 +264,8 @@ def vertex_fallback_reply(question: str, user: Optional[dict] = None) -> Optiona
         "dashboard", "growth", "business", "pro plan", "free plan", "job alert",
         "find job", "company job", "my job", "navigate", "url", "link", "account",
         "cancel", "payment", "stripe", "notification", "profile", "cv", "upload",
+        "founder", "innovator", "creator", "who built", "who made", "who created",
+        "team", "nour", "rayan", "rima",
     )
     if not any(s in q for s in vertex_signals):
         return None
@@ -372,6 +383,29 @@ def vertex_fallback_reply(question: str, user: Optional[dict] = None) -> Optiona
     elif "notification" in q:
         body = "View all notifications at [Notifications](/notifications)."
         links.insert(0, "/notifications")
+    elif (
+        "founder" in q
+        or "innovator" in q
+        or "creator" in q
+        or "who built" in q
+        or "who made" in q
+        or "who created" in q
+        or "nour" in q
+        or "rayan" in q
+        or "rima" in q
+        or ("team" in q and "vertex" in q)
+        or ("about" in q and ("who" in q or "vertex" in q))
+    ):
+        body = (
+            "Vertex was built as a graduation project by three founders:\n"
+            "- **Nour Shreif** — Founder\n"
+            "- **Rayan Tleis** — Founder\n"
+            "- **Rima Msheik** — Founder\n\n"
+            "They innovated Vertex to connect jobseekers and companies through smarter matching, "
+            "aggregated job listings, and hiring tools for both sides.\n"
+            "Read more on [About us](/about) or reach out via [Contact](/contact)."
+        )
+        links.extend(["/about", "/contact"])
     else:
         body = (
             "I can help you navigate Vertex — plans, pages, and how features work.\n"

@@ -17,6 +17,22 @@ Vertex reads CVs beyond simple keywords and aggregates jobs from external job bo
 
 ---
 
+## Founders & innovators
+
+Vertex was built as a graduation project by three founders:
+
+| Name | Role |
+|------|------|
+| **Nour Shreif** | Founder |
+| **Rayan Tleis** | Founder |
+| **Rima Msheik** | Founder |
+
+They innovated Vertex to connect jobseekers and companies through smarter CV-based matching, aggregated job listings, and tools for both sides of hiring.
+
+For the full story and team section on the site, see [About us](/about). Questions or feedback: [Contact](/contact).
+
+---
+
 ## User types & guest access
 
 | Who | Can do without paying |
