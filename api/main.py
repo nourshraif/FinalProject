@@ -43,6 +43,11 @@ import bcrypt
 #from fastapi import FastAPI
 
 from app.routes.admin_scrapers import router as scraper_router
+from api.chat_knowledge import (
+    build_chat_system_prompt,
+    normalize_chat_reply_links,
+    vertex_fallback_reply,
+)
 from app.database.db import (
     get_user_by_email,
     get_user_by_id,
@@ -751,15 +756,24 @@ def _maybe_create_welcome_notification(user: dict) -> None:
         print(f"Notification creation error: {e}")
 
 
-def _generate_fallback_chat_reply(messages: List[ChatMessage]) -> str:
+def _generate_fallback_chat_reply(
+    messages: List[ChatMessage], user: Optional[dict] = None
+) -> str:
     latest_user = ""
     for msg in reversed(messages):
         if (msg.role or "").lower() == "user":
             latest_user = (msg.content or "").strip()
             break
 
+    vertex_reply = vertex_fallback_reply(latest_user, user)
+    if vertex_reply:
+        return vertex_reply
+
     if not latest_user:
-        return "Tell me your target role and I can suggest CV improvements."
+        return (
+            "Tell me your target role for CV tips, or ask how to use Vertex "
+            "(try [Pricing](/pricing) or [About](/about))."
+        )
 
     q = latest_user.lower()
     if "cv" in q or "resume" in q:
@@ -768,8 +782,7 @@ def _generate_fallback_chat_reply(messages: List[ChatMessage]) -> str:
             "- Tailor your CV to one target role and match key skills from the job post.\n"
             "- Use impact bullets with numbers (e.g., reduced load time by 35%).\n"
             "- Keep sections clear: summary, skills, experience, projects, education.\n"
-            "- Prioritize recent/relevant work and remove low-value filler.\n"
-            "- Keep it concise (usually 1 page for junior, up to 2 for experienced)."
+            "- Upload your CV on [Profile](/profile) to improve Vertex job matches."
         )
     if "interview" in q:
         return (
@@ -778,16 +791,20 @@ def _generate_fallback_chat_reply(messages: List[ChatMessage]) -> str:
         )
     if "job" in q or "search" in q:
         return (
-            "For job search: define a narrow role target, tailor each application, "
-            "track applications weekly, and follow up on strong-fit roles in 5-7 days."
+            "For job search on Vertex: browse [Vertex Jobs](/jobs) and [Job Boards](/find-jobs), "
+            "then use [Matches](/match) (Pro) for AI recommendations. "
+            "Track applications on [Tracker](/tracker) (Pro)."
         )
     return (
-        "I can help with CV improvement, interview prep, and job search strategy. "
-        "Share your target role and experience level for tailored advice."
+        "I can help with CV improvement, interview prep, job search strategy, "
+        "and how to use Vertex (plans, pages, features). "
+        "Ask a specific question or visit [Pricing](/pricing) and [Contact](/contact)."
     )
 
 
-def _generate_chat_reply(messages: List[ChatMessage]) -> str:
+def _generate_chat_reply(
+    messages: List[ChatMessage], user: Optional[dict] = None
+) -> str:
     """
     Generate chatbot reply using Hugging Face router first.
     Falls back to local canned logic if API is unavailable.
@@ -804,13 +821,7 @@ def _generate_chat_reply(messages: List[ChatMessage]) -> str:
                 api_key=hf_token,
             )
 
-            system_prompt = (
-                "You are Vertex AI, a concise and practical career assistant. "
-                "Help with CV feedback, job search strategy, interview prep, and career decisions. "
-                "Be specific, actionable, and supportive. Keep responses clear and compact. "
-                "Use short paragraphs and bullet points. Do not use markdown tables. "
-                "Keep answers within about 6-10 lines unless the user asks for detail."
-            )
+            system_prompt = build_chat_system_prompt(user)
 
             conversation = [{"role": "system", "content": system_prompt}]
             for msg in messages[-12:]:
@@ -832,7 +843,7 @@ def _generate_chat_reply(messages: List[ChatMessage]) -> str:
             # Keep chat available even when HF is down/misconfigured.
             print(f"[chat] Hugging Face chat fallback: {e}")
 
-    return _generate_fallback_chat_reply(messages)
+    return _generate_fallback_chat_reply(messages, user)
 
 
 # ---------------------------------------------------------------------------
@@ -844,12 +855,24 @@ def health():
 
 
 @app.post("/api/chat")
-def chat_assistant(body: ChatRequest):
+def chat_assistant(
+    body: ChatRequest,
+    current_user: Optional[dict] = Depends(get_current_user_optional),
+):
     try:
         messages = body.messages or []
         if not messages:
-            return {"reply": "Ask me anything about CVs, interviews, or job search."}
-        return {"reply": _generate_chat_reply(messages)}
+            return {
+                "reply": normalize_chat_reply_links(
+                    "Ask me about CVs, interviews, job search, or how to use Vertex. "
+                    "Try [Pricing](/pricing) or [About](/about) for platform info."
+                )
+            }
+        return {
+            "reply": normalize_chat_reply_links(
+                _generate_chat_reply(messages, current_user)
+            )
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

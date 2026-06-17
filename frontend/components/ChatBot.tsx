@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import Link from "next/link";
 import { MessageCircle, X, Send, Loader2, Bot, Minimize2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
+import { normalizeChatReplyLinks } from "@/lib/chatLinks";
 
 interface Message {
   id: string;
@@ -12,6 +14,66 @@ interface Message {
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+function welcomeMessage(fullName?: string, userType?: string) {
+  const first = fullName?.split(" ")[0];
+  const greeting = first ? `Hi ${first}!` : "Hi!";
+  const roleHint =
+    userType === "company"
+      ? "As a company, ask about posting jobs, applicants, Growth/Business plans, or analytics."
+      : userType === "jobseeker"
+        ? "As a jobseeker, ask about matches, saved jobs, the tracker, or Pro features."
+        : "Ask how Vertex works, pricing, or where to find features on the site.";
+
+  return `${greeting} 👋 I'm **Vertex AI**, your career and platform assistant.
+
+I can help with:
+- 🌐 **Using Vertex** — plans, pages, features (${roleHint})
+- 📄 CV tips & profile advice
+- 🎯 Job search & interview prep
+
+What would you like to know?`;
+}
+
+function renderInline(text: string, keyPrefix: string) {
+  const parts: React.ReactNode[] = [];
+  const regex = /(\*\*([^*]+)\*\*|\[([^\]]+)\]\(([^)]+)\))/g;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  let i = 0;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > last) {
+      parts.push(text.slice(last, match.index));
+    }
+    if (match[2]) {
+      parts.push(
+        <strong key={`${keyPrefix}-b-${i}`}>{match[2]}</strong>
+      );
+    } else if (match[3] && match[4]) {
+      const href = match[4].startsWith("/") ? match[4] : `/${match[4]}`;
+      parts.push(
+        <Link
+          key={`${keyPrefix}-l-${i}`}
+          href={href}
+          className="font-medium text-indigo-300 underline underline-offset-2 hover:text-indigo-200"
+        >
+          {match[3]}
+        </Link>
+      );
+    }
+    last = regex.lastIndex;
+    i += 1;
+  }
+
+  if (last < text.length) {
+    parts.push(text.slice(last));
+  }
+
+  if (parts.length === 0) return text;
+  if (parts.length === 1) return parts[0];
+  return <>{parts}</>;
+}
 
 async function callChatAPI(
   token: string | null,
@@ -47,13 +109,25 @@ export default function ChatBot() {
     {
       id: "welcome",
       role: "assistant",
-      content: `Hi${user?.full_name ? ` ${user.full_name.split(" ")[0]}` : ""}! 👋 I'm **Vertex AI**, your personal career assistant.\n\nI can help you with:\n- 📄 CV tips & optimisation\n- 🎯 Job search strategies\n- 💬 Interview preparation\n- 🚀 Career growth advice\n\nWhat can I help you with today?`,
+      content: welcomeMessage(user?.full_name, user?.user_type),
     },
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    setMessages((prev) => {
+      if (prev.length !== 1 || prev[0]?.id !== "welcome") return prev;
+      return [
+        {
+          ...prev[0],
+          content: welcomeMessage(user?.full_name, user?.user_type),
+        },
+      ];
+    });
+  }, [user?.full_name, user?.user_type]);
 
   useEffect(() => {
     if (open && !minimised) {
@@ -87,7 +161,7 @@ export default function ChatBot() {
         (m) => ({ role: m.role, content: m.content })
       );
 
-      const reply = await callChatAPI(token, history);
+      const reply = normalizeChatReplyLinks(await callChatAPI(token, history));
 
       const assistantMsg: Message = {
         id: crypto.randomUUID(),
@@ -121,27 +195,19 @@ export default function ChatBot() {
     }
   };
 
-  // Simple markdown renderer (bold, bullets, line breaks)
   function renderContent(text: string) {
     const lines = text.split("\n");
     return lines.map((line, i) => {
-      // Bold: **text**
-      const boldLine = line.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-      // Bullet points
       if (/^[-•]\s/.test(line)) {
         return (
           <div key={i} className="flex gap-2">
-            <span className="mt-1 shrink-0 text-[#9b8cff]">
-              •
-            </span>
-            <span dangerouslySetInnerHTML={{ __html: boldLine.replace(/^[-•]\s/, "") }} />
+            <span className="mt-1 shrink-0 text-[#9b8cff]">•</span>
+            <span>{renderInline(line.replace(/^[-•]\s/, ""), `line-${i}`)}</span>
           </div>
         );
       }
       if (line === "") return <div key={i} className="h-1" />;
-      return (
-        <div key={i} dangerouslySetInnerHTML={{ __html: boldLine }} />
-      );
+      return <div key={i}>{renderInline(line, `line-${i}`)}</div>;
     });
   }
 
@@ -302,7 +368,7 @@ export default function ChatBot() {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder="Ask me anything about your career…"
+                    placeholder="Ask about Vertex or your career…"
                     rows={1}
                     disabled={loading}
                     className="max-h-24 flex-1 resize-none bg-transparent text-sm text-white outline-none placeholder:text-white/30 disabled:opacity-50"
