@@ -14,6 +14,17 @@ interface Message {
   content: string;
 }
 
+function newMessageId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    try {
+      return crypto.randomUUID();
+    } catch {
+      // randomUUID requires a secure context (HTTPS); HTTP deploys fall through.
+    }
+  }
+  return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
 function welcomeMessage(fullName?: string, userType?: string) {
   const first = fullName?.split(" ")[0];
   const greeting = first ? `Hi ${first}!` : "Hi!";
@@ -145,7 +156,7 @@ export default function ChatBot() {
     if (!text || loading) return;
 
     const userMsg: Message = {
-      id: crypto.randomUUID(),
+      id: newMessageId(),
       role: "user",
       content: text,
     };
@@ -163,22 +174,26 @@ export default function ChatBot() {
       const reply = normalizeChatReplyLinks(await callChatAPI(token, history));
 
       const assistantMsg: Message = {
-        id: crypto.randomUUID(),
+        id: newMessageId(),
         role: "assistant",
         content: reply,
       };
       setMessages((prev) => [...prev, assistantMsg]);
     } catch (err) {
       const detail = err instanceof Error ? err.message : "Unknown error";
+      const isNetwork =
+        detail === "Failed to fetch" ||
+        detail.toLowerCase().includes("network");
       const errorMsg: Message = {
-        id: crypto.randomUUID(),
+        id: newMessageId(),
         role: "assistant",
-        content:
-          detail.includes("HF_TOKEN")
-            ? "⚠️ The AI assistant isn't configured yet. Please add your `HF_TOKEN` to the `.env` file and restart the backend."
+        content: isNetwork
+          ? "⚠️ Could not reach the server. If you're on the live site, rebuild the frontend with `NEXT_PUBLIC_API_URL=` empty in `frontend/.env.local`, then redeploy."
+          : detail.includes("HF_TOKEN")
+            ? "⚠️ The AI assistant isn't configured yet. Add `HF_TOKEN` to `.env` on the server and restart the backend."
             : detail.includes("503") || detail.includes("502")
-            ? "⚠️ The AI service is currently unavailable. Please check your `HF_TOKEN` and `HF_MODEL` settings in `.env`."
-            : "Sorry, I ran into an issue. Please try again in a moment.",
+              ? "⚠️ The AI service is temporarily unavailable. Try again in a moment."
+              : `Sorry, I ran into an issue: ${detail}`,
       };
       setMessages((prev) => [...prev, errorMsg]);
       console.error("[ChatBot]", err);

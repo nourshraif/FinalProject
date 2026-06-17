@@ -31,10 +31,28 @@ import type {
 
 /** Same-origin /api when behind nginx; localhost:8000 for local SSR/dev. */
 export function getApiBase(): string {
-  if (process.env.NEXT_PUBLIC_API_URL !== undefined && process.env.NEXT_PUBLIC_API_URL !== "") {
-    return process.env.NEXT_PUBLIC_API_URL;
+  const configured = process.env.NEXT_PUBLIC_API_URL;
+
+  if (typeof window !== "undefined") {
+    const onLocalDev =
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1";
+
+    if (configured && configured !== "") {
+      const pointsToLocalhost = /localhost|127\.0\.0\.1/i.test(configured);
+      // Production builds sometimes bake in localhost:8000 — ignore that on the live site.
+      if (pointsToLocalhost && !onLocalDev) {
+        return "";
+      }
+      return configured;
+    }
+    return "";
   }
-  return typeof window !== "undefined" ? "" : "http://localhost:8000";
+
+  if (configured && configured !== "") {
+    return configured;
+  }
+  return "http://localhost:8000";
 }
 
 const API_BASE = getApiBase();
