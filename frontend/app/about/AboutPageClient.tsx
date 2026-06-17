@@ -8,7 +8,6 @@ import { getStats } from "@/lib/api";
 type TeamMember = {
   name: string;
   role: string;
-  bio: string;
   initials: string;
   linkedIn?: string;
 };
@@ -17,19 +16,16 @@ const TEAM: TeamMember[] = [
   {
     name: "Nour Shreif",
     role: "Founder",
-    bio: "Built Vertex from scratch to make hiring simpler, faster, and fairer for everyone.",
     initials: "NS",
   },
   {
     name: "Rayan Tleis",
     role: "Founder",
-    bio: "Built Vertex from scratch to make hiring simpler, faster, and fairer for everyone.",
     initials: "RT",
   },
   {
     name: "Rima Msheik",
     role: "Founder",
-    bio: "Built Vertex from scratch to make hiring simpler, faster, and fairer for everyone.",
     initials: "RM",
   },
 ];
@@ -158,7 +154,6 @@ export default function AboutPageClient() {
                 <p className="mt-1 bg-gradient-to-r from-cyan-300 to-purple-400 bg-clip-text text-sm text-transparent">
                   {member.role}
                 </p>
-                <p className="mt-2 text-sm leading-relaxed text-slate-300">{member.bio}</p>
                 {member.linkedIn && (
                   <a
                     href={member.linkedIn}
