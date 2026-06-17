@@ -582,14 +582,6 @@ def init_database():
                 searched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
-        cur.execute("""
-            ALTER TABLE company_searches
-            ADD COLUMN IF NOT EXISTS user_id INTEGER
-                REFERENCES users(id) ON DELETE CASCADE,
-            ADD COLUMN IF NOT EXISTS results_count INTEGER
-                DEFAULT 0;
-        """)
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_company_searches_user ON company_searches(user_id);")
 
         # ── CV uploads (job matcher: store uploaded CVs) ──────────────────────
         cur.execute("""
@@ -690,6 +682,15 @@ def init_database():
             ALTER TABLE users
             ADD COLUMN IF NOT EXISTS plan VARCHAR(50) DEFAULT 'free';
         """)
+
+        cur.execute("""
+            ALTER TABLE company_searches
+            ADD COLUMN IF NOT EXISTS user_id INTEGER
+                REFERENCES users(id) ON DELETE CASCADE,
+            ADD COLUMN IF NOT EXISTS results_count INTEGER
+                DEFAULT 0;
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_company_searches_user ON company_searches(user_id);")
 
         # ── Subscriptions (Stripe) ─────────────────────────────────────────
         cur.execute("""

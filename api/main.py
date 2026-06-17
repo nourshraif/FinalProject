@@ -264,6 +264,7 @@ scheduler = create_scheduler()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.database.db import (
+        init_database,
         ensure_admin_platform_tables,
         ensure_vertex_application_tables,
         ensure_notification_application_types,
@@ -274,6 +275,8 @@ async def lifespan(app: FastAPI):
         ensure_subscription_cancel_at_period_end,
     )
 
+    init_database()
+    print("Core database tables ready")
     ensure_admin_platform_tables()
     ensure_vertex_application_tables()
     ensure_notification_application_types()
