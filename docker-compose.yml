@@ -46,8 +46,7 @@ services:
       TRANSFORMERS_OFFLINE: "1"
     volumes:
       - uploads-data:/app/uploads
-      # Share host HuggingFace cache so the embedding model does not re-download in Docker
-      - ${USERPROFILE}/.cache/huggingface:/root/.cache/huggingface
+      - huggingface-cache:/root/.cache/huggingface
     depends_on:
       postgres:
         condition: service_healthy
@@ -81,6 +80,7 @@ services:
 volumes:
   postgres-data:
   uploads-data:
+  huggingface-cache:
 
 networks:
   vertex-net:
