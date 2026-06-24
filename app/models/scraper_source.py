@@ -28,8 +28,8 @@ DEFAULT_SCRAPER_SOURCES: List[Dict] = [
         "source_name": "Remotive",
         "source_key": "remotive",
         "base_url": "https://remotive.com",
-        "scraper_type": "html",
-        "api_endpoint": None,
+        "scraper_type": "api",
+        "api_endpoint": "https://remotive.com/api/remote-jobs",
     },
     {
         "source_name": "Arbeitnow",
