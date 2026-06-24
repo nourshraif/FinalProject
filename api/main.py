@@ -196,18 +196,10 @@ security_optional = HTTPBearer(auto_error=False)
 # Google OAuth
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
-GOOGLE_REDIRECT_URI = os.getenv(
-    "GOOGLE_REDIRECT_URI",
-    "http://localhost:8000/api/auth/google/callback",
-)
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
-
-# Stripe (test mode)
-stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
-STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
-STRIPE_PRO_PRICE_ID = os.getenv("STRIPE_PRO_PRICE_ID", "")
-STRIPE_BUSINESS_PRICE_ID = os.getenv("STRIPE_BUSINESS_PRICE_ID", "")
-APP_URL = os.getenv("APP_URL", "http://localhost:3000")
+APP_URL = (os.getenv("APP_URL") or "http://localhost:3000").rstrip("/")
+FRONTEND_URL = (os.getenv("FRONTEND_URL") or APP_URL).rstrip("/")
+_default_redirect = f"{APP_URL}/api/auth/google/callback"
+GOOGLE_REDIRECT_URI = (os.getenv("GOOGLE_REDIRECT_URI") or _default_redirect).rstrip("/")
 
 
 def _coerce_period_end(value) -> Optional[datetime]:
@@ -308,6 +300,10 @@ async def lifespan(app: FastAPI):
 
     scheduler.start()
     print("Job alerts scheduler started")
+    if GOOGLE_CLIENT_ID:
+        print(f"Google OAuth redirect URI: {GOOGLE_REDIRECT_URI}")
+    else:
+        print("Google OAuth: not configured (GOOGLE_CLIENT_ID missing)")
     sh = os.getenv("SCRAPER_CRON_HOUR", "2")
     sm = os.getenv("SCRAPER_CRON_MINUTE", "0")
     stz = os.getenv("SCHEDULER_TIMEZONE", "Asia/Beirut")

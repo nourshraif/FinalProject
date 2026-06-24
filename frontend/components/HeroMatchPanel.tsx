@@ -12,12 +12,16 @@ type HeroMatchPanelProps = {
 
 function RolesStatBar({ count }: { count: string }) {
   return (
-    <div className="group relative">
+    <Link
+      href="/search"
+      className="group relative block cursor-pointer rounded-[1.75rem] outline-none transition-transform duration-300 hover:scale-[1.01] focus-visible:ring-2 focus-visible:ring-v-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-v-background"
+      aria-label={`Browse ${count} jobs`}
+    >
       <div
         className="absolute -inset-px rounded-[1.75rem] bg-gradient-to-r from-v-primary/50 via-indigo-400/30 to-v-tertiary/40 opacity-70 blur-[1px] transition-opacity duration-500 group-hover:opacity-100"
         aria-hidden
       />
-      <div className="relative overflow-hidden rounded-[1.75rem] border border-white/[0.08] bg-gradient-to-br from-indigo-950/90 via-[#0e182c]/95 to-v-surfaceContainerLowest/40 px-6 py-5 shadow-[0_12px_40px_rgba(99,102,241,0.15)] backdrop-blur-xl sm:px-8 sm:py-6">
+      <div className="relative overflow-hidden rounded-[1.75rem] border border-white/[0.08] bg-gradient-to-br from-indigo-950/90 via-[#0e182c]/95 to-v-surfaceContainerLowest/40 px-6 py-5 shadow-[0_12px_40px_rgba(99,102,241,0.15)] backdrop-blur-xl transition-shadow duration-300 group-hover:shadow-[0_16px_48px_rgba(99,102,241,0.25)] sm:px-8 sm:py-6">
         <div
           className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-v-primary/80 to-transparent"
           aria-hidden
@@ -45,7 +49,7 @@ function RolesStatBar({ count }: { count: string }) {
           </div>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }
 

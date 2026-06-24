@@ -968,7 +968,7 @@ export async function getGoogleAuthUrl(
   userType: string = "jobseeker"
 ): Promise<string> {
   const res = await fetch(
-    `${API_BASE}/api/auth/google?user_type=${encodeURIComponent(userType)}`
+    `${getApiBase()}/api/auth/google?user_type=${encodeURIComponent(userType)}`
   );
   const data = await handleResponse<{ url: string }>(res);
   return data.url;
