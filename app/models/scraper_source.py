@@ -28,8 +28,8 @@ DEFAULT_SCRAPER_SOURCES: List[Dict] = [
         "source_name": "RemoteOK",
         "source_key": "remoteok",
         "base_url": "https://remoteok.com",
-        "scraper_type": "html",
-        "api_endpoint": None,
+        "scraper_type": "api",
+        "api_endpoint": "https://remoteok.com/api",
     },
     {
         "source_name": "Remotive",
@@ -49,8 +49,8 @@ DEFAULT_SCRAPER_SOURCES: List[Dict] = [
         "source_name": "Himalayas",
         "source_key": "himalayas",
         "base_url": "https://himalayas.app",
-        "scraper_type": "html",
-        "api_endpoint": None,
+        "scraper_type": "api",
+        "api_endpoint": "https://himalayas.app/jobs/api",
     },
     {
         "source_name": "Bayt",
