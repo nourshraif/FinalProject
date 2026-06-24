@@ -4171,23 +4171,42 @@ def search_jobs_with_company_priority(
         
 
 def get_job_sources() -> list:
-    """Return distinct active job sources, ordered."""
+    """Return job board names for filters: active configured boards plus any stored sources."""
+    try:
+        from app.models.scraper_source import init_scraper_sources_table
+
+        init_scraper_sources_table()
+    except Exception:
+        pass
+
     conn = get_connection()
     cur = conn.cursor()
     try:
         cur.execute(
             """
-            SELECT source
+            SELECT name
             FROM (
-                SELECT DISTINCT ON (LOWER(TRIM(source)))
-                    TRIM(source) AS source
-                FROM jobs
-                WHERE is_active = TRUE
-                  AND source IS NOT NULL
-                  AND TRIM(source) != ''
-                ORDER BY LOWER(TRIM(source)), id DESC
+                SELECT DISTINCT ON (LOWER(TRIM(name)))
+                    TRIM(name) AS name
+                FROM (
+                    SELECT TRIM(source_name) AS name
+                    FROM scraper_sources
+                    WHERE is_active = TRUE
+                      AND source_name IS NOT NULL
+                      AND TRIM(source_name) != ''
+
+                    UNION
+
+                    SELECT TRIM(source) AS name
+                    FROM jobs
+                    WHERE is_active = TRUE
+                      AND source IS NOT NULL
+                      AND TRIM(source) != ''
+                ) combined
+                WHERE LOWER(TRIM(name)) != 'company_posted'
+                ORDER BY LOWER(TRIM(name)), name DESC
             ) s
-            ORDER BY source
+            ORDER BY name
             """
         )
         return [r[0] for r in cur.fetchall()]

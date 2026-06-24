@@ -78,7 +78,7 @@ export default function FindJobsPage() {
       .then((res) => {
         const boardJobs = (res.jobs || []).filter((job) => job.source !== VERTEX_SOURCE);
         setJobs(boardJobs);
-        setTotal(boardJobs.length);
+        setTotal(res.total ?? boardJobs.length);
         setPage(res.page);
         setTotalPages(res.total_pages);
       })
@@ -197,7 +197,10 @@ export default function FindJobsPage() {
                 <select
                   className="vertex-input w-full rounded-lg px-3 py-2 text-white"
                   value={sourceFilter}
-                  onChange={(e) => setSourceFilter(e.target.value)}
+                  onChange={(e) => {
+                    setSourceFilter(e.target.value);
+                    setPage(1);
+                  }}
                 >
                   <option value="">All</option>
                   {sources.map((s) => (
