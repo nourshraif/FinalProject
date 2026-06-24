@@ -137,7 +137,6 @@ const LOCATION_OPTIONS = [
 const SOURCE_OPTIONS = [
   { value: "", label: "All Sources" },
   { value: "hirelebanese", label: "HireLebanese" },
-  { value: "bayt", label: "Bayt" },
   { value: "weworkremotely", label: "WeWorkRemotely" },
   { value: "remoteok", label: "RemoteOK" },
   { value: "remotive", label: "Remotive" },

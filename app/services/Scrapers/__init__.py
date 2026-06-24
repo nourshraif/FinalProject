@@ -6,7 +6,6 @@ from .base_scraper import BaseScraper
 
 # Tier 1: High-volume, high-quality, reliable sources
 from .weworkremotely import WeWorkRemotelyScraper
-from .indeed import IndeedScraper
 from .linkedin import LinkedInScraper
 from .remoteok import RemoteOkScraper
 
@@ -14,9 +13,6 @@ from .remoteok import RemoteOkScraper
 from .remotive import RemotiveScraper
 from .arbeitnow import ArbeitnowScraper
 from .himalayas import HimalayasScraper
-
-# Tier 3: Regional/Specialized markets
-from .bayt import BaytScraper
 
 
 def get_all_scrapers():
@@ -32,7 +28,6 @@ def get_all_scrapers():
     return [
         # Tier 1: Major job aggregators and popular remote boards
         WeWorkRemotelyScraper(),  # Very popular, high-quality remote jobs
-        IndeedScraper(),           # Largest global job aggregator
         LinkedInScraper(),        # Professional network, high-quality jobs
         RemoteOkScraper(),        # Popular remote job board
         
@@ -40,9 +35,6 @@ def get_all_scrapers():
         RemotiveScraper(),         # Good remote job board
         ArbeitnowScraper(),        # API-based, European focus, reliable
         HimalayasScraper(),        # Modern, clean remote job board
-        
-        # Tier 3: Regional/Specialized
-        BaytScraper(),            # Middle East market leader
     ]
 
 
@@ -57,13 +49,10 @@ __all__ = [
     'get_scraper_names',
     # Tier 1
     'WeWorkRemotelyScraper',
-    'IndeedScraper',
     'LinkedInScraper',
     'RemoteOkScraper',
     # Tier 2
     'RemotiveScraper',
     'ArbeitnowScraper',
     'HimalayasScraper',
-    # Tier 3
-    'BaytScraper',
 ]

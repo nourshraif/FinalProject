@@ -2,9 +2,7 @@ import re
 from urllib.parse import urlparse
 from app.database.db import get_connection
 from app.services.Scrapers.arbeitnow import ArbeitnowScraper
-from app.services.Scrapers.bayt import BaytScraper
 from app.services.Scrapers.himalayas import HimalayasScraper
-from app.services.Scrapers.indeed import IndeedScraper
 from app.services.Scrapers.linkedin import LinkedInScraper
 from app.services.Scrapers.remoteok import RemoteOkScraper
 from app.services.Scrapers.remotive import RemotiveScraper
@@ -27,8 +25,6 @@ SCRAPER_MAP = {
     "remoteok": RemoteOkScraper,
     "arbeitnow": ArbeitnowScraper,
     "himalayas": HimalayasScraper,
-    "bayt": BaytScraper,
-    "indeed": IndeedScraper,
     "justremote": JustRemoteScraper,
     "nodesk": NoDeskScraper,
     "pangian": PangianScraper,
@@ -46,8 +42,6 @@ SCRAPER_MAP = {
     "careers_and_jobs_in_lebanon": scrape_careersandjobsinlebanon,
     "careersandjobs": scrape_careersandjobsinlebanon,
     "careers_and_jobs": scrape_careersandjobsinlebanon,
-    "indeed_com": IndeedScraper,
-    "bayt_com": BaytScraper,
     "linkedin_com": LinkedInScraper,
     "remoteok_com": RemoteOkScraper,
     "remotive_com": RemotiveScraper,

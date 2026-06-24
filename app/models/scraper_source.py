@@ -11,13 +11,6 @@ DEFAULT_SCRAPER_SOURCES: List[Dict] = [
         "api_endpoint": None,
     },
     {
-        "source_name": "Indeed",
-        "source_key": "indeed",
-        "base_url": "https://www.indeed.com",
-        "scraper_type": "html",
-        "api_endpoint": None,
-    },
-    {
         "source_name": "LinkedIn",
         "source_key": "linkedin",
         "base_url": "https://www.linkedin.com/jobs",
@@ -53,13 +46,6 @@ DEFAULT_SCRAPER_SOURCES: List[Dict] = [
         "api_endpoint": "https://himalayas.app/jobs/api",
     },
     {
-        "source_name": "Bayt",
-        "source_key": "bayt",
-        "base_url": "https://www.bayt.com",
-        "scraper_type": "html",
-        "api_endpoint": None,
-    },
-    {
         "source_name": "HireLebanese",
         "source_key": "hirelebanese",
         "base_url": "https://www.hirelebanese.com",
@@ -74,6 +60,9 @@ DEFAULT_SCRAPER_SOURCES: List[Dict] = [
         "api_endpoint": None,
     },
 ]
+
+# Removed from nightly ingest; existing DB rows are deactivated on seed.
+RETIRED_SCRAPER_SOURCE_KEYS = ("indeed", "bayt")
 
 
 # -----------------------------
@@ -128,6 +117,17 @@ def seed_default_scraper_sources() -> int:
                 ),
             )
             inserted += cur.rowcount
+
+        if RETIRED_SCRAPER_SOURCE_KEYS:
+            cur.execute(
+                """
+                UPDATE scraper_sources
+                SET is_active = FALSE
+                WHERE source_key = ANY(%s);
+                """,
+                (list(RETIRED_SCRAPER_SOURCE_KEYS),),
+            )
+
         conn.commit()
         return inserted
     finally:
