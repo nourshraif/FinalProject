@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getApiBase } from "@/lib/api";
+import { timeAgoShort } from "@/lib/datetime";
 
 interface Notification {
   id: number;
@@ -169,22 +170,6 @@ export default function NotificationBell({
     return icons[type] || "🔔";
   }
 
-  function getTimeAgo(dateStr: string) {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-
-    if (minutes < 1) return "Just now";
-    if (minutes < 60) return `${minutes}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    return `${days}d ago`;
-  }
-
-  if (!isLoggedIn) return null;
-
   return (
     <div className="relative" ref={panelRef}>
       <button
@@ -337,7 +322,7 @@ export default function NotificationBell({
                       {notification.message}
                     </p>
                     <p className="mt-1 text-xs text-slate-600">
-                      {getTimeAgo(notification.created_at)}
+                      {timeAgoShort(notification.created_at)}
                     </p>
                   </div>
                   {!notification.is_read && (

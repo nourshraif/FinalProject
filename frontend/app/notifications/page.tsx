@@ -12,25 +12,9 @@ import {
   markNotificationRead,
 } from "@/lib/api";
 import type { Notification } from "@/types";
+import { timeAgoShort } from "@/lib/datetime";
 
 type Filter = "all" | "unread" | "jobs" | "requests" | "alerts";
-
-function relativeTime(iso: string): string {
-  try {
-    const d = new Date(iso);
-    const diffMs = Date.now() - d.getTime();
-    const mins = Math.floor(diffMs / (60 * 1000));
-    if (mins < 1) return "Just now";
-    if (mins < 60) return `${mins}m ago`;
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    if (days === 1) return "Yesterday";
-    return `${days}d ago`;
-  } catch {
-    return iso;
-  }
-}
 
 function isJobType(type: Notification["type"]) {
   return (
@@ -235,7 +219,7 @@ function NotificationsPageContent() {
                           unread ? "text-v-primary" : "text-v-onSurfaceVariant"
                         }`}
                       >
-                        {relativeTime(item.created_at)}
+                        {timeAgoShort(item.created_at)}
                       </span>
                     </div>
                     <p

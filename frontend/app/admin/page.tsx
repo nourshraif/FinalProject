@@ -32,6 +32,7 @@ import { AdminEmailsSection } from "@/components/admin/AdminEmailsSection";
 import { AdminSettingsSection } from "@/components/admin/AdminSettingsSection";
 import { AdminAnalyticsSection } from "@/components/admin/AdminAnalyticsSection";
 import { AdminSourcesSection } from "@/components/admin/AdminSourcesSection";
+import { timeAgo } from "@/lib/datetime";
 
 type AdminTab =
   | "overview"
@@ -56,23 +57,6 @@ const TABS: { id: AdminTab; label: string }[] = [
 
 function isAdminTab(value: string | null): value is AdminTab {
   return value !== null && TABS.some((t) => t.id === value);
-}
-
-function timeAgo(iso: string): string {
-  try {
-    const d = new Date(iso);
-    const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
-    const mins = Math.floor(diffMs / 60000);
-    const hours = Math.floor(mins / 60);
-    const days = Math.floor(hours / 24);
-    if (days > 0) return `${days} day${days === 1 ? "" : "s"} ago`;
-    if (hours > 0) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
-    if (mins < 1) return "Just now";
-    return `${mins} minute${mins === 1 ? "" : "s"} ago`;
-  } catch {
-    return "";
-  }
 }
 
 function AdminPage() {

@@ -20,6 +20,19 @@ if getattr(os, "_db_env_loaded", None) is None:
         pass
 
 
+def _isoformat_utc(value) -> str:
+    """Serialize DB timestamps as UTC ISO-8601 (append Z when naive)."""
+    if value is None:
+        return ""
+    if hasattr(value, "isoformat"):
+        s = value.isoformat()
+        tz = getattr(value, "tzinfo", None)
+        if tz is None and not s.endswith("Z") and "+" not in s[-6:]:
+            return f"{s}Z"
+        return s
+    return str(value)
+
+
 def get_connection():
     """Get database connection."""
     return psycopg2.connect(
@@ -3231,8 +3244,8 @@ def get_recent_activity(limit: int = 10) -> list:
                 "created_at": row[1],
             })
         for a in activities:
-            if a.get("created_at") and hasattr(a["created_at"], "isoformat"):
-                a["created_at"] = a["created_at"].isoformat()
+            if a.get("created_at"):
+                a["created_at"] = _isoformat_utc(a["created_at"])
         activities.sort(key=lambda x: x.get("created_at") or "", reverse=True)
         return activities[:limit]
     finally:
