@@ -1,7 +1,7 @@
 # Vertex — Complete Technical Documentation
 
 > **Scope:** This document describes the **Vertex** codebase as implemented in this repository (FastAPI backend, Next.js 14 frontend, PostgreSQL 16 + pgvector, scrapers, Stripe, Resend, Hugging Face / optional Anthropic).  
-> **Note:** There is **no** `api/vertex_knowledge.py` in this tree. Skills Gap uses **Anthropic Claude Haiku** when `ANTHROPIC_API_KEY` is set, otherwise the **Hugging Face router** (`HF_TOKEN`). The UI is **dark-themed** (`data-theme="dark"`); there is no separate light/dark toggle in `layout.tsx`.
+> **Note:** Skills Gap uses **Anthropic Claude Haiku** when `ANTHROPIC_API_KEY` is set, otherwise the **Hugging Face router** (`HF_TOKEN`). The career **chatbot** answers from a curated knowledge base at **`api/vertex_chat_knowledge.md`** (loaded via `api/chat_knowledge.py`) with a deterministic fallback. The UI is **dark-themed** (`data-theme="dark"`); there is no separate light/dark toggle in `layout.tsx`.
 
 ---
 
@@ -91,7 +91,7 @@ Counts are **data-dependent** (run after scrapers). `init_database()` prints `Cu
 
 ### Lebanon & MENA context (optional narrative)
 
-The codebase includes **Lebanon-oriented scrapers** (`HireLebanese`, `CareersAndJobsInLebanon`) **plus** **Bayt** for broader MENA coverage, alongside **global remote** boards—useful for a thesis emphasizing **regional + international** labor markets. This is **not** a dedicated NGO/ReliefWeb integration unless you add it separately.
+The codebase includes **Lebanon-oriented scrapers** (`HireLebanese`, `CareersAndJobsInLebanon`) alongside **global remote** boards—useful for a thesis emphasizing **regional + international** labor markets. This is **not** a dedicated NGO/ReliefWeb integration unless you add it separately. (Earlier MENA/global boards **Indeed** and **Bayt** were retired from the active pipeline because they block datacenter IPs / require paid scraping APIs — see §10.)
 
 ### Skill assessment challenge
 
@@ -304,6 +304,12 @@ Audit of candidate searches: skills array, `user_id`, `results_count`.
 #### `cv_uploads`
 Stores upload metadata + `extracted_text` snippet + `skills_text` string for history/debug.
 
+#### `scraper_sources`
+Registry of job boards for the nightly scraper: `source_name`, `source_key` (UNIQUE), `base_url`, `scraper_type` (`html`|`api`), `api_endpoint`, `is_active`, `scrape_interval_hours`. Seeded idempotently by `seed_default_scraper_sources()`; drives the homepage job-board count.
+
+#### `archived_jobs`
+Lean archive of scraped jobs removed by the TTL cleanup (metadata only, no description): `id`, `source`, `job_title`, `company`, `location`, `job_url`, `scraped_at`, `created_at`, `archived_at`, `archive_reason` (e.g. `stale_30d`).
+
 ---
 
 ## 7. Authentication System
@@ -371,13 +377,14 @@ Example **data claims** (plus `exp`):
 
 | POST | `/api/upload-cv` | Bearer | PDF extract + skills |
 | POST | `/api/match-jobs` | Bearer | Hybrid match; plan may apply |
+| GET | `/api/match-jobs/last` | Bearer | Last cached match result |
 | POST | `/api/skills-gap/analyze` | Bearer + Pro | Profile skills vs pasted JD |
 | POST | `/api/skills-gap/analyze-job/{job_id}` | Bearer + Pro | Gap vs specific job |
 
 ### Jobs (scraped + posted)
 
-| GET | `/api/jobs/stats` | Public |
-| GET | `/api/jobs/search` | Public | Query params filters |
+| GET | `/api/jobs/stats` | Public | Total jobs + active job-board count |
+| GET | `/api/jobs/search` | Public | Query params filters (source/location/date) |
 | GET | `/api/jobs/sources` | Public |
 | GET | `/api/jobs/locations` | Public |
 | GET | `/api/jobs/posted` | Public |
@@ -499,6 +506,10 @@ When `skills_embedding` present: SQL orders by distance; combines **vector** + *
 - Else → **`_call_hf_for_gap`** via HF router.  
 Response JSON includes `missing_skills` with suggested **resources** (YouTube / Coursera style URLs in template).
 
+### Career chatbot (`api/chat_knowledge.py`)
+
+`POST /api/chat` powers the floating `ChatBot` assistant. It builds a system prompt from a curated knowledge base at **`api/vertex_chat_knowledge.md`** (`load_vertex_knowledge`, cached) so the model answers **only** with real Vertex features, prices, and page links — it is instructed never to invent facts. `normalize_chat_reply_links` rewrites page references into valid in-app links, and `vertex_fallback_reply` returns a deterministic answer (e.g. mapping "job board" → `/find-jobs`) when the model/router is unavailable. Message IDs use a `crypto.randomUUID()`-with-fallback helper so the chat works over plain HTTP too.
+
 ---
 
 ## 10. Job Scraping System
@@ -506,15 +517,31 @@ Response JSON includes `missing_skills` with suggested **resources** (YouTube / 
 ### Orchestration
 
 - **`scripts/scheduled_scraper.py`** → `scrape_jobs()` in `app/services/scraper_service.py`.  
+- **3-phase pipeline:** **INGEST** (fetch from all sources) → **PROCESS** (validate, deduplicate, normalize) → **STORE** (batch upsert + embeddings).  
 - **Class-based scrapers** from `get_all_scrapers()` **plus** `scrape_hirelebanese()` and `scrape_careersandjobsinlebanon()`.
 
-### Class scrapers (9)
+### Active job boards (8)
 
-WeWorkRemotely, Indeed, LinkedIn, RemoteOK, Remotive, Arbeitnow, Himalayas, Bayt (+ base).
+| # | Board | Type | Source |
+|---|-------|------|--------|
+| 1 | **WeWorkRemotely** | HTML | `weworkremotely.py` |
+| 2 | **LinkedIn** | HTML | `linkedin.py` |
+| 3 | **RemoteOK** | **API** (JSON) | `remoteok.py` → `remoteok.com/api` |
+| 4 | **Remotive** | **API** (JSON) | `remotive.py` → `remotive.com/api/remote-jobs` |
+| 5 | **Arbeitnow** | **API** (JSON) | `arbeitnow.py` → `arbeitnow.com/api/job-board-api` |
+| 6 | **Himalayas** | **API** (JSON) | `himalayas.py` → `himalayas.app/jobs/api` |
+| 7 | **HireLebanese** | HTML | `hirelebanese_scraper.py` |
+| 8 | **CareersAndJobsInLebanon** | HTML | `careersandjobsinlebanon_scraper.py` |
 
-### Lebanon modules (2)
+**API-first strategy:** RemoteOK, Remotive, Arbeitnow, and Himalayas use each site's **official public JSON API**. This replaced brittle HTML parsing that returned 0 jobs from datacenter IPs and produced malformed titles. HTML scrapers (`requests` + BeautifulSoup) remain for boards without a usable API.
 
-HireLebanese, CareersAndJobsInLebanon — invoked from `ScraperService.scrape_web_sources`.
+### Retired boards
+
+**Indeed** and **Bayt** were removed from the active pipeline: Indeed shut down its public API and blocks datacenter scraping; Bayt has no public API and blocks/filters VPS IPs. Their scraper classes still exist in the repo but are **not** wired into `get_all_scrapers()`. On seed, `RETIRED_SCRAPER_SOURCE_KEYS = ("indeed", "bayt")` sets any existing rows to `is_active = FALSE`.
+
+### Source registry (`scraper_sources` table)
+
+`app/models/scraper_source.py` defines `DEFAULT_SCRAPER_SOURCES` and `seed_default_scraper_sources()` (idempotent, run on startup/deploy). Each row has `source_name`, `source_key`, `base_url`, `scraper_type` (`html`|`api`), `api_endpoint`, `is_active`, `scrape_interval_hours`. `count_scraper_sources(active_only=True)` powers the **job-board count** shown on the homepage and `/api/jobs/stats`.
 
 ### Persistence & dedup
 
@@ -528,11 +555,17 @@ ON CONFLICT (job_url) DO UPDATE SET
 RETURNING id;
 ```
 
-Admin **`remove_duplicate_jobs`** deletes older duplicate URLs.
+- `job_url` is the **dedup key** for upsert (re-seen jobs refresh `scraped_at`).  
+- Admin **`remove_duplicate_jobs`** deletes older duplicate URLs.  
+- **TTL lifecycle** (`remove_inactive_or_expired_jobs`, nightly): scraped jobs not re-seen in **30 days** are marked inactive, then archived to `archived_jobs` and hard-deleted if no user saved them; expired company `posted_jobs` are soft- or hard-deleted based on active applications.
 
 ### Embeddings after save
 
 `generate_and_save_embedding(...)` runs per upserted job (failures logged, job still kept).
+
+### Running a single board
+
+There is no `--source` CLI flag; to run one board, instantiate its scraper and pass results through `ScraperService.phase2_process_jobs` / `phase3_store_jobs` (see `RemotiveScraper` example in the ops notes).
 
 ---
 
@@ -578,30 +611,46 @@ Admin **`remove_duplicate_jobs`** deletes older duplicate URLs.
 
 *(Each feature: user story → API + DB + UI — abbreviated for length; all map to sections above.)*
 
-1. **Registration** — `users` + optional `company_profiles`; welcome email; JWT.  
-2. **CV upload & skills** — `/api/profile/upload-cv`, `user_profiles`, HF + fallback.  
-3. **AI job matching** — `/api/match-jobs`, `job_embeddings`, hybrid scoring.  
-4. **Job search** — `/api/jobs/search`, `/find-jobs`, `/search`.  
-5. **Application tracker** — `job_applications`, `/tracker`.  
+**Job seeker**
+
+1. **Registration & login** — `users` + optional `company_profiles`; welcome email; JWT. Google OAuth supported.  
+2. **CV upload & skill extraction** — `/api/profile/upload-cv`, `user_profiles`, `pypdf` text extract, HF + regex fallback merge; upload metadata in `cv_uploads`.  
+3. **AI job matching** — `/api/match-jobs`, `job_embeddings`, hybrid (vector 0.7 / keyword 0.3) scoring; last result cached (`/api/match-jobs/last`).  
+4. **Job search & filters** — `/api/jobs/search`; `/find-jobs` (external boards), `/search` (all jobs), `/jobs` (Vertex postings). Filters by **job board**, location, date posted; result count reflects the API total.  
+5. **Application tracker** — `job_applications`, `/tracker` (status + notes).  
 6. **Saved jobs** — `saved_jobs`, `/saved`.  
-7. **Profile** — `/profile`, skills editor.  
-8. **Skills gap** — `/skills-gap`, analyze endpoints.  
-9. **Company registration** — same auth with `user_type=company`.  
-10. **Company profile** — `/company/profile`.  
-11. **Candidate search** — `/company/search`, embeddings.  
-12. **Contact requests** — `contact_requests` + emails + notifications.  
-13. **Saved candidates** — `saved_candidates`.  
-14. **Posted jobs** — `posted_jobs` CRUD.  
-15. **Search history** — `company_searches`.  
-16. **Job alerts** — `job_alert_settings`, scheduler + Resend.  
-17. **Notifications** — table + polling UI.  
-18. **Analytics** — `/analytics`, Recharts.  
-19. **Admin** — stats, users, scraper, cleanup.  
-20. **Subscriptions** — Stripe checkout + webhook + `subscriptions`.  
-21. **Password reset** — tokens + Resend.  
-22. **Theming** — **Dark** root theme (`data-theme="dark"`).  
-23. **Chatbot** — `/api/chat`.  
-24. **Public profile** — slug + `is_public`.
+7. **Profile & visibility** — `/profile`, skills editor, public toggle + slug.  
+8. **Skills gap analysis** — `/skills-gap`, analyze-vs-JD and analyze-vs-job endpoints (Pro).  
+9. **Job alerts** — `job_alert_settings`, APScheduler + Resend, `sent_job_alerts` dedupe (Pro).  
+10. **Analytics** — `/analytics`, Recharts (plan-gated).  
+11. **Public profile** — `/u/[slug]`, gated by `is_public`.
+
+**Company**
+
+12. **Company registration & profile** — `user_type=company`, `/company/profile` (`company_profiles`).  
+13. **Candidate search** — `/company/search`, embeddings + keyword blend (Business).  
+14. **Saved candidates** — `saved_candidates` with notes.  
+15. **Contact requests** — `contact_requests` + emails + notifications, privacy-aware email reveal.  
+16. **Posted jobs** — `posted_jobs` CRUD + active toggle; appear in search alongside scraped jobs.  
+17. **Search history** — `company_searches` (Business).  
+18. **Company analytics** — `/api/analytics/company` (Business).
+
+**Platform / shared**
+
+19. **Homepage job-count stat** — live count from `/api/jobs/stats`; the stat bar links to `/search`.  
+20. **Career chatbot** — `/api/chat`, knowledge-base grounded (`vertex_chat_knowledge.md`) with fallback.  
+21. **Notifications** — `notifications` table + 30s polling UI (bell + dropdown).  
+22. **Subscriptions & billing** — Stripe checkout + webhook + `subscriptions`; `PlanGate` (UI) and `require_plan` (API).  
+23. **Password reset** — `password_reset_tokens` + Resend.  
+24. **Public "Contact us"** — `/api/contact`, `contact_messages` + threaded replies.  
+25. **Theming** — dark root theme (`data-theme="dark"`).
+
+**Admin & operations**
+
+26. **Admin console** — `/admin`: stats, user list/toggle-active/make-admin, activity feed.  
+27. **Scraper operations** — run scraper, last-run status, cleanup duplicates/inactive jobs.  
+28. **Job-board registry** — 8 active boards (4 API, 4 HTML) seeded into `scraper_sources`; Indeed/Bayt retired; nightly TTL cleanup + archival.  
+29. **Contact-message moderation** — admin review/status/reply on `contact_messages`.
 
 ---
 
