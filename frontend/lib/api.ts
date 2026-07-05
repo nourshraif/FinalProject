@@ -59,18 +59,7 @@ const API_BASE = getApiBase();
 
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    if (res.status === 401) {
-      try {
-        localStorage.removeItem("vertex_token");
-        localStorage.removeItem("vertex_user");
-      } catch {
-        // ignore
-      }
-      if (typeof window !== "undefined") {
-        window.location.href = "/auth/login";
-      }
-      throw new Error("Session expired. Please log in again.");
-    }
+    // Read the body first so we can use the backend's error message everywhere.
     const text = await res.text();
     let message = text;
     try {
@@ -82,8 +71,31 @@ async function handleResponse<T>(res: Response): Promise<T> {
         message = String((d as { message: string }).message);
       }
     } catch {
-      // use text as-is
+      // use raw text as-is
     }
+
+    if (res.status === 401) {
+      // Only treat as "session expired" when the user is NOT on an auth page.
+      // On auth pages (login, register, forgot-password) a 401 means wrong
+      // credentials — show the backend message instead of redirecting.
+      const onAuthPage =
+        typeof window !== "undefined" &&
+        /^\/(auth|login|register)/i.test(window.location.pathname);
+
+      if (!onAuthPage) {
+        try {
+          localStorage.removeItem("vertex_token");
+          localStorage.removeItem("vertex_user");
+        } catch {
+          // ignore quota / private mode
+        }
+        if (typeof window !== "undefined") {
+          window.location.href = "/auth/login";
+        }
+        throw new Error("Session expired. Please log in again.");
+      }
+    }
+
     throw new Error(message || `Request failed: ${res.status}`);
   }
   return res.json() as Promise<T>;
