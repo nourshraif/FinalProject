@@ -43,6 +43,7 @@ import bcrypt
 #from fastapi import FastAPI
 
 from app.routes.admin_scrapers import router as scraper_router
+from app.services.dynamic_scraper_loader import run_scraper_by_key
 from api.chat_knowledge import (
     build_chat_system_prompt,
     normalize_chat_reply_links,
@@ -1634,6 +1635,15 @@ def admin_activity(
 ):
     clamped = max(5, min(limit, 10))
     return db_get_recent_activity(limit=clamped)
+
+
+@app.post("/api/admin/scrapers/test/{source_key}")
+def admin_test_scraper_source(
+    source_key: str,
+    admin_user: dict = Depends(get_admin_user),
+):
+    """Dry-run a single job board scraper and return job count (does not save to DB)."""
+    return run_scraper_by_key(source_key)
 
 
 @app.post("/api/admin/scraper/run")

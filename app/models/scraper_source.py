@@ -64,6 +64,9 @@ DEFAULT_SCRAPER_SOURCES: List[Dict] = [
 # Removed from nightly ingest; existing DB rows are deactivated on seed.
 RETIRED_SCRAPER_SOURCE_KEYS = ("indeed", "bayt")
 
+# Dropped entirely (no scraper); DB rows deleted on seed.
+REMOVED_SCRAPER_SOURCE_KEYS = ("findaphd", "naturecareers")
+
 
 # -----------------------------
 # CREATE TABLE (run once or at startup)
@@ -126,6 +129,15 @@ def seed_default_scraper_sources() -> int:
                 WHERE source_key = ANY(%s);
                 """,
                 (list(RETIRED_SCRAPER_SOURCE_KEYS),),
+            )
+
+        if REMOVED_SCRAPER_SOURCE_KEYS:
+            cur.execute(
+                """
+                DELETE FROM scraper_sources
+                WHERE source_key = ANY(%s);
+                """,
+                (list(REMOVED_SCRAPER_SOURCE_KEYS),),
             )
 
         conn.commit()

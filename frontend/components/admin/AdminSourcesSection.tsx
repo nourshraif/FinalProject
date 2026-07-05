@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { Loader2, Pencil, Play, Plus, Trash2 } from "lucide-react";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import {
   adminCreateScraperSource,
   adminDeleteScraperSource,
   adminGetScraperSources,
+  adminTestScraperSource,
   adminUpdateScraperSource,
   type ScraperSource,
   type ScraperSourceInput,
@@ -36,6 +37,7 @@ export function AdminSourcesSection({ token, showToast }: Props) {
   const [form, setForm] = useState<ScraperSourceInput>(EMPTY_FORM);
   const [deleteTarget, setDeleteTarget] = useState<ScraperSource | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [testingKey, setTestingKey] = useState<string | null>(null);
 
   const loadSources = useCallback(() => {
     if (!token) return;
@@ -107,6 +109,30 @@ export function AdminSourcesSection({ token, showToast }: Props) {
     }
   }
 
+  async function testSource(source: ScraperSource) {
+    if (!token) return;
+    setTestingKey(source.source_key);
+    try {
+      const result = await adminTestScraperSource(token, source.source_key);
+      if (result.ok) {
+        const title = result.sample?.title?.slice(0, 40) ?? "—";
+        showToast(
+          `${source.source_name}: ${result.job_count} jobs found (e.g. "${title}")`,
+          "success"
+        );
+      } else {
+        showToast(
+          result.error || `${source.source_name}: 0 jobs`,
+          "error"
+        );
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Test failed", "error");
+    } finally {
+      setTestingKey(null);
+    }
+  }
+
   return (
     <>
       <div className="glass-card rounded-xl p-6">
@@ -174,6 +200,19 @@ export function AdminSourcesSection({ token, showToast }: Props) {
                     </td>
                     <td className="py-3">
                       <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => testSource(s)}
+                          disabled={testingKey === s.source_key}
+                          className="inline-flex items-center gap-1 text-emerald-400 hover:text-emerald-300 disabled:opacity-50"
+                        >
+                          {testingKey === s.source_key ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Play className="h-3.5 w-3.5" />
+                          )}
+                          Test
+                        </button>
                         <button
                           type="button"
                           onClick={() => openEdit(s)}

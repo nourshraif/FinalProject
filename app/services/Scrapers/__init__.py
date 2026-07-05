@@ -13,6 +13,10 @@ from .remoteok import RemoteOkScraper
 from .remotive import RemotiveScraper
 from .arbeitnow import ArbeitnowScraper
 from .himalayas import HimalayasScraper
+from .academicpositions import AcademicPositionsScraper
+from .biospace import BioSpaceScraper
+from .euraxess import EuraxessScraper
+from .jobrxiv import JobRxivScraper
 
 
 def get_all_scrapers():
@@ -35,6 +39,12 @@ def get_all_scrapers():
         RemotiveScraper(),         # Good remote job board
         ArbeitnowScraper(),        # API-based, European focus, reliable
         HimalayasScraper(),        # Modern, clean remote job board
+
+        # Tier 3: Academic / science job boards
+        JobRxivScraper(),
+        EuraxessScraper(),
+        BioSpaceScraper(),
+        AcademicPositionsScraper(),
     ]
 
 
@@ -55,4 +65,8 @@ __all__ = [
     'RemotiveScraper',
     'ArbeitnowScraper',
     'HimalayasScraper',
+    'AcademicPositionsScraper',
+    'BioSpaceScraper',
+    'EuraxessScraper',
+    'JobRxivScraper',
 ]

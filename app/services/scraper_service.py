@@ -34,6 +34,10 @@ def normalize_source(source: str) -> str:
         "careers_and_jobs": "CareersAndJobsInLebanon",
         "careersandjobsinlebanon": "CareersAndJobsInLebanon",
         "careers_and_jobs_in_lebanon": "CareersAndJobsInLebanon",
+        "academicpositions": "AcademicPositions",
+        "biospace": "BioSpace",
+        "euraxess": "EURAXESS",
+        "jobrxiv": "jobRxiv",
     }
     src = str(source or "").strip()
     return mapping.get(src.lower(), src)

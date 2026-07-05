@@ -873,6 +873,28 @@ export async function adminDeleteScraperSource(
   return handleResponse<{ message: string }>(res);
 }
 
+export type ScraperTestResult = {
+  source_key: string;
+  ok: boolean;
+  job_count: number;
+  error: string | null;
+  sample: { title?: string; company?: string; url?: string } | null;
+};
+
+export async function adminTestScraperSource(
+  token: string,
+  sourceKey: string
+): Promise<ScraperTestResult> {
+  const res = await fetch(
+    `${API_BASE}/api/admin/scrapers/test/${encodeURIComponent(sourceKey)}`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+  return handleResponse<ScraperTestResult>(res);
+}
+
 
 // ---------------------------------------------------------------------------
 // Company Portal

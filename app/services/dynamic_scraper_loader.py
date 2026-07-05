@@ -15,6 +15,10 @@ from app.services.Scrapers.remoteco import RemoteCoScraper
 from app.services.Scrapers.remoter import RemotersScraper
 from app.services.Scrapers.wellfound import WellfoundScraper
 from app.services.Scrapers.workingnomads import WorkingNomadsScraper
+from app.services.Scrapers.academicpositions import AcademicPositionsScraper
+from app.services.Scrapers.biospace import BioSpaceScraper
+from app.services.Scrapers.euraxess import EuraxessScraper
+from app.services.Scrapers.jobrxiv import JobRxivScraper
 from app.services.Scrapers.hirelebanese_scraper import scrape_hirelebanese
 from app.services.Scrapers.careersandjobsinlebanon_scraper import scrape_careersandjobsinlebanon
 
@@ -33,6 +37,10 @@ SCRAPER_MAP = {
     "remoters": RemotersScraper,
     "wellfound": WellfoundScraper,
     "workingnomads": WorkingNomadsScraper,
+    "academicpositions": AcademicPositionsScraper,
+    "biospace": BioSpaceScraper,
+    "euraxess": EuraxessScraper,
+    "jobrxiv": JobRxivScraper,
     "hirelebanese": scrape_hirelebanese,
     "careersandjobsinlebanon": scrape_careersandjobsinlebanon,
     # alias keys
@@ -73,6 +81,47 @@ def extract_base_key(base_url: str) -> str:
     domain = parsed.netloc or parsed.path
     domain = domain.lower().replace("www.", "")
     return normalize_source_key(domain)
+
+
+def run_scraper_by_key(source_key: str) -> dict:
+    """Run a single scraper by source_key; returns count and sample job."""
+    key = normalize_source_key(source_key)
+    scraper_impl = SCRAPER_MAP.get(key)
+    if not scraper_impl:
+        return {
+            "source_key": key,
+            "ok": False,
+            "job_count": 0,
+            "error": f"No scraper implementation for key '{source_key}'",
+            "sample": None,
+        }
+
+    try:
+        scraper = scraper_impl() if isinstance(scraper_impl, type) else scraper_impl
+        jobs = _scrape_source(scraper)
+        sample = None
+        if jobs:
+            j = jobs[0]
+            sample = {
+                "title": j.get("title"),
+                "company": j.get("company"),
+                "url": j.get("url"),
+            }
+        return {
+            "source_key": key,
+            "ok": len(jobs) > 0,
+            "job_count": len(jobs),
+            "error": None if jobs else "Scraper returned 0 jobs (site may block this IP)",
+            "sample": sample,
+        }
+    except Exception as e:
+        return {
+            "source_key": key,
+            "ok": False,
+            "job_count": 0,
+            "error": str(e),
+            "sample": None,
+        }
 
 
 def run_active_scrapers():
