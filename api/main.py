@@ -201,6 +201,14 @@ FRONTEND_URL = (os.getenv("FRONTEND_URL") or APP_URL).rstrip("/")
 _default_redirect = f"{APP_URL}/api/auth/google/callback"
 GOOGLE_REDIRECT_URI = (os.getenv("GOOGLE_REDIRECT_URI") or _default_redirect).rstrip("/")
 
+# Stripe — must be set before any stripe.* calls
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+if STRIPE_SECRET_KEY:
+    stripe.api_key = STRIPE_SECRET_KEY
+else:
+    logger.warning("STRIPE_SECRET_KEY is not set — payment endpoints will fail")
+
 
 def _coerce_period_end(value) -> Optional[datetime]:
     if value is None:
@@ -3743,6 +3751,11 @@ def create_checkout(
     body: CreateCheckoutRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    if not STRIPE_SECRET_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Payment service is not configured. Contact the administrator.",
+        )
     plan = (body.plan or "").strip().lower()
     if plan not in ("pro", "business"):
         raise HTTPException(status_code=400, detail="plan must be 'pro' or 'business'")
