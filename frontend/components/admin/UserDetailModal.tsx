@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { X, Loader2, FileText, ExternalLink } from "lucide-react";
+import { X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import {
@@ -12,6 +12,8 @@ import {
 } from "@/lib/api";
 import type { AdminUserDetail } from "@/types";
 import type { AdminUserRow } from "@/lib/api";
+import { CvPreviewPanel } from "@/components/CvPreviewPanel";
+import { useAuthenticatedCvPreview } from "@/hooks/useAuthenticatedCvPreview";
 
 type TabId = "profile" | "subscription" | "activity" | "cv";
 
@@ -34,14 +36,6 @@ function formatDate(iso?: string): string {
   } catch {
     return iso;
   }
-}
-
-function displayCvName(filename: string): string {
-  return filename.replace(/^cv_\d+_/, "");
-}
-
-function isPdfCv(filename: string): boolean {
-  return filename.toLowerCase().endsWith(".pdf");
 }
 
 const PLANS = ["free", "pro", "business"] as const;
@@ -71,9 +65,18 @@ export function UserDetailModal({
   const [planLoading, setPlanLoading] = useState(false);
   const [confirmPlan, setConfirmPlan] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [cvPreviewUrl, setCvPreviewUrl] = useState<string | null>(null);
-  const [cvPreviewLoading, setCvPreviewLoading] = useState(false);
-  const [cvPreviewError, setCvPreviewError] = useState(false);
+
+  const cvEnabled =
+    open && tab === "cv" && Boolean(token && userRow?.id && detail?.cv_filename);
+  const {
+    previewUrl: cvPreviewUrl,
+    loading: cvPreviewLoading,
+    error: cvPreviewError,
+  } = useAuthenticatedCvPreview(
+    cvEnabled,
+    userRow?.id ? `${getApiBase()}/api/admin/users/${userRow.id}/cv` : undefined,
+    token
+  );
 
   const load = useCallback(() => {
     if (!token || !userRow?.id) return;
@@ -93,60 +96,8 @@ export function UserDetailModal({
       load();
     } else {
       setDetail(null);
-      setCvPreviewUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return null;
-      });
     }
   }, [open, userRow, load]);
-
-  // Load CV file with admin auth when the CV tab is opened
-  useEffect(() => {
-    if (!open || tab !== "cv" || !token || !userRow?.id || !detail?.cv_filename) {
-      setCvPreviewUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return null;
-      });
-      setCvPreviewError(false);
-      return;
-    }
-
-    let cancelled = false;
-    setCvPreviewLoading(true);
-    setCvPreviewError(false);
-
-    fetch(`${getApiBase()}/api/admin/users/${userRow.id}/cv`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(async (res) => {
-        if (!res.ok) throw new Error("Failed to load CV");
-        return res.blob();
-      })
-      .then((blob) => {
-        if (cancelled) return;
-        const url = URL.createObjectURL(blob);
-        setCvPreviewUrl((prev) => {
-          if (prev) URL.revokeObjectURL(prev);
-          return url;
-        });
-      })
-      .catch(() => {
-        if (!cancelled) setCvPreviewError(true);
-      })
-      .finally(() => {
-        if (!cancelled) setCvPreviewLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [open, tab, token, userRow?.id, detail?.cv_filename]);
-
-  useEffect(() => {
-    return () => {
-      if (cvPreviewUrl) URL.revokeObjectURL(cvPreviewUrl);
-    };
-  }, [cvPreviewUrl]);
 
   const applyPlan = async (plan: string) => {
     if (!token || !userRow) return;
@@ -461,58 +412,14 @@ export function UserDetailModal({
               {tab === "cv" && detail.user_type === "jobseeker" && (
                 <div>
                   {detail.cv_filename ? (
-                    <>
-                      <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <FileText className="h-4 w-4 shrink-0 text-indigo-400" />
-                          <span className="truncate text-sm text-indigo-200">
-                            {displayCvName(detail.cv_filename)}
-                          </span>
-                        </div>
-                        {cvPreviewUrl && (
-                          <a
-                            href={cvPreviewUrl}
-                            download={displayCvName(detail.cv_filename)}
-                            className="flex shrink-0 items-center gap-1 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-slate-300 transition hover:bg-white/10"
-                          >
-                            <ExternalLink className="h-3.5 w-3.5" />
-                            Download
-                          </a>
-                        )}
-                      </div>
-
-                      {cvPreviewLoading ? (
-                        <div className="flex h-48 items-center justify-center rounded-xl border border-white/10 bg-black/20">
-                          <Loader2 className="h-6 w-6 animate-spin text-indigo-400" />
-                        </div>
-                      ) : cvPreviewError ? (
-                        <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300">
-                          Could not load CV file. It may have been removed from the server.
-                        </div>
-                      ) : cvPreviewUrl && isPdfCv(detail.cv_filename) ? (
-                        <div className="overflow-hidden rounded-xl border border-white/10 bg-black/20">
-                          <iframe
-                            src={`${cvPreviewUrl}#toolbar=1&navpanes=0`}
-                            title="Candidate CV"
-                            className="h-[480px] w-full"
-                            style={{ border: "none" }}
-                          />
-                        </div>
-                      ) : cvPreviewUrl ? (
-                        <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-4">
-                          <FileText className="h-8 w-8 shrink-0 text-indigo-400" />
-                          <div>
-                            <p className="text-sm text-white">
-                              {displayCvName(detail.cv_filename)}
-                            </p>
-                            <p className="mt-1 text-xs text-vertex-muted">
-                              Word and text files cannot be previewed here. Use Download to open
-                              the original CV.
-                            </p>
-                          </div>
-                        </div>
-                      ) : null}
-                    </>
+                    <CvPreviewPanel
+                      filename={detail.cv_filename}
+                      previewUrl={cvPreviewUrl}
+                      loading={cvPreviewLoading}
+                      error={cvPreviewError}
+                      cvText={detail.cv_text}
+                      title="Candidate CV"
+                    />
                   ) : (
                     <p className="py-8 text-center text-sm text-vertex-muted">
                       No CV uploaded yet

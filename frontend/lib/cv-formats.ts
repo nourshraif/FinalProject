@@ -9,3 +9,12 @@ export function isAllowedCvFile(file: File): boolean {
   const name = file.name.toLowerCase();
   return ALLOWED_CV_EXTENSIONS.some((ext) => name.endsWith(ext));
 }
+
+/** Strip internal storage prefix, e.g. cv_23_Name.pdf → Name.pdf */
+export function displayCvName(filename: string): string {
+  return filename.replace(/^cv_\d+_/, "");
+}
+
+export function isPdfCv(filename: string): boolean {
+  return filename.toLowerCase().endsWith(".pdf");
+}

@@ -1166,6 +1166,7 @@ def get_user_profile(user_id: int) -> Optional[dict]:
                 p.years_experience,
                 p.skills,
                 p.cv_filename,
+                p.cv_text,
                 p.created_at,
                 p.updated_at,
                 p.profile_slug,
@@ -1182,7 +1183,7 @@ def get_user_profile(user_id: int) -> Optional[dict]:
         cols = [
             "id", "email", "full_name", "headline", "bio", "location",
             "linkedin_url", "years_experience", "skills", "cv_filename",
-            "created_at", "updated_at", "profile_slug", "is_public",
+            "cv_text", "created_at", "updated_at", "profile_slug", "is_public",
         ]
         out = dict(zip(cols, row))
         if out["full_name"] is None:
