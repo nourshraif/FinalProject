@@ -9,7 +9,11 @@ import { uploadProfileCV, getMySlug, updateProfileVisibility, getApiBase } from 
 import { ALLOWED_CV_ACCEPT, ALLOWED_CV_LABEL, isAllowedCvFile } from "@/lib/cv-formats";
 import { SkeletonProfileHeader } from "@/components/Skeleton";
 import { QUICK_SKILLS } from "@/components/QuickSkillSelector";
-import { Eye, EyeOff, Lock } from "lucide-react";
+import { Eye, EyeOff, Lock, Loader2, FileText, ExternalLink } from "lucide-react";
+
+function displayCvName(filename: string): string {
+  return filename.replace(/^cv_\d+_/, "");
+}
 
 export default function ProfilePage() {
   return (
@@ -48,6 +52,8 @@ function ProfileContent() {
     skills_count: number;
   } | null>(null);
   const cvInputRef = useRef<HTMLInputElement>(null);
+  const [cvPreviewUrl, setCvPreviewUrl] = useState<string | null>(null);
+  const [cvPreviewLoading, setCvPreviewLoading] = useState(false);
   const [slug, setSlug] = useState<string | null>(null);
   const [profileUrl, setProfileUrl] = useState<string | null>(null);
   const [slugLoading, setSlugLoading] = useState(true);
@@ -68,6 +74,57 @@ function ProfileContent() {
     if (token) fetchProfile();
     else setLoading(false);
   }, [token]);
+
+  // Load CV file with auth and create a blob URL for preview / download
+  useEffect(() => {
+    if (!token || !profile?.cv_filename) {
+      setCvPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      return;
+    }
+
+    let cancelled = false;
+    setCvPreviewLoading(true);
+
+    fetch(`${BASE_URL}/api/profile/cv`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Failed to load CV");
+        return res.blob();
+      })
+      .then((blob) => {
+        if (cancelled) return;
+        const url = URL.createObjectURL(blob);
+        setCvPreviewUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return url;
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCvPreviewUrl((prev) => {
+            if (prev) URL.revokeObjectURL(prev);
+            return null;
+          });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCvPreviewLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token, profile?.cv_filename, BASE_URL]);
+
+  useEffect(() => {
+    return () => {
+      if (cvPreviewUrl) URL.revokeObjectURL(cvPreviewUrl);
+    };
+  }, [cvPreviewUrl]);
 
   useEffect(() => {
     if (!token) {
@@ -764,32 +821,77 @@ function ProfileContent() {
           </div>
 
           {profile?.cv_filename ? (
-            <div
-              className="mb-4 flex items-center gap-3 rounded-lg p-3"
-              style={{
-                background: "rgba(34,197,94,0.08)",
-                border: "1px solid rgba(34,197,94,0.2)",
-              }}
-            >
-              <span style={{ color: "#22c55e" }}>📄</span>
-              <div className="flex-1">
-                <p className="text-sm font-medium" style={{ color: "#22c55e" }}>
-                  CV Uploaded
-                </p>
-                <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                  {profile.cv_filename as string}
-                </p>
-              </div>
-              <span
-                className="rounded-full px-2 py-1 text-xs"
+            <>
+              <div
+                className="mb-4 flex items-center gap-3 rounded-lg p-3"
                 style={{
-                  background: "rgba(34,197,94,0.15)",
-                  color: "#22c55e",
+                  background: "rgba(34,197,94,0.08)",
+                  border: "1px solid rgba(34,197,94,0.2)",
                 }}
               >
-                Active
-              </span>
-            </div>
+                <FileText className="h-5 w-5 shrink-0" style={{ color: "#22c55e" }} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium" style={{ color: "#22c55e" }}>
+                    CV uploaded
+                  </p>
+                  <p className="truncate text-xs" style={{ color: "var(--text-muted)" }}>
+                    {displayCvName(profile.cv_filename as string)}
+                  </p>
+                </div>
+                {cvPreviewUrl && (
+                  <a
+                    href={cvPreviewUrl}
+                    download={displayCvName(profile.cv_filename as string)}
+                    className="flex shrink-0 items-center gap-1 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-slate-300 transition hover:bg-white/10"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Download
+                  </a>
+                )}
+              </div>
+
+              {/* CV preview */}
+              <div className="mb-4">
+                <p className="mb-2 text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+                  Preview
+                </p>
+                {cvPreviewLoading ? (
+                  <div className="flex h-48 items-center justify-center rounded-xl border border-white/10 bg-black/20">
+                    <Loader2 className="h-6 w-6 animate-spin text-indigo-400" />
+                  </div>
+                ) : cvPreviewUrl &&
+                  (profile.cv_filename as string).toLowerCase().endsWith(".pdf") ? (
+                  <div className="overflow-hidden rounded-xl border border-white/10 bg-black/20">
+                    <iframe
+                      src={`${cvPreviewUrl}#toolbar=1&navpanes=0`}
+                      title="Your CV"
+                      className="h-[480px] w-full"
+                      style={{ border: "none" }}
+                    />
+                  </div>
+                ) : cvPreviewUrl ? (
+                  <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                    <FileText className="h-8 w-8 shrink-0 text-indigo-400" />
+                    <div>
+                      <p className="text-sm text-white">
+                        {displayCvName(profile.cv_filename as string)}
+                      </p>
+                      <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+                        Word and text files can&apos;t be previewed here. Use Download to open
+                        your CV.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className="rounded-xl border border-white/10 p-4 text-sm"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    Could not load CV preview. Try uploading again.
+                  </div>
+                )}
+              </div>
+            </>
           ) : (
             <div
               className="mb-4 rounded-lg p-3"
