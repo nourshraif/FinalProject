@@ -1616,7 +1616,12 @@ def _extract_skills_from_cv_bytes(content: bytes, filename: str = "") -> Tuple[L
     Extract skills from raw CV bytes (same pipeline as /api/upload-cv).
     Returns (skills, used_fallback).
     """
-    from app.utils.cv_utils import ALLOWED_CV_LABEL, extract_text_from_cv_bytes, is_allowed_cv_filename
+    from app.utils.cv_utils import (
+        ALLOWED_CV_LABEL,
+        extract_text_from_cv_bytes,
+        is_allowed_cv_filename,
+        looks_like_cv,
+    )
     from app.services.skill_extraction_service import (
         call_huggingface_api,
         parse_skills_from_response,
@@ -1637,6 +1642,11 @@ def _extract_skills_from_cv_bytes(content: bytes, filename: str = "") -> Tuple[L
                 f"Could not extract text from this CV. "
                 f"Use {ALLOWED_CV_LABEL} with selectable text (not a scan-only image)."
             ),
+        )
+    if not looks_like_cv(cv_text):
+        raise HTTPException(
+            status_code=422,
+            detail="This file doesn't look like a CV. Please upload your resume.",
         )
     model_name = os.getenv("HF_MODEL")
     skills: List[str] = []
@@ -2857,7 +2867,12 @@ async def upload_profile_cv(
     current_user: dict = Depends(get_current_user),
 ):
     """Protected: upload CV, extract text and skills, update user profile (job seeker only)."""
-    from app.utils.cv_utils import ALLOWED_CV_LABEL, extract_text_from_cv_bytes, is_allowed_cv_filename
+    from app.utils.cv_utils import (
+        ALLOWED_CV_LABEL,
+        extract_text_from_cv_bytes,
+        is_allowed_cv_filename,
+        looks_like_cv,
+    )
 
     if current_user.get("user_type") != "jobseeker":
         raise HTTPException(status_code=403, detail="Job seeker access only")
@@ -2885,6 +2900,11 @@ async def upload_profile_cv(
         extracted_text = extract_text_from_cv_bytes(content, cv.filename)
         if not extracted_text or not extracted_text.strip():
             raise HTTPException(status_code=422, detail="Could not extract text from CV")
+        if not looks_like_cv(extracted_text):
+            raise HTTPException(
+                status_code=422,
+                detail="This file doesn't look like a CV. Please upload your resume.",
+            )
         model_name = os.getenv("HF_MODEL")
         skills = []
         try:
@@ -2894,6 +2914,10 @@ async def upload_profile_cv(
         except Exception:
             pass
         skills = merge_skills_from_api_and_fallback(extracted_text, skills)
+        # Note: we intentionally do NOT reject on a low skill count here.
+        # `looks_like_cv` already confirmed this is a résumé, and the profile
+        # page lets users add skills manually, so a skill-sparse CV (e.g. a
+        # student with mostly soft skills) should still be accepted.
         if not db_upsert_user_profile_cv(
             current_user["id"],
             filename,

@@ -410,7 +410,10 @@ export function Navbar() {
         <div className="flex shrink-0 items-center gap-2 sm:gap-3">
           {isLoggedIn && user ? (
             <>
-              <NotificationBell />
+              <NotificationBell
+                forceClosed={mobileOpen}
+                onOpen={() => setMobileOpen(false)}
+              />
               {/* Desktop account menu */}
               <div className="relative hidden md:block" ref={accountRef}>
                 <div className="flex items-center gap-1 rounded-lg py-1 pl-1 pr-1 text-slate-400 transition-colors hover:bg-white/5 hover:text-indigo-100">

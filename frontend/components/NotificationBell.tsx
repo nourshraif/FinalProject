@@ -17,7 +17,15 @@ interface Notification {
   created_at: string;
 }
 
-export default function NotificationBell() {
+export default function NotificationBell({
+  onOpen,
+  forceClosed = false,
+}: {
+  /** Called when the panel opens — lets the parent close other overlays. */
+  onOpen?: () => void;
+  /** When true, the panel is forced closed (e.g. the mobile menu opened). */
+  forceClosed?: boolean;
+} = {}) {
   const { token, isLoggedIn } = useAuth();
   const router = useRouter();
   const [unreadCount, setUnreadCount] = useState(0);
@@ -131,8 +139,13 @@ export default function NotificationBell() {
       document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    if (forceClosed) setIsOpen(false);
+  }, [forceClosed]);
+
   function handleBellClick() {
     if (!isOpen) {
+      onOpen?.();
       fetchNotifications();
       setIsOpen(true);
       setTimeout(() => markAllRead(), 2000);
@@ -208,7 +221,7 @@ export default function NotificationBell() {
           style={{
             top: "calc(100% + 8px)",
             right: 0,
-            width: "380px",
+            width: "min(380px, calc(100vw - 1.5rem))",
             maxHeight: "480px",
             zIndex: 100,
           }}

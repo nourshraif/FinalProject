@@ -25,6 +25,58 @@ def is_allowed_cv_filename(filename: Optional[str]) -> bool:
     return f".{ext}" in ALLOWED_CV_EXTENSIONS if ext else False
 
 
+# Words that almost every real CV/resume contains but random documents
+# (invoices, recipes, essays, etc.) usually do not.
+CV_SIGNAL_WORDS: Set[str] = {
+    "experience",
+    "education",
+    "skills",
+    "work",
+    "employment",
+    "projects",
+    "project",
+    "certification",
+    "certifications",
+    "summary",
+    "profile",
+    "objective",
+    "references",
+    "achievements",
+    "responsibilities",
+    "languages",
+    "internship",
+    "bachelor",
+    "master",
+    "degree",
+    "university",
+    "resume",
+    "curriculum vitae",
+    "cv",
+}
+
+
+def looks_like_cv(
+    text: Optional[str],
+    min_signals: int = 2,
+    min_words: int = 50,
+) -> bool:
+    """Heuristic check that extracted text is actually a CV/resume.
+
+    A document passes only when it is long enough AND contains at least
+    ``min_signals`` typical résumé section words. This blocks well-formed
+    files (valid PDF/DOCX with readable text) that are not CVs at all,
+    e.g. invoices, recipes, or essays.
+    """
+    if not text:
+        return False
+    lowered = text.lower()
+    word_count = len(lowered.split())
+    if word_count < min_words:
+        return False
+    signal_hits = sum(1 for word in CV_SIGNAL_WORDS if word in lowered)
+    return signal_hits >= min_signals
+
+
 def _extract_text_from_docx(content: bytes) -> Optional[str]:
     try:
         from docx import Document

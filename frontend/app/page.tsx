@@ -92,6 +92,13 @@ export default function HomePage() {
                 </span>
               </h1>
 
+              <p className="mt-6 max-w-xl text-pretty text-base leading-relaxed text-v-onSurfaceVariant sm:text-lg">
+                <span className="font-semibold text-white">Vertex</span> is an
+                AI-powered job-matching platform. Upload your CV and get matched
+                to the roles you&apos;re genuinely qualified for—no endless
+                scrolling, just opportunities that fit.
+              </p>
+
               {isLoggedIn && (
                 <button
                   type="button"
