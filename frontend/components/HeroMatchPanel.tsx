@@ -15,19 +15,19 @@ function RolesStatBar({ count }: { count: string }) {
     <Link
       href="/search"
       className="group relative block cursor-pointer rounded-[1.75rem] outline-none transition-transform duration-300 hover:scale-[1.01] focus-visible:ring-2 focus-visible:ring-v-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-v-background"
-      aria-label={`Browse ${count} jobs`}
+      aria-label={`Browse all ${count} jobs`}
     >
       <div
         className="absolute -inset-px rounded-[1.75rem] bg-gradient-to-r from-v-primary/50 via-indigo-400/30 to-v-tertiary/40 opacity-70 blur-[1px] transition-opacity duration-500 group-hover:opacity-100"
         aria-hidden
       />
-      <div className="relative overflow-hidden rounded-[1.75rem] border border-white/[0.08] bg-gradient-to-br from-indigo-950/90 via-[#0e182c]/95 to-v-surfaceContainerLowest/40 px-6 py-5 shadow-[0_12px_40px_rgba(99,102,241,0.15)] backdrop-blur-xl transition-shadow duration-300 group-hover:shadow-[0_16px_48px_rgba(99,102,241,0.25)] sm:px-8 sm:py-6">
+      <div className="relative overflow-hidden rounded-[1.75rem] border border-white/[0.08] bg-gradient-to-br from-indigo-950/90 via-[#0e182c]/95 to-v-surfaceContainerLowest/40 px-6 py-5 shadow-[0_12px_40px_rgba(99,102,241,0.15)] backdrop-blur-xl transition-[border-color,box-shadow] duration-300 group-hover:border-v-primary/35 group-hover:shadow-[0_16px_48px_rgba(99,102,241,0.28)] sm:px-8 sm:py-6">
         <div
           className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-v-primary/80 to-transparent"
           aria-hidden
         />
         <div
-          className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-v-primary/25 blur-3xl"
+          className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-v-primary/25 blur-3xl transition-opacity duration-300 group-hover:opacity-100"
           aria-hidden
         />
         <div
@@ -35,18 +35,28 @@ function RolesStatBar({ count }: { count: string }) {
           aria-hidden
         />
 
-        <div className="relative flex items-center justify-center gap-3 sm:gap-4">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-v-primary/30 bg-v-primary/10 shadow-inner shadow-v-primary/10 sm:h-12 sm:w-12">
-            <Briefcase className="h-5 w-5 text-v-primary sm:h-6 sm:w-6" aria-hidden />
-          </span>
-          <div className="flex items-baseline gap-2 sm:gap-3">
-            <span className="font-headline text-4xl font-extrabold tabular-nums tracking-tight bg-gradient-to-b from-white to-indigo-200 bg-clip-text text-transparent sm:text-5xl">
-              {count}
+        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+          <div className="flex items-center justify-center gap-3 sm:justify-start sm:gap-4">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-v-primary/30 bg-v-primary/10 shadow-inner shadow-v-primary/10 transition-colors duration-300 group-hover:border-v-primary/50 group-hover:bg-v-primary/15 sm:h-12 sm:w-12">
+              <Briefcase className="h-5 w-5 text-v-primary sm:h-6 sm:w-6" aria-hidden />
             </span>
-            <span className="bg-gradient-to-r from-v-primary via-indigo-300 to-v-primaryContainer bg-clip-text font-label text-base font-bold uppercase tracking-[0.2em] text-transparent sm:text-lg">
-              JOBS
-            </span>
+            <div className="flex items-baseline gap-2 sm:gap-3">
+              <span className="font-headline text-4xl font-extrabold tabular-nums tracking-tight bg-gradient-to-b from-white to-indigo-200 bg-clip-text text-transparent sm:text-5xl">
+                {count}
+              </span>
+              <span className="bg-gradient-to-r from-v-primary via-indigo-300 to-v-primaryContainer bg-clip-text font-label text-base font-bold uppercase tracking-[0.2em] text-transparent sm:text-lg">
+                JOBS
+              </span>
+            </div>
           </div>
+
+          <span className="flex items-center justify-center gap-2 rounded-xl border border-v-primary/25 bg-v-primary/10 px-4 py-2.5 font-label text-xs font-bold uppercase tracking-wider text-indigo-200 transition-all duration-300 group-hover:border-v-primary/45 group-hover:bg-v-primary/20 group-hover:text-white sm:text-sm">
+            Browse all jobs
+            <ArrowRight
+              className="h-4 w-4 shrink-0 transition-transform duration-300 group-hover:translate-x-0.5"
+              aria-hidden
+            />
+          </span>
         </div>
       </div>
     </Link>
