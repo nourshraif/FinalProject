@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { X, Loader2 } from "lucide-react";
+import { X, Loader2, FileText, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import {
   adminGetUserDetails,
   adminDeleteUser,
   adminUpdateUserPlan,
+  getApiBase,
 } from "@/lib/api";
 import type { AdminUserDetail } from "@/types";
 import type { AdminUserRow } from "@/lib/api";
@@ -117,11 +118,8 @@ export function UserDetailModal({
   if (!open || !userRow) return null;
 
   const plan = (detail?.plan || "free").toLowerCase();
-  const cvPreview = detail?.cv_text
-    ? detail.cv_text.length > 2000
-      ? `${detail.cv_text.slice(0, 2000)}\n\n... (truncated)`
-      : detail.cv_text
-    : "";
+  const apiBase = getApiBase();
+  const cvUrl = userRow?.id ? `${apiBase}/api/admin/users/${userRow.id}/cv` : null;
 
   return (
     <>
@@ -403,9 +401,40 @@ export function UserDetailModal({
                 <div>
                   {detail.cv_filename ? (
                     <>
-                      <p className="text-sm text-white">
-                        CV file: <span className="text-indigo-300">{detail.cv_filename}</span>
-                      </p>
+                      {/* File name + open link */}
+                      <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileText className="h-4 w-4 shrink-0 text-indigo-400" />
+                          <span className="truncate text-sm text-indigo-200">
+                            {detail.cv_filename}
+                          </span>
+                        </div>
+                        {cvUrl && (
+                          <a
+                            href={cvUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex shrink-0 items-center gap-1 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-slate-300 transition hover:bg-white/10"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            Open
+                          </a>
+                        )}
+                      </div>
+
+                      {/* Inline PDF viewer */}
+                      {cvUrl && (
+                        <div className="overflow-hidden rounded-xl border border-white/10 bg-black/20">
+                          <iframe
+                            src={`${cvUrl}#toolbar=1&navpanes=0`}
+                            title="Candidate CV"
+                            className="h-[480px] w-full"
+                            style={{ border: "none" }}
+                          />
+                        </div>
+                      )}
+
+                      {/* Skills chips */}
                       {detail.skills && detail.skills.length > 0 && (
                         <div className="mt-4">
                           <p className="mb-2 text-xs text-vertex-muted">Skills extracted</p>
@@ -419,13 +448,6 @@ export function UserDetailModal({
                               </span>
                             ))}
                           </div>
-                        </div>
-                      )}
-                      {cvPreview && (
-                        <div className="mt-4 max-h-[300px] overflow-y-auto rounded-lg border border-white/10 bg-black/30 p-3">
-                          <pre className="whitespace-pre-wrap font-mono text-xs text-slate-300">
-                            {cvPreview}
-                          </pre>
                         </div>
                       )}
                     </>

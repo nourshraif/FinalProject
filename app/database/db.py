@@ -683,6 +683,12 @@ def init_database():
             ADD COLUMN IF NOT EXISTS plan VARCHAR(50) DEFAULT 'free';
         """)
 
+        # Auth provider — 'email' for normal accounts, 'google' for OAuth
+        cur.execute("""
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS auth_provider VARCHAR(20) DEFAULT 'email';
+        """)
+
         cur.execute("""
             ALTER TABLE company_searches
             ADD COLUMN IF NOT EXISTS user_id INTEGER
@@ -1068,6 +1074,7 @@ def get_user_by_email(email: str) -> Optional[dict]:
             """
             SELECT id, email, full_name, hashed_password, user_type, is_verified, is_active, is_admin,
                    COALESCE(NULLIF(TRIM(plan), ''), 'free') AS plan,
+                   COALESCE(auth_provider, 'email') AS auth_provider,
                    created_at, updated_at
             FROM users WHERE LOWER(TRIM(email)) = LOWER(TRIM(%s));
             """,

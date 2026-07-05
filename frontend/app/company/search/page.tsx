@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { searchCandidates, getCandidateCount } from "@/lib/api";
 import type { Candidate } from "@/types";
@@ -34,6 +34,25 @@ export default function CompanySearchPage() {
     name: string;
   } | null>(null);
 
+  // Load all candidates automatically on mount so the list is never empty.
+  // When the company adds skill filters and clicks Search, it re-ranks them.
+  useEffect(() => {
+    if (!token) return;
+    setLoading(true);
+    searchCandidates(
+      { required_skills: [""], top_k: 50, min_keyword_matches: 0 },
+      token
+    )
+      .then((results) => {
+        setCandidates(results);
+        setHasSearched(true);
+      })
+      .catch(() => {
+        // Silently ignore — the empty-state message handles this
+      })
+      .finally(() => setLoading(false));
+  }, [token]);
+
   const loadCount = useCallback(() => {
     getCandidateCount()
       .then(setCount)
@@ -63,10 +82,6 @@ export default function CompanySearchPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (requiredSkills.length === 0) {
-      showToast("Add at least one skill.", "error");
-      return;
-    }
     if (!token) {
       showToast("Please log in to search.", "error");
       return;
@@ -75,9 +90,9 @@ export default function CompanySearchPage() {
     try {
       const results = await searchCandidates(
         {
-          required_skills: requiredSkills,
+          required_skills: requiredSkills.length > 0 ? requiredSkills : [""],
           top_k: topK,
-          min_keyword_matches: minMatches,
+          min_keyword_matches: requiredSkills.length > 0 ? minMatches : 0,
           location_filter: locationFilter.trim() || undefined,
           min_experience: minExperience === "" ? undefined : Number(minExperience),
           max_experience: maxExperience === "" ? undefined : Number(maxExperience),
@@ -86,7 +101,9 @@ export default function CompanySearchPage() {
       );
       setCandidates(results);
       setHasSearched(true);
-      showToast(`Found ${results.length} candidate(s).`, "success");
+      if (requiredSkills.length > 0) {
+        showToast(`Found ${results.length} candidate(s).`, "success");
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Search failed";
       showToast(msg, "error");
@@ -114,7 +131,7 @@ export default function CompanySearchPage() {
             Find talent
           </h1>
           <p className="mt-2 max-w-2xl text-pretty text-sm text-vertex-muted sm:text-base">
-            Enter the skills your role needs, then use location and experience filters to narrow the list. Candidates are ranked by how many of those skills appear in their profile.
+            All candidates are shown by default. Enter skills to rank them by relevance, or use location and experience filters to narrow the list.
           </p>
           {count !== null && (
             <p className="mt-3 text-sm font-medium text-indigo-200/90">
@@ -323,13 +340,7 @@ export default function CompanySearchPage() {
                 No candidates found. Try broadening your skill search or removing filters.
               </CardContent>
             </Card>
-          ) : (
-            <Card>
-              <CardContent className="py-12 text-center text-vertex-muted">
-                Enter skills above and click Search to find candidates.
-              </CardContent>
-            </Card>
-          )}
+          ) : null}
         </div>
       </div>
 

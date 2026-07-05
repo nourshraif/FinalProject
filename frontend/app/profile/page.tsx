@@ -9,6 +9,7 @@ import { uploadProfileCV, getMySlug, updateProfileVisibility, getApiBase } from 
 import { ALLOWED_CV_ACCEPT, ALLOWED_CV_LABEL, isAllowedCvFile } from "@/lib/cv-formats";
 import { SkeletonProfileHeader } from "@/components/Skeleton";
 import { QUICK_SKILLS } from "@/components/QuickSkillSelector";
+import { Eye, EyeOff, Lock } from "lucide-react";
 
 export default function ProfilePage() {
   return (
@@ -214,6 +215,65 @@ function ProfileContent() {
       showToast(msg, "error");
     } finally {
       setIsUploadingCV(false);
+    }
+  }
+
+  // ── Password / Security ──────────────────────────────────────────────────
+  const [authProvider, setAuthProvider] = useState<string>("email");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [showConfirmPw, setShowConfirmPw] = useState(false);
+  const [pwLoading, setPwLoading] = useState(false);
+
+  // Detect Google accounts via /api/auth/me
+  useEffect(() => {
+    if (!token) return;
+    fetch(`${BASE_URL}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((d) => setAuthProvider(d.auth_provider || "email"))
+      .catch(() => {});
+  }, [token, BASE_URL]);
+
+  const isGoogleAccount = authProvider === "google";
+
+  async function handleSetPassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (newPassword.length < 8) {
+      showToast("Password must be at least 8 characters.", "error");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      showToast("Passwords do not match.", "error");
+      return;
+    }
+    setPwLoading(true);
+    try {
+      const res = await fetch(`${BASE_URL}/api/auth/set-password`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ new_password: newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to update password");
+      showToast(
+        isGoogleAccount
+          ? "Password set! You can now also sign in with email and password."
+          : "Password changed successfully.",
+        "success"
+      );
+      setNewPassword("");
+      setConfirmPassword("");
+      setAuthProvider("email");
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Failed to update password", "error");
+    } finally {
+      setPwLoading(false);
     }
   }
 
@@ -833,6 +893,86 @@ function ProfileContent() {
               )}
             </div>
           )}
+        </div>
+
+        {/* Password & Security Card */}
+        <div className="glass-card mb-4 p-6">
+          <div className="mb-4 flex items-center gap-2">
+            <Lock className="h-5 w-5 text-indigo-400" />
+            <h2 className="text-lg font-bold text-white">Password &amp; Security</h2>
+          </div>
+
+          {isGoogleAccount && (
+            <div
+              className="mb-4 rounded-lg p-3 text-sm"
+              style={{
+                background: "rgba(99,102,241,0.08)",
+                border: "1px solid rgba(99,102,241,0.25)",
+                color: "#a5b4fc",
+              }}
+            >
+              Your account was created with Google. You can set a password below to also log in with
+              email and password.
+            </div>
+          )}
+
+          <form onSubmit={handleSetPassword} className="space-y-3">
+            <div>
+              <label className="mb-1 block text-xs" style={{ color: "var(--text-secondary)" }}>
+                {isGoogleAccount ? "Set a password" : "New password"}
+              </label>
+              <div className="relative">
+                <input
+                  type={showNewPw ? "text" : "password"}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="vertex-input w-full rounded-lg px-3 py-2 pr-10 text-sm text-white"
+                  placeholder="At least 8 characters"
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPw((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-vertex-muted hover:text-white"
+                  tabIndex={-1}
+                >
+                  {showNewPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs" style={{ color: "var(--text-secondary)" }}>
+                Confirm password
+              </label>
+              <div className="relative">
+                <input
+                  type={showConfirmPw ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="vertex-input w-full rounded-lg px-3 py-2 pr-10 text-sm text-white"
+                  placeholder="Repeat password"
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPw((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-vertex-muted hover:text-white"
+                  tabIndex={-1}
+                >
+                  {showConfirmPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={pwLoading || !newPassword}
+              className="glow-button rounded-lg px-5 py-2 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {pwLoading ? "Saving…" : isGoogleAccount ? "Set password" : "Change password"}
+            </button>
+          </form>
         </div>
 
         {/* Profile Completeness Card */}

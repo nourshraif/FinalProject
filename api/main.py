@@ -951,6 +951,11 @@ def auth_login(request: LoginRequest):
     user = get_user_by_email(request.email)
     if user is None:
         raise HTTPException(status_code=401, detail="Invalid email or password")
+    if (user.get("auth_provider") or "email") == "google":
+        raise HTTPException(
+            status_code=401,
+            detail="This account was created with Google. Please use 'Continue with Google' to sign in.",
+        )
     if not verify_password(request.password, user["hashed_password"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     token = create_access_token(
@@ -1072,6 +1077,20 @@ async def auth_google_callback(code: Optional[str] = None, state: Optional[str] 
         random_password = secrets.token_hex(32)
         hashed = hash_password(random_password)
         user_id = create_user(email, full_name, hashed, user_type)
+        # Mark this account as Google-only so the login endpoint
+        # can give a clear error if they try email/password later.
+        try:
+            _conn = get_connection()
+            _cur = _conn.cursor()
+            _cur.execute(
+                "UPDATE users SET auth_provider = 'google' WHERE id = %s",
+                (user_id,),
+            )
+            _conn.commit()
+            _cur.close()
+            _conn.close()
+        except Exception:
+            pass
         created_user = get_user_by_id(user_id)
         if created_user:
             _maybe_create_welcome_notification(created_user)
@@ -1119,6 +1138,12 @@ def auth_forgot_password(request: ForgotPasswordRequest):
     email = request.email.strip()
     user = get_user_by_email(email)
     if user is not None:
+        # Don't send a reset email to Google-only accounts; they have no password.
+        if (user.get("auth_provider") or "email") == "google":
+            raise HTTPException(
+                status_code=400,
+                detail="This account was created with Google. Sign in using 'Continue with Google' — no password is needed.",
+            )
         reset_token = secrets.token_urlsafe(32)
         db_create_password_reset_token(user["id"], reset_token)
         sent = send_password_reset_email(
@@ -1158,6 +1183,66 @@ def auth_reset_password(request: ResetPasswordRequest):
 
 
 # ---------------------------------------------------------------------------
+# POST /api/auth/set-password
+# Google users (and any authenticated user) can set / change their password.
+# After setting, auth_provider switches to 'email' so both login paths work.
+# ---------------------------------------------------------------------------
+@app.post("/api/auth/set-password")
+def auth_set_password(
+    body: dict,
+    current_user: dict = Depends(get_current_user),
+):
+    new_password = (body.get("new_password") or "").strip()
+    if len(new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+
+    hashed = hash_password(new_password)
+    try:
+        _conn = get_connection()
+        _cur = _conn.cursor()
+        _cur.execute(
+            "UPDATE users SET hashed_password = %s, auth_provider = 'email' WHERE id = %s",
+            (hashed, current_user["id"]),
+        )
+        _conn.commit()
+        _cur.close()
+        _conn.close()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to update password")
+
+    return {"success": True, "message": "Password set successfully. You can now log in with email and password."}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/profile/cv  — serve the authenticated user's own CV file
+# ---------------------------------------------------------------------------
+@app.get("/api/profile/cv")
+def profile_serve_cv(current_user: dict = Depends(get_current_user)):
+    import os
+    from fastapi.responses import FileResponse as _FileResponse
+
+    if current_user.get("user_type") != "jobseeker":
+        raise HTTPException(status_code=403, detail="Job seeker access only")
+
+    user_id = current_user["id"]
+    uploads_dir = "uploads"
+    prefix = f"cv_{user_id}_"
+    matched = None
+    if os.path.isdir(uploads_dir):
+        for name in os.listdir(uploads_dir):
+            if name.startswith(prefix):
+                matched = os.path.join(uploads_dir, name)
+                break
+
+    if not matched or not os.path.isfile(matched):
+        raise HTTPException(status_code=404, detail="No CV on file")
+
+    fname = os.path.basename(matched)
+    media = "application/pdf" if fname.lower().endswith(".pdf") else "application/octet-stream"
+    return _FileResponse(matched, media_type=media, filename=fname)
+
+
+# ---------------------------------------------------------------------------
 # GET /api/auth/me
 # ---------------------------------------------------------------------------
 @app.get("/api/auth/me")
@@ -1169,6 +1254,7 @@ def auth_me(current_user: dict = Depends(get_current_user)):
         "user_type": current_user["user_type"],
         "is_admin": bool(current_user.get("is_admin")),
         "plan": (current_user.get("plan") or "free"),
+        "auth_provider": (current_user.get("auth_provider") or "email"),
         "created_at": (
             current_user["created_at"].isoformat()
             if current_user.get("created_at") and hasattr(current_user["created_at"], "isoformat")
@@ -1336,6 +1422,38 @@ def admin_update_user_plan(
         link="/settings/billing",
     )
     return {"success": True}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/admin/users/{user_id}/cv  — serve the raw CV file for admin preview
+# ---------------------------------------------------------------------------
+@app.get("/api/admin/users/{user_id}/cv")
+def admin_serve_user_cv(
+    user_id: int,
+    admin_user: dict = Depends(get_admin_user),
+):
+    import os
+    from fastapi.responses import FileResponse as _FileResponse
+
+    user = db_get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    uploads_dir = "uploads"
+    prefix = f"cv_{user_id}_"
+    matched = None
+    if os.path.isdir(uploads_dir):
+        for name in os.listdir(uploads_dir):
+            if name.startswith(prefix):
+                matched = os.path.join(uploads_dir, name)
+                break
+
+    if not matched or not os.path.isfile(matched):
+        raise HTTPException(status_code=404, detail="CV file not found on server")
+
+    fname = os.path.basename(matched)
+    media = "application/pdf" if fname.lower().endswith(".pdf") else "application/octet-stream"
+    return _FileResponse(matched, media_type=media, filename=fname)
 
 
 @app.get("/api/admin/jobs")
