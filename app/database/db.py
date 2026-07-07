@@ -2916,18 +2916,28 @@ def archive_expired_scraped_jobs(job_urls: Optional[List[str]] = None) -> dict:
     conn = get_connection()
     cur = conn.cursor()
     try:
-        clauses = [
-            "description ILIKE '%listing has expired%'",
-            "description ILIKE '%this job has expired%'",
-            "description ILIKE '%no longer accepting applications%'",
-        ]
-        params: List[Any] = []
-        if job_urls:
-            clauses.append("job_url = ANY(%s)")
-            params.append([u for u in job_urls if u])
+        desc_patterns = (
+            "%listing has expired%",
+            "%this job has expired%",
+            "%no longer accepting applications%",
+        )
+        desc_clause = " OR ".join(
+            ["description ILIKE %s"] * len(desc_patterns)
+        )
+        params: List[Any] = list(desc_patterns)
 
-        where_sql = " OR ".join(f"({c})" for c in clauses)
+        if job_urls:
+            filtered_urls = [u for u in job_urls if u]
+            if filtered_urls:
+                where_sql = f"({desc_clause}) OR job_url = ANY(%s)"
+                params.append(filtered_urls)
+            else:
+                where_sql = desc_clause
+        else:
+            where_sql = desc_clause
+
         base_where = f"is_active = TRUE AND ({where_sql})"
+        query_params = tuple(params)
 
         cur.execute(
             f"""
@@ -2941,7 +2951,7 @@ def archive_expired_scraped_jobs(job_urls: Optional[List[str]] = None) -> dict:
             WHERE {base_where}
               AND id NOT IN (SELECT job_id FROM saved_jobs)
             """,
-            tuple(params),
+            query_params,
         )
         archived = cur.rowcount
 
@@ -2951,7 +2961,7 @@ def archive_expired_scraped_jobs(job_urls: Optional[List[str]] = None) -> dict:
             WHERE {base_where}
               AND id NOT IN (SELECT job_id FROM saved_jobs)
             """,
-            tuple(params),
+            query_params,
         )
         deleted = cur.rowcount
 
@@ -2961,7 +2971,7 @@ def archive_expired_scraped_jobs(job_urls: Optional[List[str]] = None) -> dict:
             SET is_active = FALSE
             WHERE {base_where}
             """,
-            tuple(params),
+            query_params,
         )
         deactivated = cur.rowcount
 
