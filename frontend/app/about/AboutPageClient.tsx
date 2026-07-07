@@ -284,7 +284,7 @@ export default function AboutPageClient() {
             <p className="mt-3 text-base text-slate-300">Join Vertex today — free to get started.</p>
             <div className="mt-8 flex flex-col justify-center gap-4 sm:flex-row">
               <Link href="/auth/register?type=jobseeker" className="glow-button rounded-full px-8 py-3 font-semibold text-white">
-                Find Jobs
+                Match CV
               </Link>
               <Link href="/auth/register?type=company" className="ghost-button rounded-full px-8 py-3 font-semibold text-white">
                 Hire Talent

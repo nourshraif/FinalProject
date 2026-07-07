@@ -224,7 +224,7 @@ function JobseekerDashboardContent() {
               className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-v-primary to-v-primaryContainer px-6 py-3 font-label text-sm font-bold uppercase tracking-wider text-v-onPrimaryFixed shadow-lg shadow-v-primary/20 transition-all hover:shadow-v-primary/40"
             >
               <Briefcase className="h-4 w-4" />
-              Find Jobs
+              Match CV
             </Link>
             <Link
               href="/profile"
