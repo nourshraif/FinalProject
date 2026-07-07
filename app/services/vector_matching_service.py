@@ -425,12 +425,59 @@ class VectorSkillMatcher:
             keyword_score *= 0.25
 
         combined_score = (vector_weight * float(vector_sim)) + (keyword_weight * keyword_score)
+
+        # Additional relevance guard:
+        # If a job has zero overlap on core domain terms extracted from the CV
+        # (e.g. nursing, nmc, ward), dampen the final score even when semantic
+        # similarity is moderately high due to broad healthcare wording.
+        core_terms = self._extract_core_terms(cv_skills)
+        core_hits = self._count_keyword_hits(core_terms, full_text)
+        core_penalty_applied = False
+        if core_terms and core_hits == 0:
+            combined_score *= 0.55
+            core_penalty_applied = True
+
         return {
             "vector_similarity": float(vector_sim),
             "keyword_score": keyword_score,
+            "core_terms_checked": float(len(core_terms)),
+            "core_hits": float(core_hits),
+            "core_penalty_applied": 1.0 if core_penalty_applied else 0.0,
             "combined_score": combined_score,
             "match_percentage": combined_score * 100,
         }
+
+    @staticmethod
+    def _extract_core_terms(cv_skills: List[str]) -> List[str]:
+        """
+        Extract domain-defining terms from CV skills.
+        These terms are used as a hard relevance guard to avoid high scores
+        for jobs that share broad language but miss core profession overlap.
+        """
+        stop = {
+            "skills", "skill", "experience", "professional", "management",
+            "communication", "teamwork", "leadership", "english", "arabic",
+            "care", "health", "patient", "support",
+        }
+        out: List[str] = []
+        seen = set()
+        for raw in cv_skills or []:
+            s = (raw or "").strip().lower()
+            if not s:
+                continue
+            # Keep full phrase as a core term (e.g. "adult nursing").
+            if s not in stop and s not in seen and len(s) >= 4:
+                seen.add(s)
+                out.append(s)
+
+            # Also keep meaningful tokens from multi-word skills.
+            for tok in re.findall(r"[a-z0-9\+#\.]{3,}", s):
+                if tok in stop or tok in seen:
+                    continue
+                seen.add(tok)
+                out.append(tok)
+
+        return out[:12]
 
     def score_job_hybrid(
         self,
