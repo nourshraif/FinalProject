@@ -437,12 +437,27 @@ class VectorSkillMatcher:
             combined_score *= 0.55
             core_penalty_applied = True
 
+        # Job-title relevance boost:
+        # If role-defining core terms appear in the title (e.g. "nurse"),
+        # promote this listing modestly. This helps profession-specific CVs
+        # rank role-matching jobs above generic domain-adjacent roles.
+        title_core_hits = self._count_keyword_hits(core_terms, str(title or "").lower())
+        title_boost_applied = False
+        if title_core_hits > 0:
+            combined_score *= 1.15
+            title_boost_applied = True
+
+        # Keep scores bounded.
+        combined_score = max(0.0, min(1.0, combined_score))
+
         return {
             "vector_similarity": float(vector_sim),
             "keyword_score": keyword_score,
             "core_terms_checked": float(len(core_terms)),
             "core_hits": float(core_hits),
             "core_penalty_applied": 1.0 if core_penalty_applied else 0.0,
+            "title_core_hits": float(title_core_hits),
+            "title_boost_applied": 1.0 if title_boost_applied else 0.0,
             "combined_score": combined_score,
             "match_percentage": combined_score * 100,
         }
