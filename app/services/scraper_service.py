@@ -11,6 +11,7 @@ from app.services.Scrapers.careersandjobsinlebanon_scraper import (
 )
 from app.database.db import get_connection
 from app.services.embedding_service import generate_and_save_embedding
+from app.utils.job_expiry import is_expired_listing_text
 
 logger = logging.getLogger(__name__)
 
@@ -329,6 +330,13 @@ class ScraperService:
 
             incoming = self._normalized_job_fields(job_data)
             source, job_title, company, location, description = incoming
+
+            if is_expired_listing_text(description):
+                from app.database.db import archive_expired_scraped_jobs
+
+                archive_expired_scraped_jobs([url] if url else None)
+                logger.info("Skipped expired listing for %s", url)
+                return False
 
             self.cur.execute(
                 """

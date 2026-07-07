@@ -7,6 +7,8 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 
+from app.utils.job_expiry import is_expired_listing_soup, is_expired_listing_text
+
 logger = logging.getLogger(__name__)
 
 
@@ -31,9 +33,11 @@ class CareersAndJobsInLebanonScraper:
             "Accept-Language": "en-US,en;q=0.9",
             "Connection": "keep-alive",
         }
+        self.expired_urls: List[str] = []
 
     def scrape_jobs(self) -> List[Dict[str, Any]]:
         logger.info("Starting %s scraper", self.source_name)
+        self.expired_urls = []
         links = self._collect_job_links()
         if not links:
             logger.warning("%s: no job links found", self.source_name)
@@ -51,6 +55,12 @@ class CareersAndJobsInLebanonScraper:
                 time.sleep(self.delay_seconds)
 
         logger.info("%s: %d jobs scraped", self.source_name, len(jobs))
+        if self.expired_urls:
+            logger.info(
+                "%s: %d expired listing(s) skipped",
+                self.source_name,
+                len(self.expired_urls),
+            )
         return jobs
 
     def _collect_job_links(self) -> List[str]:
@@ -95,6 +105,11 @@ class CareersAndJobsInLebanonScraper:
 
         soup = BeautifulSoup(html, "html.parser")
 
+        if is_expired_listing_soup(soup):
+            logger.info("%s: expired listing skipped %s", self.source_name, job_url)
+            self.expired_urls.append(job_url)
+            return None
+
         title = self._text(soup.select_one("h1.entry-title")) or self._text(soup.find("h1"))
         if not title:
             return None
@@ -109,6 +124,11 @@ class CareersAndJobsInLebanonScraper:
 
         description_node = soup.select_one(".job_description") or soup.select_one(".entry-content")
         description = self._text(description_node, separator=" ")
+
+        if is_expired_listing_text(description) or is_expired_listing_text(html):
+            logger.info("%s: expired listing skipped %s", self.source_name, job_url)
+            self.expired_urls.append(job_url)
+            return None
 
         # Optional posted date extraction from page text.
         date_posted = (
@@ -154,7 +174,21 @@ class CareersAndJobsInLebanonScraper:
 
 def scrape_careersandjobsinlebanon() -> List[Dict[str, Any]]:
     scraper = CareersAndJobsInLebanonScraper()
-    return scraper.scrape_jobs()
+    jobs = scraper.scrape_jobs()
+    if scraper.expired_urls:
+        try:
+            from app.database.db import archive_expired_scraped_jobs
+
+            result = archive_expired_scraped_jobs(scraper.expired_urls)
+            logger.info(
+                "CareersAndJobsInLebanon: archived %s expired job(s) from DB",
+                result.get("archived", 0) + result.get("deactivated", 0),
+            )
+        except Exception as exc:
+            logger.warning(
+                "CareersAndJobsInLebanon: could not archive expired jobs: %s", exc
+            )
+    return jobs
 
 
 if __name__ == "__main__":

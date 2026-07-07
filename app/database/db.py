@@ -2902,6 +2902,83 @@ def normalize_job_sources() -> int:
         conn.close()
 
 
+def archive_expired_scraped_jobs(job_urls: Optional[List[str]] = None) -> dict:
+    """
+    Archive scraped jobs the source site marks as expired.
+
+    Matches:
+      - explicit job_urls from a scraper re-check, and/or
+      - description text (e.g. "This listing has expired" on WP Job Manager sites).
+
+    Saved jobs are deactivated but kept in `jobs` for the user's bookmarks.
+    Unsaved jobs are copied to `archived_jobs` and removed from `jobs`.
+    """
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        clauses = [
+            "description ILIKE '%listing has expired%'",
+            "description ILIKE '%this job has expired%'",
+            "description ILIKE '%no longer accepting applications%'",
+        ]
+        params: List[Any] = []
+        if job_urls:
+            clauses.append("job_url = ANY(%s)")
+            params.append([u for u in job_urls if u])
+
+        where_sql = " OR ".join(f"({c})" for c in clauses)
+        base_where = f"is_active = TRUE AND ({where_sql})"
+
+        cur.execute(
+            f"""
+            INSERT INTO archived_jobs
+                (id, source, job_title, company, location,
+                 job_url, scraped_at, created_at, archived_at, archive_reason)
+            SELECT
+                id, source, job_title, company, location,
+                job_url, scraped_at, created_at, NOW(), 'source_expired'
+            FROM jobs
+            WHERE {base_where}
+              AND id NOT IN (SELECT job_id FROM saved_jobs)
+            """,
+            tuple(params),
+        )
+        archived = cur.rowcount
+
+        cur.execute(
+            f"""
+            DELETE FROM jobs
+            WHERE {base_where}
+              AND id NOT IN (SELECT job_id FROM saved_jobs)
+            """,
+            tuple(params),
+        )
+        deleted = cur.rowcount
+
+        cur.execute(
+            f"""
+            UPDATE jobs
+            SET is_active = FALSE
+            WHERE {base_where}
+            """,
+            tuple(params),
+        )
+        deactivated = cur.rowcount
+
+        conn.commit()
+        return {
+            "archived": archived,
+            "deleted": deleted,
+            "deactivated": deactivated,
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
 def remove_inactive_or_expired_jobs() -> dict:
     """
     TTL-based lifecycle cleanup — runs nightly.
@@ -2919,6 +2996,9 @@ def remove_inactive_or_expired_jobs() -> dict:
     conn = get_connection()
     cur = conn.cursor()
     try:
+        # ── Source-expired listings (e.g. WP Job Manager "listing has expired") ──
+        expired_result = archive_expired_scraped_jobs()
+
         # ── Scraped jobs ──────────────────────────────────────────────────
         # 1. Mark stale (not re-scraped in 30 days) as inactive
         cur.execute(
@@ -3015,6 +3095,9 @@ def remove_inactive_or_expired_jobs() -> dict:
 
         conn.commit()
         return {
+            "archived_source_expired": expired_result.get("archived", 0),
+            "deleted_source_expired": expired_result.get("deleted", 0),
+            "deactivated_source_expired": expired_result.get("deactivated", 0),
             "marked_stale_scraped": marked_stale,
             "archived_scraped": archived_scraped,
             "deleted_scraped": deleted_scraped,
