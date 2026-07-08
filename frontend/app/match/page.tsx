@@ -162,6 +162,30 @@ function normalizeSource(s: string | null | undefined): string {
   return (s || "").toLowerCase().replace(/[\s_-]+/g, "");
 }
 
+function locationMatchesFilter(location: string | null | undefined, filterValue: string): boolean {
+  const loc = (location || "").toLowerCase();
+  const f = (filterValue || "").trim().toLowerCase();
+  if (!f) return true;
+
+  if (f === "remote") {
+    return /\bremote\b/i.test(location || "");
+  }
+  if (f === "uae") {
+    return (
+      loc.includes("uae") ||
+      loc.includes("united arab emirates") ||
+      loc.includes("dubai") ||
+      loc.includes("abu dhabi") ||
+      loc.includes("sharjah")
+    );
+  }
+  if (f === "saudi") {
+    return loc.includes("saudi") || loc.includes("ksa") || loc.includes("riyadh") || loc.includes("jeddah");
+  }
+
+  return loc.includes(f);
+}
+
 function isVertexSource(s: string | null | undefined): boolean {
   return normalizeSource(s) === "companyposted";
 }
@@ -229,15 +253,10 @@ function MatchPage() {
   const [profileLoading, setProfileLoading] = useState(Boolean(token));
   const [showOneOffUpload, setShowOneOffUpload] = useState(false);
 
-  const [draftSearch, setDraftSearch] = useState("");
-  const [draftLocation, setDraftLocation] = useState("");
-  const [draftSource, setDraftSource] = useState("");
-  const [draftSort, setDraftSort] = useState<"match" | "recent">("match");
-
-  const [appliedSearch, setAppliedSearch] = useState("");
-  const [appliedLocation, setAppliedLocation] = useState("");
-  const [appliedSource, setAppliedSource] = useState("");
-  const [appliedSort, setAppliedSort] = useState<"match" | "recent">("match");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [locationFilter, setLocationFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
+  const [sortBy, setSortBy] = useState<"match" | "recent">("match");
   const [resultGroup, setResultGroup] = useState<"boards" | "vertex">("boards");
 
   const loadProfile = useCallback(async () => {
@@ -415,9 +434,9 @@ const handleMatchComplete = useCallback((result: MatchJobsResult) => {
   ]);
 
   const filteredJobs = useMemo(() => {
-    const q = appliedSearch.trim().toLowerCase();
-    const loc = appliedLocation.trim().toLowerCase();
-    const srcNorm = appliedSource.trim().toLowerCase();
+    const q = searchQuery.trim().toLowerCase();
+    const loc = locationFilter.trim().toLowerCase();
+    const wantSource = normalizeSource(sourceFilter);
 
     const jobsList = Array.isArray(jobs) ? jobs : [];
     let list = jobsList.filter((job) => {
@@ -427,24 +446,24 @@ const handleMatchComplete = useCallback((result: MatchJobsResult) => {
         !q ||
         (job.title || "").toLowerCase().includes(q) ||
         (job.company || "").toLowerCase().includes(q);
-      const locStr = (job.location || "").toLowerCase();
-      const matchesLocation =
-        !loc ||
-        locStr.includes(loc) ||
-        (loc === "remote" && /\bremote\b/i.test(job.location || ""));
+      const matchesLocation = locationMatchesFilter(job.location, loc);
       const jobSrc = normalizeSource(job.source);
-      const want = normalizeSource(srcNorm);
-      const matchesSource = !srcNorm || !want || jobSrc === want || jobSrc.includes(want) || want.includes(jobSrc);
+      // Strict source matching; previous contains-both-ways logic let many
+      // unrelated rows pass (especially when source was empty/partial).
+      const matchesSource =
+        !wantSource ||
+        (jobSrc.length > 0 &&
+          (jobSrc === wantSource || jobSrc.startsWith(wantSource) || wantSource.startsWith(jobSrc)));
       return matchesSearch && matchesLocation && matchesSource;
     });
 
-    if (appliedSort === "match") {
+    if (sortBy === "match") {
       list = [...list].sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
     } else {
       list = [...list].sort((a, b) => b.id - a.id);
     }
     return list;
-  }, [jobs, appliedSearch, appliedLocation, appliedSource, appliedSort, resultGroup]);
+  }, [jobs, searchQuery, locationFilter, sourceFilter, sortBy, resultGroup]);
 
   const groupCounts = useMemo(() => {
     const boards = jobs.filter((j) => !isVertexSource(j.source)).length;
@@ -452,22 +471,11 @@ const handleMatchComplete = useCallback((result: MatchJobsResult) => {
     return { boards, vertex };
   }, [jobs]);
 
-  const applyFilters = useCallback(() => {
-    setAppliedSearch(draftSearch);
-    setAppliedLocation(draftLocation);
-    setAppliedSource(draftSource);
-    setAppliedSort(draftSort);
-  }, [draftSearch, draftLocation, draftSource, draftSort]);
-
   const clearFilters = useCallback(() => {
-    setDraftSearch("");
-    setDraftLocation("");
-    setDraftSource("");
-    setDraftSort("match");
-    setAppliedSearch("");
-    setAppliedLocation("");
-    setAppliedSource("");
-    setAppliedSort("match");
+    setSearchQuery("");
+    setLocationFilter("");
+    setSourceFilter("");
+    setSortBy("match");
   }, []);
 
   const noCVYet =
@@ -684,16 +692,16 @@ const handleMatchComplete = useCallback((result: MatchJobsResult) => {
                     type="search"
                     placeholder="Search by title or keyword..."
                     className="vertex-input w-full rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-500"
-                    value={draftSearch}
-                    onChange={(e) => setDraftSearch(e.target.value)}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
                   />
                 </div>
                 <div className="w-full sm:w-[160px]">
                   <label className="mb-1 block text-xs font-medium text-slate-400">Location</label>
                   <select
                     className="vertex-input w-full rounded-lg px-3 py-2 text-sm text-white"
-                    value={draftLocation}
-                    onChange={(e) => setDraftLocation(e.target.value)}
+                    value={locationFilter}
+                    onChange={(e) => setLocationFilter(e.target.value)}
                   >
                     {LOCATION_OPTIONS.map((o) => (
                       <option key={o.label} value={o.value}>
@@ -706,8 +714,8 @@ const handleMatchComplete = useCallback((result: MatchJobsResult) => {
                   <label className="mb-1 block text-xs font-medium text-slate-400">Source</label>
                   <select
                     className="vertex-input w-full rounded-lg px-3 py-2 text-sm text-white"
-                    value={draftSource}
-                    onChange={(e) => setDraftSource(e.target.value)}
+                    value={sourceFilter}
+                    onChange={(e) => setSourceFilter(e.target.value)}
                     disabled={resultGroup === "vertex"}
                   >
                     {SOURCE_OPTIONS.map((o) => (
@@ -721,20 +729,13 @@ const handleMatchComplete = useCallback((result: MatchJobsResult) => {
                   <label className="mb-1 block text-xs font-medium text-slate-400">Sort by</label>
                   <select
                     className="vertex-input w-full rounded-lg px-3 py-2 text-sm text-white"
-                    value={draftSort}
-                    onChange={(e) => setDraftSort(e.target.value === "recent" ? "recent" : "match")}
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value === "recent" ? "recent" : "match")}
                   >
                     <option value="match">Best Match</option>
                     <option value="recent">Most Recent</option>
                   </select>
                 </div>
-                <button
-                  type="button"
-                  onClick={applyFilters}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500"
-                >
-                  Filter
-                </button>
               </div>
               <p className="text-center text-sm text-slate-400">
                 {matchUpgradeMessage
