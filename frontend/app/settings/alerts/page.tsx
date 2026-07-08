@@ -35,7 +35,7 @@ function AlertsContent() {
         setSettings(s);
         setLocalEnabled(s.is_enabled ?? true);
         setLocalFrequency((s.frequency as "immediate" | "daily" | "weekly") || "daily");
-        setLocalMinScore(s.min_match_score ?? 70);
+        setLocalMinScore(Math.max(35, s.min_match_score ?? 70));
       })
       .catch(() => {
         setLocalEnabled(true);
@@ -55,7 +55,7 @@ function AlertsContent() {
     updateAlertSettings(token, {
       is_enabled: localEnabled,
       frequency: localFrequency,
-      min_match_score: localMinScore,
+      min_match_score: Math.max(35, localMinScore),
     })
       .then((s) => {
         setSettings(s);
@@ -208,7 +208,7 @@ function AlertsContent() {
             </p>
             <input
               type="range"
-              min={0}
+              min={35}
               max={100}
               step={5}
               value={localMinScore}

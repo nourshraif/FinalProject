@@ -16,6 +16,21 @@ if str(project_root) not in sys.path:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+_ALERT_MIN_SCORE_FLOOR = max(
+    0,
+    min(100, int(os.getenv("ALERT_MIN_SCORE_FLOOR", "35"))),
+)
+
+
+def effective_alert_min_score(configured_score) -> int:
+    """Never allow ultra-low threshold matches in scheduled emails."""
+    try:
+        raw = int(configured_score)
+    except Exception:
+        raw = 70
+    raw = max(0, min(100, raw))
+    return max(raw, _ALERT_MIN_SCORE_FLOOR)
+
 
 # =========================================================
 # MATCH SCORE FUNCTION
@@ -116,12 +131,13 @@ def run_daily_alerts():
                     continue
 
                 scored_jobs = []
+                min_score = effective_alert_min_score(user.get("min_match_score", 70))
 
                 for job in unsent_jobs:
 
                     score = calculate_match_score(skills, job)
 
-                    if score >= user.get("min_match_score", 70):
+                    if score >= min_score:
                         scored_jobs.append({
                             **job,
                             "match_score": score
@@ -213,12 +229,13 @@ def run_weekly_alerts():
                     continue
 
                 scored_jobs = []
+                min_score = effective_alert_min_score(user.get("min_match_score", 70))
 
                 for job in unsent_jobs:
 
                     score = calculate_match_score(skills, job)
 
-                    if score >= user.get("min_match_score", 70):
+                    if score >= min_score:
                         scored_jobs.append({
                             **job,
                             "match_score": score

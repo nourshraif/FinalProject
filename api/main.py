@@ -4084,8 +4084,8 @@ def update_alerts_settings(
     if frequency not in ("immediate", "daily", "weekly"):
         raise HTTPException(status_code=400, detail="frequency must be immediate, daily, or weekly")
     min_score = body.min_match_score
-    if not isinstance(min_score, int) or min_score < 0 or min_score > 100:
-        raise HTTPException(status_code=400, detail="min_match_score must be between 0 and 100")
+    if not isinstance(min_score, int) or min_score < 35 or min_score > 100:
+        raise HTTPException(status_code=400, detail="min_match_score must be between 35 and 100")
     db_upsert_alert_settings(
         current_user["id"],
         body.is_enabled,
@@ -4100,7 +4100,7 @@ def send_test_alert(current_user: dict = Depends(get_current_user)):
     if current_user.get("user_type") != "jobseeker":
         raise HTTPException(status_code=403, detail="Jobseeker access only")
     require_plan(current_user, "job_alerts")
-    from api.job_alerts_scheduler import calculate_match_score
+    from api.job_alerts_scheduler import calculate_match_score, effective_alert_min_score
 
     profile = db_get_user_profile(current_user["id"])
     skills = (profile or {}).get("skills") or []
@@ -4110,7 +4110,7 @@ def send_test_alert(current_user: dict = Depends(get_current_user)):
     if not jobs:
         raise HTTPException(status_code=400, detail="No jobs in the database yet")
     settings = db_get_alert_settings(current_user["id"])
-    min_score = settings.get("min_match_score", 70)
+    min_score = effective_alert_min_score(settings.get("min_match_score", 70))
     scored = []
     for job in jobs:
         score = calculate_match_score(skills, job)
@@ -4119,7 +4119,10 @@ def send_test_alert(current_user: dict = Depends(get_current_user)):
     scored.sort(key=lambda x: x["match_score"], reverse=True)
     top = scored[:5]
     if not top:
-        top = [{**jobs[0], "match_score": calculate_match_score(skills, jobs[0])}]
+        raise HTTPException(
+            status_code=400,
+            detail=f"No matching jobs found above the minimum score ({min_score}%).",
+        )
     sent = send_job_alert_email(
         current_user["email"],
         current_user.get("full_name") or current_user["email"],
