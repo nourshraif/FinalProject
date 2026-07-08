@@ -1,5 +1,6 @@
 # api/job_alerts_scheduler.py
 
+import math
 import os
 import sys
 from pathlib import Path
@@ -32,11 +33,17 @@ def effective_alert_min_score(configured_score) -> int:
     return max(raw, _ALERT_MIN_SCORE_FLOOR)
 
 
-# =========================================================
-# MATCH SCORE FUNCTION
-# =========================================================
+def normalize_match_score(raw_percentage: float) -> float:
+    """Same display rescale as /api/match-jobs (and the match page)."""
+    r = max(0.0, min(1.0, float(raw_percentage) / 100.0))
+    return round(45.0 + math.sqrt(r) * 50.0, 1)
+
 
 def calculate_match_score(user_skills: list, job: dict) -> float:
+    """
+    Deprecated keyword-only scorer kept for any external imports.
+    Prefer score_alert_candidates() which uses the hybrid matcher.
+    """
     if not user_skills or not job.get("description"):
         return 0.0
 
@@ -54,6 +61,38 @@ def calculate_match_score(user_skills: list, job: dict) -> float:
     )
 
     return (matched / len(user_skills)) * 100 if user_skills else 0.0
+
+
+def score_alert_candidates(skills: list, jobs: list) -> list:
+    """
+    Score jobs with the same hybrid engine + display scores as the match page.
+    Returns job dicts with match_score set to the normalized display percentage.
+    """
+    skills = [s for s in (skills or []) if s and str(s).strip()]
+    if not skills or not jobs:
+        return []
+
+    from app.services.vector_matching_service import VectorSkillMatcher
+
+    matcher = VectorSkillMatcher()
+    try:
+        scored = matcher.score_jobs_hybrid_batch(
+            cv_skills=skills,
+            jobs=jobs,
+            vector_weight=0.6,
+            keyword_weight=0.4,
+        )
+    finally:
+        matcher.close()
+
+    out = []
+    for job in scored:
+        raw = float(job.get("match_percentage") or 0.0)
+        out.append({
+            **job,
+            "match_score": normalize_match_score(raw),
+        })
+    return out
 
 
 # =========================================================
@@ -130,18 +169,11 @@ def run_daily_alerts():
                 if not skills:
                     continue
 
-                scored_jobs = []
                 min_score = effective_alert_min_score(user.get("min_match_score", 70))
-
-                for job in unsent_jobs:
-
-                    score = calculate_match_score(skills, job)
-
-                    if score >= min_score:
-                        scored_jobs.append({
-                            **job,
-                            "match_score": score
-                        })
+                scored_jobs = [
+                    j for j in score_alert_candidates(skills, unsent_jobs)
+                    if float(j.get("match_score") or 0) >= min_score
+                ]
 
                 if not scored_jobs:
                     continue
@@ -228,18 +260,11 @@ def run_weekly_alerts():
                 if not skills:
                     continue
 
-                scored_jobs = []
                 min_score = effective_alert_min_score(user.get("min_match_score", 70))
-
-                for job in unsent_jobs:
-
-                    score = calculate_match_score(skills, job)
-
-                    if score >= min_score:
-                        scored_jobs.append({
-                            **job,
-                            "match_score": score
-                        })
+                scored_jobs = [
+                    j for j in score_alert_candidates(skills, unsent_jobs)
+                    if float(j.get("match_score") or 0) >= min_score
+                ]
 
                 if not scored_jobs:
                     continue

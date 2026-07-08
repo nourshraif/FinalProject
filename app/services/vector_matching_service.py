@@ -351,14 +351,84 @@ class VectorSkillMatcher:
         
         return matching_jobs
 
+    # Soft skills barely move the needle; hard/role overlap should dominate.
+    SOFT_SKILL_WEIGHT = 0.08
+    TECH_SKILL_WEIGHT = 2.5
+    OTHER_SKILL_WEIGHT = 1.0
+    # Cross-family jobs (e.g. software CV vs trades listing) are strongly demoted.
+    ROLE_FAMILY_MISMATCH_FACTOR = 0.32
+
+    ROLE_FAMILY_KEYWORDS = {
+        "software_engineering": (
+            "software", "developer", "engineer", "programming", "programmer",
+            "backend", "frontend", "fullstack", "full-stack", "devops",
+            "python", "javascript", "typescript", "java", "react", "node",
+            "api", "web developer", "mobile developer", "kotlin", "django",
+        ),
+        "data_ai": (
+            "data scientist", "data analyst", "machine learning", "deep learning",
+            "nlp", "mlops", "artificial intelligence", "tensorflow", "pytorch",
+            "pandas", "numpy", "scikit", "analytics engineer",
+        ),
+        "nursing_clinical": (
+            "nurse", "nursing", "nmc", "rn ", " ward", "clinical nurse",
+            "registered nurse", "icu", "midwife", "patient care",
+        ),
+        "healthcare_other": (
+            "physician", "doctor", "pharmacist", "physiotherapist", "dentist",
+            "medical", "hospital", "clinic", "therapist",
+        ),
+        "education": (
+            "teacher", "teaching", "tutor", "lecturer", "professor", "school",
+            "curriculum", "education", "instructor", "special education",
+            "autism", "aba",
+        ),
+        "trades_construction": (
+            "welder", "welding", "carpenter", "electrician", "plumber",
+            "blacksmith", "ironworker", "aluminum", "aluminium", "construction",
+            "foreman", "mechanic", "technician site", "fabricat",
+            "حداد", "ألومنيوم", "المنيوم",
+        ),
+        "sales_marketing": (
+            "sales", "marketing", "seo", "social media", "account executive",
+            "business development", "advertising", "brand manager",
+        ),
+        "finance_accounting": (
+            "accountant", "accounting", "finance", "auditor", "bookkeep",
+            "cfo", "financial analyst", "payroll",
+        ),
+        "hr_admin": (
+            "human resources", "hr ", "recruiter", "talent acquisition",
+            "administrative", "office manager", "receptionist",
+        ),
+        "hospitality": (
+            "hotel", "restaurant", "chef", "waiter", "hospitality", "barista",
+            "housekeeping",
+        ),
+    }
+
+    @staticmethod
+    def _is_language_skill(skill: str) -> bool:
+        """Spoken/written languages — profile metadata, not match drivers."""
+        language_keywords = (
+            "english", "arabic", "french", "spanish", "german", "italian",
+            "portuguese", "chinese", "mandarin", "hindi", "russian",
+            "turkish", "hebrew", "fluent in", "native speaker",
+        )
+        s = (skill or "").lower().strip()
+        return any(k in s for k in language_keywords)
+
     @staticmethod
     def _is_soft_skill(skill: str) -> bool:
         soft_keywords = (
-            "communication", "teamwork", "team", "leadership", "problem solving",
-            "critical thinking", "time management", "collaboration", "english",
-            "arabic", "sales", "management", "organized", "organization",
+            "communication", "teamwork", "team player", "leadership",
+            "problem solving", "critical thinking", "time management",
+            "collaboration", "organized", "organization", "interpersonal",
+            "adaptability", "creativity", "attention to detail",
         )
         s = (skill or "").lower().strip()
+        if VectorSkillMatcher._is_language_skill(s):
+            return False
         return any(k in s for k in soft_keywords)
 
     @staticmethod
@@ -385,12 +455,30 @@ class VectorSkillMatcher:
                 hits += 1
         return hits
 
+    @classmethod
+    def detect_role_families(cls, text: str) -> set:
+        """Coarse role families from CV skills or job title/description."""
+        blob = (text or "").lower()
+        if not blob.strip():
+            return set()
+        families = set()
+        for family, keywords in cls.ROLE_FAMILY_KEYWORDS.items():
+            for kw in keywords:
+                if kw in blob:
+                    families.add(family)
+                    break
+        return families
+
     @staticmethod
     def _split_skill_groups(cv_skills: List[str]) -> Tuple[List[str], List[str], List[str]]:
         cv_skills_norm = [s.strip() for s in cv_skills if str(s).strip()]
-        tech_skills = [s for s in cv_skills_norm if VectorSkillMatcher._is_technical_skill(s)]
-        soft_skills = [s for s in cv_skills_norm if VectorSkillMatcher._is_soft_skill(s)]
-        other_skills = [s for s in cv_skills_norm if s not in tech_skills and s not in soft_skills]
+        # Languages never enter keyword scoring (profile signal only).
+        usable = [s for s in cv_skills_norm if not VectorSkillMatcher._is_language_skill(s)]
+        tech_skills = [s for s in usable if VectorSkillMatcher._is_technical_skill(s)]
+        soft_skills = [s for s in usable if VectorSkillMatcher._is_soft_skill(s)]
+        other_skills = [
+            s for s in usable if s not in tech_skills and s not in soft_skills
+        ]
         return tech_skills, other_skills, soft_skills
 
     def _compute_hybrid_score(
@@ -417,8 +505,15 @@ class VectorSkillMatcher:
         other_hits = self._count_keyword_hits(other_skills, full_text)
         soft_hits = self._count_keyword_hits(soft_skills, full_text)
 
-        weighted_hits = (2.5 * tech_hits) + (1.0 * other_hits) + (0.25 * soft_hits)
-        max_possible = (2.5 * len(tech_skills)) + (1.0 * len(other_skills)) + (0.25 * len(soft_skills))
+        soft_w = self.SOFT_SKILL_WEIGHT
+        tech_w = self.TECH_SKILL_WEIGHT
+        other_w = self.OTHER_SKILL_WEIGHT
+        weighted_hits = (tech_w * tech_hits) + (other_w * other_hits) + (soft_w * soft_hits)
+        max_possible = (
+            (tech_w * len(tech_skills))
+            + (other_w * len(other_skills))
+            + (soft_w * len(soft_skills))
+        )
         keyword_score = (weighted_hits / max_possible) if max_possible > 0 else 0.0
 
         if tech_skills and tech_hits == 0:
@@ -447,6 +542,17 @@ class VectorSkillMatcher:
             combined_score *= 1.15
             title_boost_applied = True
 
+        # Role-family gate: demote jobs that clearly sit in a different career track.
+        cv_text = " ".join(str(s) for s in (cv_skills or []))
+        cv_families = self.detect_role_families(cv_text)
+        job_families = self.detect_role_families(
+            f"{title or ''} {description or ''} {skills_text or ''}"
+        )
+        role_family_mismatch = False
+        if cv_families and job_families and cv_families.isdisjoint(job_families):
+            combined_score *= self.ROLE_FAMILY_MISMATCH_FACTOR
+            role_family_mismatch = True
+
         # Keep scores bounded.
         combined_score = max(0.0, min(1.0, combined_score))
 
@@ -458,6 +564,7 @@ class VectorSkillMatcher:
             "core_penalty_applied": 1.0 if core_penalty_applied else 0.0,
             "title_core_hits": float(title_core_hits),
             "title_boost_applied": 1.0 if title_boost_applied else 0.0,
+            "role_family_mismatch": 1.0 if role_family_mismatch else 0.0,
             "combined_score": combined_score,
             "match_percentage": combined_score * 100,
         }
@@ -472,13 +579,13 @@ class VectorSkillMatcher:
         stop = {
             "skills", "skill", "experience", "professional", "management",
             "communication", "teamwork", "leadership", "english", "arabic",
-            "care", "health", "patient", "support",
+            "french", "spanish", "care", "health", "patient", "support",
         }
         out: List[str] = []
         seen = set()
         for raw in cv_skills or []:
             s = (raw or "").strip().lower()
-            if not s:
+            if not s or VectorSkillMatcher._is_language_skill(s):
                 continue
             # Keep full phrase as a core term (e.g. "adult nursing").
             if s not in stop and s not in seen and len(s) >= 4:
@@ -487,12 +594,93 @@ class VectorSkillMatcher:
 
             # Also keep meaningful tokens from multi-word skills.
             for tok in re.findall(r"[a-z0-9\+#\.]{3,}", s):
-                if tok in stop or tok in seen:
+                if tok in stop or tok in seen or VectorSkillMatcher._is_language_skill(tok):
                     continue
                 seen.add(tok)
                 out.append(tok)
 
         return out[:12]
+
+    def score_jobs_hybrid_batch(
+        self,
+        cv_skills: List[str],
+        jobs: List[Dict],
+        vector_weight: float = 0.6,
+        keyword_weight: float = 0.4,
+    ) -> List[Dict]:
+        """
+        Score a list of job dicts (from get_new_jobs_since / get_recent_jobs)
+        with the same hybrid formula as find_matching_jobs_hybrid.
+        Embeds CV skills once. Returns jobs that have embeddings, with
+        match_percentage (raw 0-100) and match_score unset.
+        """
+        if not cv_skills or not jobs:
+            return []
+
+        self._ensure_embeddings_exist()
+        cv_embedding = self.embed_skills(cv_skills)
+        cv_list = cv_embedding.tolist()
+        scored: List[Dict] = []
+
+        for job in jobs:
+            job_id = job.get("id")
+            if job_id is None:
+                continue
+            try:
+                jid = int(job_id)
+            except (TypeError, ValueError):
+                continue
+
+            if jid < 0:
+                self.cur.execute(
+                    """
+                    SELECT pj.title, pj.company_name, pj.location, pj.description,
+                           pje.skills_text, 1 - (pje.embedding <=> %s::vector) AS vector_sim
+                    FROM posted_jobs pj
+                    JOIN posted_job_embeddings pje ON pj.id = pje.posted_job_id
+                    WHERE pj.id = %s AND pj.is_active = TRUE
+                    """,
+                    (cv_list, -jid),
+                )
+            else:
+                self.cur.execute(
+                    """
+                    SELECT j.job_title, j.company, j.location, j.description,
+                           je.skills_text, 1 - (je.embedding <=> %s::vector) AS vector_sim
+                    FROM jobs j
+                    JOIN job_embeddings je ON j.id = je.job_id
+                    WHERE j.id = %s AND j.is_active = TRUE
+                    """,
+                    (cv_list, jid),
+                )
+
+            row = self.cur.fetchone()
+            if not row:
+                continue
+
+            title, company, location, description, skills_text, vector_sim = row
+            score = self._compute_hybrid_score(
+                cv_skills=cv_skills,
+                vector_sim=float(vector_sim),
+                title=title,
+                company=company,
+                location=location,
+                description=description,
+                skills_text=skills_text,
+                vector_weight=vector_weight,
+                keyword_weight=keyword_weight,
+            )
+            scored.append({
+                **job,
+                "job_title": title or job.get("job_title"),
+                "company": company or job.get("company"),
+                "location": location or job.get("location"),
+                "description": description if description is not None else job.get("description"),
+                "match_percentage": score["match_percentage"],
+            })
+
+        scored.sort(key=lambda x: x.get("match_percentage", 0), reverse=True)
+        return scored
 
     def score_job_hybrid(
         self,
@@ -549,26 +737,38 @@ class VectorSkillMatcher:
                                   cv_skills: List[str],
                                   top_k: int = 50,
                                   vector_weight: float = 0.7,
-                                  keyword_weight: float = 0.3) -> List[Dict]:
+                                  keyword_weight: float = 0.3,
+                                  min_combined_score: Optional[float] = None) -> List[Dict]:
         """
         Hybrid matching: combines vector similarity with keyword matching.
-        
+
         Args:
             cv_skills: List of skills from user's CV
-            top_k: Number of top matches to return
+            top_k: Maximum number of matches to return (cap, not a fixed count)
             vector_weight: Weight for vector similarity (0-1)
             keyword_weight: Weight for keyword matching (0-1)
-            
+            min_combined_score: Drop jobs below this raw hybrid score (0-1).
+                Defaults to MATCH_MIN_COMBINED_SCORE env (0.18). Without this
+                filter the API always returned exactly min(50, DB size) neighbors.
+
         Returns:
-            List of matching jobs with combined scores
+            List of matching jobs with combined scores (length varies by quality)
         """
+        if min_combined_score is None:
+            try:
+                min_combined_score = float(os.getenv("MATCH_MIN_COMBINED_SCORE", "0.18"))
+            except ValueError:
+                min_combined_score = 0.18
+        min_combined_score = max(0.0, min(1.0, float(min_combined_score)))
+
         # Ensure embeddings exist for all jobs (silent auto-generation)
         self._ensure_embeddings_exist()
-        
-        # Get vector matches
+
+        # Get vector matches — pull a wider pool, then filter by quality.
         cv_embedding = self.embed_skills(cv_skills)
         tech_skills, other_skills, soft_skills = self._split_skill_groups(cv_skills)
-        
+        candidate_limit = max(top_k * 4, 100)
+
         self.cur.execute("""
             SELECT
                 id, source, job_title, company, location,
@@ -611,14 +811,14 @@ class VectorSkillMatcher:
             ) combined
             ORDER BY embedding <=> %s::vector
             LIMIT %s
-        """, (cv_embedding.tolist(), cv_embedding.tolist(), top_k * 2))
-        
+        """, (cv_embedding.tolist(), cv_embedding.tolist(), candidate_limit))
+
         results = self.cur.fetchall()
-        
+
         matching_jobs = []
-        
+
         for row in results:
-            (job_id, source, title, company, location, description, 
+            (job_id, source, title, company, location, description,
              url, scraped_at, skills_text, vector_sim) = row
 
             score = self._compute_hybrid_score(
@@ -632,6 +832,13 @@ class VectorSkillMatcher:
                 vector_weight=vector_weight,
                 keyword_weight=keyword_weight,
             )
+
+            # Quality gate: do not count weak / cross-domain neighbors as matches.
+            if score["combined_score"] < min_combined_score:
+                continue
+            if score.get("role_family_mismatch", 0) >= 1.0:
+                continue
+
             full_text = " ".join([
                 str(title or ""),
                 str(company or ""),
@@ -639,7 +846,7 @@ class VectorSkillMatcher:
                 str(description or ""),
                 str(skills_text or ""),
             ]).lower()
-            
+
             matching_jobs.append({
                 'job_id': job_id,
                 'source': source,
@@ -661,7 +868,7 @@ class VectorSkillMatcher:
                 'match_percentage': score["match_percentage"],
                 'cv_skills': cv_skills
             })
-        
+
         # Sort by combined score (best first)
         matching_jobs.sort(key=lambda x: x['combined_score'], reverse=True)
 
