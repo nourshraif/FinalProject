@@ -63,7 +63,7 @@ def calculate_match_score(user_skills: list, job: dict) -> float:
     return (matched / len(user_skills)) * 100 if user_skills else 0.0
 
 
-def score_alert_candidates(skills: list, jobs: list, headline=None) -> list:
+def score_alert_candidates(skills: list, jobs: list) -> list:
     """
     Score jobs with the same hybrid engine + display scores as the match page.
     Returns job dicts with match_score set to the normalized display percentage.
@@ -73,10 +73,6 @@ def score_alert_candidates(skills: list, jobs: list, headline=None) -> list:
         return []
 
     from app.services.vector_matching_service import VectorSkillMatcher
-    from app.services.primary_role import infer_primary_role
-
-    role_label, role_terms = infer_primary_role(skills=skills, headline=headline)
-
     matcher = VectorSkillMatcher()
     try:
         scored = matcher.score_jobs_hybrid_batch(
@@ -84,9 +80,6 @@ def score_alert_candidates(skills: list, jobs: list, headline=None) -> list:
             jobs=jobs,
             vector_weight=0.6,
             keyword_weight=0.4,
-            primary_role=role_label,
-            primary_role_terms=role_terms,
-            headline=headline,
         )
     finally:
         matcher.close()
@@ -177,11 +170,7 @@ def run_daily_alerts():
 
                 min_score = effective_alert_min_score(user.get("min_match_score", 70))
                 scored_jobs = [
-                    j for j in score_alert_candidates(
-                        skills,
-                        unsent_jobs,
-                        headline=(user.get("headline") or None),
-                    )
+                    j for j in score_alert_candidates(skills, unsent_jobs)
                     if float(j.get("match_score") or 0) >= min_score
                 ]
 
@@ -272,11 +261,7 @@ def run_weekly_alerts():
 
                 min_score = effective_alert_min_score(user.get("min_match_score", 70))
                 scored_jobs = [
-                    j for j in score_alert_candidates(
-                        skills,
-                        unsent_jobs,
-                        headline=(user.get("headline") or None),
-                    )
+                    j for j in score_alert_candidates(skills, unsent_jobs)
                     if float(j.get("match_score") or 0) >= min_score
                 ]
 
