@@ -811,7 +811,7 @@ class VectorSkillMatcher:
             vector_weight: Weight for vector similarity (0-1)
             keyword_weight: Weight for keyword matching (0-1)
             min_combined_score: Drop jobs below this raw hybrid score (0-1).
-                Defaults to MATCH_MIN_COMBINED_SCORE env (0.22). Without this
+                Defaults to MATCH_MIN_COMBINED_SCORE env (0.18). Without this
                 filter the API always returned exactly min(50, DB size) neighbors.
 
         Returns:
@@ -819,9 +819,9 @@ class VectorSkillMatcher:
         """
         if min_combined_score is None:
             try:
-                min_combined_score = float(os.getenv("MATCH_MIN_COMBINED_SCORE", "0.22"))
+                min_combined_score = float(os.getenv("MATCH_MIN_COMBINED_SCORE", "0.18"))
             except ValueError:
-                min_combined_score = 0.22
+                min_combined_score = 0.18
         min_combined_score = max(0.0, min(1.0, float(min_combined_score)))
 
         # Ensure embeddings exist for all jobs (silent auto-generation)
@@ -899,7 +899,9 @@ class VectorSkillMatcher:
             # Quality gate: do not count weak / cross-domain neighbors as matches.
             if score["combined_score"] < min_combined_score:
                 continue
-            if score.get("role_family_mismatch", 0) >= 1.0:
+            # Keep broader cross-family demotion in score, but only hard-drop
+            # explicitly incompatible professions (e.g. nurse vs pharmacist).
+            if score.get("role_family_incompatible", 0) >= 1.0:
                 continue
 
             full_text = " ".join([
