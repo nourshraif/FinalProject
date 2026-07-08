@@ -770,19 +770,29 @@ class VectorSkillMatcher:
                                   cv_skills: List[str],
                                   top_k: int = 50,
                                   vector_weight: float = 0.7,
-                                  keyword_weight: float = 0.3) -> List[Dict]:
+                                  keyword_weight: float = 0.3,
+                                  min_combined_score: Optional[float] = None) -> List[Dict]:
         """
         Hybrid matching: combines vector similarity with keyword matching.
 
         Args:
             cv_skills: List of skills from user's CV
-            top_k: Number of top matches to return
+            top_k: Maximum number of matches to return
             vector_weight: Weight for vector similarity (0-1)
             keyword_weight: Weight for keyword matching (0-1)
+            min_combined_score: Drop jobs below this raw hybrid score (0-1).
+                Defaults to MATCH_MIN_COMBINED_SCORE env (0.20).
 
         Returns:
             List of matching jobs with combined scores
         """
+        if min_combined_score is None:
+            try:
+                min_combined_score = float(os.getenv("MATCH_MIN_COMBINED_SCORE", "0.20"))
+            except ValueError:
+                min_combined_score = 0.20
+        min_combined_score = max(0.0, min(1.0, float(min_combined_score)))
+
         # Ensure embeddings exist for all jobs (silent auto-generation)
         self._ensure_embeddings_exist()
 
@@ -853,6 +863,8 @@ class VectorSkillMatcher:
                 vector_weight=vector_weight,
                 keyword_weight=keyword_weight,
             )
+            if score["combined_score"] < min_combined_score:
+                continue
 
             full_text = " ".join([
                 str(title or ""),
