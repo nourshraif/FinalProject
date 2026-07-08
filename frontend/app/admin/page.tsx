@@ -11,6 +11,7 @@ import {
   Mail,
   TrendingUp,
   Clock3,
+  Loader2,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -61,7 +62,7 @@ function isAdminTab(value: string | null): value is AdminTab {
 
 function AdminPage() {
   const searchParams = useSearchParams();
-  const { user, token, isLoggedIn } = useAuth();
+  const { user, token, isLoggedIn, authReady } = useAuth();
   const { showToast } = useToast();
   const [stats, setStats] = useState<AdminStatsType | null>(null);
   const [activity, setActivity] = useState<AdminActivityItem[]>([]);
@@ -129,6 +130,15 @@ function AdminPage() {
     loadLastScraperRun();
     loadHealth();
   }, [loadLastScraperRun, loadHealth]);
+
+  if (!authReady) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center px-4 py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-indigo-400" aria-hidden />
+        <p className="mt-4 text-sm text-vertex-muted">Loading admin panel…</p>
+      </div>
+    );
+  }
 
   if (!isLoggedIn || !user) {
     return (

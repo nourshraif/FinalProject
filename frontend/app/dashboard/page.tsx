@@ -13,7 +13,7 @@ import { RefreshCw, Loader2, AlertCircle } from "lucide-react";
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { isLoggedIn, user } = useAuth();
+  const { isLoggedIn, user, authReady } = useAuth();
   const { showToast } = useToast();
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -21,12 +21,17 @@ export default function DashboardPage() {
   const [scraperRunning, setScraperRunning] = useState(false);
 
   const redirecting =
+    authReady &&
     isLoggedIn &&
     user != null &&
-    (user.user_type === "jobseeker" || user.user_type === "company");
+    (user.is_admin || user.user_type === "jobseeker" || user.user_type === "company");
 
   useEffect(() => {
     if (!redirecting || !user) return;
+    if (user.is_admin) {
+      router.replace("/admin");
+      return;
+    }
     if (user.user_type === "jobseeker") {
       router.replace("/dashboard/jobseeker");
       return;

@@ -19,9 +19,14 @@ import { HeroMatchPanel } from "@/components/HeroMatchPanel";
 
 export default function HomePage() {
   const router = useRouter();
-  const { isLoggedIn, user } = useAuth();
+  const { isLoggedIn, user, authReady } = useAuth();
   const [stats, setStats] = useState<Stats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!authReady || !isLoggedIn || !user?.is_admin) return;
+    router.replace("/admin");
+  }, [authReady, isLoggedIn, user?.is_admin, router]);
 
   useEffect(() => {
     getStats()
@@ -54,8 +59,11 @@ export default function HomePage() {
     [stats?.job_board_count]
   );
 
-  const dashboardHref =
-    user?.user_type === "company" ? "/dashboard/company" : "/dashboard/jobseeker";
+  const dashboardHref = user?.is_admin
+    ? "/admin"
+    : user?.user_type === "company"
+      ? "/dashboard/company"
+      : "/dashboard/jobseeker";
 
   return (
     <div className="aurora-bg relative min-h-screen overflow-hidden pb-16">

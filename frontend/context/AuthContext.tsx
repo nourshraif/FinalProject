@@ -20,6 +20,8 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   isLoggedIn: boolean;
+  /** False until localStorage has been read and /api/auth/me has finished (when a token exists). */
+  authReady: boolean;
   login: (token: string, user: User) => void;
   logout: () => void;
   /** Shallow-merge fields into the current user (and persist). */
@@ -41,18 +43,45 @@ function normalizeUser(raw: User): User {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [authReady, setAuthReady] = useState(false);
 
   useEffect(() => {
-    try {
-      const t = localStorage.getItem(STORAGE_TOKEN_KEY);
-      const u = localStorage.getItem(STORAGE_USER_KEY);
-      if (t && u) {
-        setToken(t);
-        setUser(normalizeUser(JSON.parse(u) as User));
+    let cancelled = false;
+
+    async function bootstrap() {
+      try {
+        const t = localStorage.getItem(STORAGE_TOKEN_KEY);
+        const u = localStorage.getItem(STORAGE_USER_KEY);
+        if (t && u) {
+          setToken(t);
+          setUser(normalizeUser(JSON.parse(u) as User));
+          try {
+            const fresh = await getMe(t);
+            if (!cancelled) {
+              const normalized = normalizeUser(fresh);
+              setUser(normalized);
+              localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(normalized));
+            }
+          } catch {
+            if (!cancelled) {
+              setToken(null);
+              setUser(null);
+              localStorage.removeItem(STORAGE_TOKEN_KEY);
+              localStorage.removeItem(STORAGE_USER_KEY);
+            }
+          }
+        }
+      } catch {
+        // ignore corrupt storage
+      } finally {
+        if (!cancelled) setAuthReady(true);
       }
-    } catch {
-      // ignore corrupt storage
     }
+
+    void bootstrap();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const login = useCallback((newToken: string, newUser: User) => {
@@ -114,6 +143,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user,
         token,
         isLoggedIn: !!user && !!token,
+        authReady,
         login,
         logout,
         updateUser,

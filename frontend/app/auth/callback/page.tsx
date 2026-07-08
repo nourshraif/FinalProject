@@ -25,15 +25,18 @@ function AuthCallbackPage() {
     }
 
     if (token && user_type && full_name && user_id && email) {
+      const isAdmin = is_admin_param === "true";
       login(token, {
         id: parseInt(user_id, 10),
         email: decodeURIComponent(email),
         full_name: decodeURIComponent(full_name),
         user_type: user_type as "jobseeker" | "company",
-        is_admin: is_admin_param === "true",
+        is_admin: isAdmin,
         plan: decodeURIComponent(plan),
       });
-      if (user_type === "company") {
+      if (isAdmin) {
+        router.push("/admin");
+      } else if (user_type === "company") {
         router.push("/dashboard/company");
       } else {
         router.push("/dashboard/jobseeker");

@@ -250,7 +250,7 @@ function DropdownNavLink({
 export function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, isLoggedIn, logout, token } = useAuth();
+  const { user, isLoggedIn, logout, token, authReady } = useAuth();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
@@ -336,27 +336,31 @@ export function Navbar() {
     "absolute z-[60] mt-1.5 min-w-[12.5rem] rounded-xl border border-white/10 bg-[#1a273e]/95 py-1 shadow-[0_16px_48px_rgba(0,8,24,0.5)] backdrop-blur-xl";
 
   const isCompany = user?.user_type === "company";
-  const isAdmin = Boolean(user?.is_admin);
   const isAdminRoute = pathname.startsWith("/admin");
+  const isAdmin = authReady && Boolean(user?.is_admin);
+  const showAdminShell = isAdminRoute || (authReady && isLoggedIn && isAdmin);
   const profileHref = isAdmin ? "/admin" : isCompany ? "/company/profile" : "/profile";
+  const logoHref = showAdminShell ? "/admin" : "/";
   const effectivePlan = resolvePlan(subscription?.plan || user?.plan);
   // Admins use in-panel tabs only — no Home / Vertex Jobs / Job Boards in the header
   const primary =
-    isAdminRoute || (isLoggedIn && isAdmin)
+    showAdminShell
       ? []
-      : !isLoggedIn
-        ? publicNav
-        : isCompany
-          ? companyPrimary
-          : jobseekerPrimary;
-  const more = isLoggedIn
+      : !authReady
+        ? []
+        : !isLoggedIn
+          ? publicNav
+          : isCompany
+            ? companyPrimary
+            : jobseekerPrimary;
+  const more = authReady && isLoggedIn
     ? isAdmin
       ? []
       : isCompany
         ? companyMore
         : jobseekerMore
     : [];
-  const account = isLoggedIn
+  const account = authReady && isLoggedIn
     ? isAdmin
       ? []
       : isCompany
@@ -378,7 +382,7 @@ export function Navbar() {
       }}
     >
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-2 px-4 sm:px-6">
-        <Logo size="sm" href="/" className="mr-2 shrink-0 sm:mr-4" />
+        <Logo size="sm" href={logoHref} className="mr-2 shrink-0 sm:mr-4" />
 
         {/* Desktop: primary + More + admin */}
         <nav className="hidden min-w-0 flex-1 items-center justify-center gap-x-2 md:flex lg:gap-x-3">
