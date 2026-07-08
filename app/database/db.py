@@ -3925,6 +3925,7 @@ def get_users_for_alerts() -> list:
                 u.email,
                 u.full_name,
                 p.skills,
+                p.headline,
                 jas.frequency,
                 jas.min_match_score,
                 jas.last_sent_at
@@ -3940,7 +3941,16 @@ def get_users_for_alerts() -> list:
             """
         )
         rows = cur.fetchall()
-        cols = ["id", "email", "full_name", "skills", "frequency", "min_match_score", "last_sent_at"]
+        cols = [
+            "id",
+            "email",
+            "full_name",
+            "skills",
+            "headline",
+            "frequency",
+            "min_match_score",
+            "last_sent_at",
+        ]
         out = []
         for row in rows:
             d = dict(zip(cols, row))

@@ -359,6 +359,9 @@ class VectorSkillMatcher:
     ROLE_FAMILY_MISMATCH_FACTOR = 0.32
     # Same-field but different licensed role (nurse vs pharmacist): near-hard drop.
     ROLE_FAMILY_INCOMPATIBLE_FACTOR = 0.12
+    # Job TITLE contains the user's primary role (e.g. "Nurse" in "Registered Nurse").
+    PRIMARY_ROLE_TITLE_BOOST = 1.35
+    PRIMARY_ROLE_DESC_BOOST = 1.08
 
     ROLE_FAMILY_KEYWORDS = {
         "software_engineering": (
@@ -541,7 +544,14 @@ class VectorSkillMatcher:
         skills_text: str,
         vector_weight: float,
         keyword_weight: float,
+        primary_role: Optional[str] = None,
+        primary_role_terms: Optional[List[str]] = None,
     ) -> Dict[str, float]:
+        from app.services.primary_role import (
+            infer_primary_role,
+            primary_role_in_title,
+        )
+
         tech_skills, other_skills, soft_skills = self._split_skill_groups(cv_skills)
         full_text = " ".join([
             str(title or ""),
@@ -591,9 +601,30 @@ class VectorSkillMatcher:
             combined_score *= 1.15
             title_boost_applied = True
 
+        # Primary role boost: jobs whose TITLE contains the user's major role
+        # (inferred from CV skills / headline) rank clearly higher.
+        role_label = (primary_role or "").strip() or None
+        role_terms = list(primary_role_terms or [])
+        if not role_label or not role_terms:
+            role_label, role_terms = infer_primary_role(cv_skills)
+        primary_role_title_hit = False
+        primary_role_desc_hit = False
+        if role_terms:
+            if primary_role_in_title(str(title or ""), role_terms):
+                combined_score *= self.PRIMARY_ROLE_TITLE_BOOST
+                primary_role_title_hit = True
+            elif primary_role_in_title(
+                f"{description or ''} {skills_text or ''}", role_terms
+            ):
+                # Mention only in body — mild boost (title is the strong signal).
+                combined_score *= self.PRIMARY_ROLE_DESC_BOOST
+                primary_role_desc_hit = True
+
         # Prefer job TITLE for family detection (avoids description noise like
         # "works with nurses / hospital team" on a pharmacist posting).
         cv_text = " ".join(str(s) for s in (cv_skills or []))
+        if role_label:
+            cv_text = f"{role_label} {cv_text}"
         cv_families = self.detect_role_families(cv_text)
         job_title_families = self.detect_role_families(str(title or ""))
         job_families = job_title_families or self.detect_role_families(
@@ -623,6 +654,9 @@ class VectorSkillMatcher:
             "core_penalty_applied": 1.0 if core_penalty_applied else 0.0,
             "title_core_hits": float(title_core_hits),
             "title_boost_applied": 1.0 if title_boost_applied else 0.0,
+            "primary_role": role_label or "",
+            "primary_role_title_hit": 1.0 if primary_role_title_hit else 0.0,
+            "primary_role_desc_hit": 1.0 if primary_role_desc_hit else 0.0,
             "role_family_mismatch": 1.0 if role_family_mismatch else 0.0,
             "role_family_incompatible": 1.0 if role_family_incompatible else 0.0,
             "combined_score": combined_score,
@@ -667,6 +701,9 @@ class VectorSkillMatcher:
         jobs: List[Dict],
         vector_weight: float = 0.6,
         keyword_weight: float = 0.4,
+        primary_role: Optional[str] = None,
+        primary_role_terms: Optional[List[str]] = None,
+        headline: Optional[str] = None,
     ) -> List[Dict]:
         """
         Score a list of job dicts (from get_new_jobs_since / get_recent_jobs)
@@ -676,6 +713,13 @@ class VectorSkillMatcher:
         """
         if not cv_skills or not jobs:
             return []
+
+        from app.services.primary_role import infer_primary_role
+
+        if not primary_role or not primary_role_terms:
+            primary_role, primary_role_terms = infer_primary_role(
+                skills=cv_skills, headline=headline
+            )
 
         self._ensure_embeddings_exist()
         cv_embedding = self.embed_skills(cv_skills)
@@ -729,6 +773,8 @@ class VectorSkillMatcher:
                 skills_text=skills_text,
                 vector_weight=vector_weight,
                 keyword_weight=keyword_weight,
+                primary_role=primary_role,
+                primary_role_terms=primary_role_terms,
             )
             scored.append({
                 **job,
@@ -737,6 +783,7 @@ class VectorSkillMatcher:
                 "location": location or job.get("location"),
                 "description": description if description is not None else job.get("description"),
                 "match_percentage": score["match_percentage"],
+                "primary_role": score.get("primary_role") or primary_role,
             })
 
         scored.sort(key=lambda x: x.get("match_percentage", 0), reverse=True)
@@ -748,8 +795,18 @@ class VectorSkillMatcher:
         job_id: int,
         vector_weight: float = 0.6,
         keyword_weight: float = 0.4,
+        primary_role: Optional[str] = None,
+        primary_role_terms: Optional[List[str]] = None,
+        headline: Optional[str] = None,
     ) -> Optional[float]:
         """Return raw hybrid match percentage (0-100) for a single job id."""
+        from app.services.primary_role import infer_primary_role
+
+        if not primary_role or not primary_role_terms:
+            primary_role, primary_role_terms = infer_primary_role(
+                skills=cv_skills, headline=headline
+            )
+
         self._ensure_embeddings_exist()
         cv_embedding = self.embed_skills(cv_skills)
 
@@ -791,6 +848,8 @@ class VectorSkillMatcher:
             skills_text=skills_text,
             vector_weight=vector_weight,
             keyword_weight=keyword_weight,
+            primary_role=primary_role,
+            primary_role_terms=primary_role_terms,
         )["match_percentage"]
     
     def find_matching_jobs_hybrid(self,
@@ -798,7 +857,10 @@ class VectorSkillMatcher:
                                   top_k: int = 50,
                                   vector_weight: float = 0.7,
                                   keyword_weight: float = 0.3,
-                                  min_combined_score: Optional[float] = None) -> List[Dict]:
+                                  min_combined_score: Optional[float] = None,
+                                  primary_role: Optional[str] = None,
+                                  primary_role_terms: Optional[List[str]] = None,
+                                  headline: Optional[str] = None) -> List[Dict]:
         """
         Hybrid matching: combines vector similarity with keyword matching.
 
@@ -808,12 +870,21 @@ class VectorSkillMatcher:
             vector_weight: Weight for vector similarity (0-1)
             keyword_weight: Weight for keyword matching (0-1)
             min_combined_score: Drop jobs below this raw hybrid score (0-1).
-                Defaults to MATCH_MIN_COMBINED_SCORE env (0.18). Without this
+                Defaults to MATCH_MIN_COMBINED_SCORE env (0.22). Without this
                 filter the API always returned exactly min(50, DB size) neighbors.
+            primary_role / primary_role_terms: Optional major role for title boosting.
+            headline: Optional profile headline used to infer primary role.
 
         Returns:
             List of matching jobs with combined scores (length varies by quality)
         """
+        from app.services.primary_role import infer_primary_role
+
+        if not primary_role or not primary_role_terms:
+            primary_role, primary_role_terms = infer_primary_role(
+                skills=cv_skills, headline=headline
+            )
+
         if min_combined_score is None:
             try:
                 min_combined_score = float(os.getenv("MATCH_MIN_COMBINED_SCORE", "0.22"))
@@ -891,6 +962,8 @@ class VectorSkillMatcher:
                 skills_text=skills_text,
                 vector_weight=vector_weight,
                 keyword_weight=keyword_weight,
+                primary_role=primary_role,
+                primary_role_terms=primary_role_terms,
             )
 
             # Quality gate: do not count weak / cross-domain neighbors as matches.
@@ -926,6 +999,8 @@ class VectorSkillMatcher:
                 },
                 'combined_score': score["combined_score"],
                 'match_percentage': score["match_percentage"],
+                'primary_role': score.get("primary_role") or primary_role,
+                'primary_role_title_hit': bool(score.get("primary_role_title_hit")),
                 'cv_skills': cv_skills
             })
 

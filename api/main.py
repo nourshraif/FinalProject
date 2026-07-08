@@ -1833,11 +1833,26 @@ def _normalize_matching_job(j: dict) -> JobMatchResponse:
         source=j.get("source"),
     )
 
-def _match_jobs_from_skills(skills: List[str]) -> List[JobMatchResponse]:
+def _match_jobs_from_skills(
+    skills: List[str],
+    headline: Optional[str] = None,
+    primary_role: Optional[str] = None,
+) -> List[JobMatchResponse]:
     skills = [s for s in (skills or []) if s and str(s).strip()]
     if not skills:
         return []
     from app.services.vector_matching_service import VectorSkillMatcher
+    from app.services.primary_role import infer_primary_role
+
+    role_label = (primary_role or "").strip() or None
+    role_terms: List[str] = []
+    inferred_label, inferred_terms = infer_primary_role(
+        skills=skills, headline=headline or role_label
+    )
+    if role_label:
+        role_terms = inferred_terms or [role_label.lower()]
+    else:
+        role_label, role_terms = inferred_label, inferred_terms
 
     matcher = VectorSkillMatcher()
     try:
@@ -1846,6 +1861,9 @@ def _match_jobs_from_skills(skills: List[str]) -> List[JobMatchResponse]:
             top_k=50,
             vector_weight=0.6,
             keyword_weight=0.4,
+            primary_role=role_label,
+            primary_role_terms=role_terms,
+            headline=headline,
         )
     finally:
         matcher.close()
@@ -1923,6 +1941,14 @@ async def match_jobs(
     """
     ct = (request.headers.get("content-type") or "").lower()
     skills: List[str] = []
+    headline: Optional[str] = None
+
+    if current_user is not None:
+        try:
+            profile = db_get_user_profile(current_user["id"]) or {}
+            headline = (profile.get("headline") or "").strip() or None
+        except Exception:
+            headline = None
 
     if "multipart/form-data" in ct:
         form = await request.form()
@@ -1962,9 +1988,11 @@ async def match_jobs(
         if not isinstance(raw, list):
             raise HTTPException(status_code=400, detail='"skills" must be an array of strings.')
         skills = [str(s).strip() for s in raw if s is not None and str(s).strip()]
+        if not headline:
+            headline = (str(body.get("headline") or "").strip() or None)
 
     try:
-        full = _match_jobs_from_skills(skills)
+        full = _match_jobs_from_skills(skills, headline=headline)
         if current_user is not None:
             db_save_user_match_run(
                 user_id=current_user["id"],
@@ -2039,6 +2067,7 @@ def skills_gap_analyze_job(job_id: int, current_user: dict = Depends(get_current
                 job_id=job_id,
                 vector_weight=0.6,
                 keyword_weight=0.4,
+                headline=(profile or {}).get("headline"),
             )
         finally:
             matcher.close()
@@ -4110,7 +4139,10 @@ def send_test_alert(current_user: dict = Depends(get_current_user)):
 
     # Keep test alerts consistent with what users see on /match:
     # use the same hybrid matcher + normalized display score.
-    matched = _match_jobs_from_skills(skills)
+    matched = _match_jobs_from_skills(
+        skills,
+        headline=(profile or {}).get("headline"),
+    )
     top = []
     for j in matched:
         score = float(j.match_score or 0)
