@@ -105,7 +105,7 @@ export default function PricingPage() {
     { text: "Apply to jobs directly", included: true },
     { text: "Basic profile page", included: true },
     { text: "Save unlimited jobs", included: true },
-    { text: "See job matches (Pro only)", included: false },
+    { text: "See top 3 job matches", included: true },
     { text: "Skills Gap Analyzer (Pro only)", included: false },
     { text: "Application tracker (Pro only)", included: false },
     { text: "Job alerts (Pro only)", included: false },
