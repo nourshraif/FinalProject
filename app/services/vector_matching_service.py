@@ -357,6 +357,8 @@ class VectorSkillMatcher:
     OTHER_SKILL_WEIGHT = 1.0
     # Cross-family jobs (e.g. software CV vs trades listing) are strongly demoted.
     ROLE_FAMILY_MISMATCH_FACTOR = 0.32
+    # Same-field but different licensed role (nurse vs pharmacist): near-hard drop.
+    ROLE_FAMILY_INCOMPATIBLE_FACTOR = 0.12
 
     ROLE_FAMILY_KEYWORDS = {
         "software_engineering": (
@@ -371,12 +373,27 @@ class VectorSkillMatcher:
             "pandas", "numpy", "scikit", "analytics engineer",
         ),
         "nursing_clinical": (
-            "nurse", "nursing", "nmc", "rn ", " ward", "clinical nurse",
-            "registered nurse", "icu", "midwife", "patient care",
+            "nurse", "nursing", "nmc", "registered nurse", "staff nurse",
+            "icu nurse", "midwife", "midwifery", "ward nurse", "rn ",
+            "nursing assistant", "clinical nurse",
         ),
-        "healthcare_other": (
-            "physician", "doctor", "pharmacist", "physiotherapist", "dentist",
-            "medical", "hospital", "clinic", "therapist",
+        # Keep pharmacy separate from nursing — embeddings often confuse them.
+        "pharmacy": (
+            "pharmacist", "pharmacy", "pharmd", "clinical pharmacist",
+            "dispens", "pharmacology", "pharmacy technician", "chemist shop",
+        ),
+        "physician": (
+            "physician", "medical doctor", " md ", "gp ", "general practitioner",
+            "surgeon", "resident doctor", "consultant doctor",
+        ),
+        "allied_health": (
+            "physiotherapist", "physiotherapy", "physical therapist",
+            "occupational therapist", "radiographer", "radiology tech",
+            "lab technician", "medical laboratory", "dietitian", "nutritionist",
+            "speech therapist", "respiratory therapist",
+        ),
+        "dental": (
+            "dentist", "dental", "orthodont", "oral hygienist",
         ),
         "education": (
             "teacher", "teaching", "tutor", "lecturer", "professor", "school",
@@ -406,6 +423,25 @@ class VectorSkillMatcher:
             "housekeeping",
         ),
     }
+
+    # Licensed / profession-specific roles that must not cross-match each other.
+    # Shared workplace language ("hospital", "patient") no longer collapses them.
+    INCOMPATIBLE_ROLE_FAMILIES = frozenset({
+        frozenset({"nursing_clinical", "pharmacy"}),
+        frozenset({"nursing_clinical", "physician"}),
+        frozenset({"nursing_clinical", "allied_health"}),
+        frozenset({"nursing_clinical", "dental"}),
+        frozenset({"pharmacy", "physician"}),
+        frozenset({"pharmacy", "allied_health"}),
+        frozenset({"pharmacy", "dental"}),
+        frozenset({"physician", "allied_health"}),
+        frozenset({"physician", "dental"}),
+        frozenset({"allied_health", "dental"}),
+        frozenset({"software_engineering", "nursing_clinical"}),
+        frozenset({"software_engineering", "pharmacy"}),
+        frozenset({"data_ai", "nursing_clinical"}),
+        frozenset({"data_ai", "pharmacy"}),
+    })
 
     @staticmethod
     def _is_language_skill(skill: str) -> bool:
@@ -468,6 +504,19 @@ class VectorSkillMatcher:
                     families.add(family)
                     break
         return families
+
+    @classmethod
+    def role_families_incompatible(cls, families_a: set, families_b: set) -> bool:
+        """True when both sides have licensed roles that should never cross-match."""
+        if not families_a or not families_b:
+            return False
+        for a in families_a:
+            for b in families_b:
+                if a == b:
+                    continue
+                if frozenset({a, b}) in cls.INCOMPATIBLE_ROLE_FAMILIES:
+                    return True
+        return False
 
     @staticmethod
     def _split_skill_groups(cv_skills: List[str]) -> Tuple[List[str], List[str], List[str]]:
@@ -542,14 +591,24 @@ class VectorSkillMatcher:
             combined_score *= 1.15
             title_boost_applied = True
 
-        # Role-family gate: demote jobs that clearly sit in a different career track.
+        # Prefer job TITLE for family detection (avoids description noise like
+        # "works with nurses / hospital team" on a pharmacist posting).
         cv_text = " ".join(str(s) for s in (cv_skills or []))
         cv_families = self.detect_role_families(cv_text)
-        job_families = self.detect_role_families(
+        job_title_families = self.detect_role_families(str(title or ""))
+        job_families = job_title_families or self.detect_role_families(
             f"{title or ''} {description or ''} {skills_text or ''}"
         )
+
+        role_family_incompatible = self.role_families_incompatible(
+            cv_families, job_families
+        )
         role_family_mismatch = False
-        if cv_families and job_families and cv_families.isdisjoint(job_families):
+        if role_family_incompatible:
+            # Nurse ↔ Clinical Pharmacist, etc.
+            combined_score *= self.ROLE_FAMILY_INCOMPATIBLE_FACTOR
+            role_family_mismatch = True
+        elif cv_families and job_families and cv_families.isdisjoint(job_families):
             combined_score *= self.ROLE_FAMILY_MISMATCH_FACTOR
             role_family_mismatch = True
 
@@ -565,6 +624,7 @@ class VectorSkillMatcher:
             "title_core_hits": float(title_core_hits),
             "title_boost_applied": 1.0 if title_boost_applied else 0.0,
             "role_family_mismatch": 1.0 if role_family_mismatch else 0.0,
+            "role_family_incompatible": 1.0 if role_family_incompatible else 0.0,
             "combined_score": combined_score,
             "match_percentage": combined_score * 100,
         }
@@ -756,9 +816,9 @@ class VectorSkillMatcher:
         """
         if min_combined_score is None:
             try:
-                min_combined_score = float(os.getenv("MATCH_MIN_COMBINED_SCORE", "0.18"))
+                min_combined_score = float(os.getenv("MATCH_MIN_COMBINED_SCORE", "0.22"))
             except ValueError:
-                min_combined_score = 0.18
+                min_combined_score = 0.22
         min_combined_score = max(0.0, min(1.0, float(min_combined_score)))
 
         # Ensure embeddings exist for all jobs (silent auto-generation)
