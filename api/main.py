@@ -132,7 +132,6 @@ from app.database.db import (
     get_company_analytics as db_get_company_analytics,
     get_alert_settings as db_get_alert_settings,
     upsert_alert_settings as db_upsert_alert_settings,
-    get_recent_jobs as db_get_recent_jobs,
     search_jobs as db_search_jobs,
     get_job_by_id as db_get_job_by_id,
     get_job_sources as db_get_job_sources,
@@ -4100,24 +4099,36 @@ def send_test_alert(current_user: dict = Depends(get_current_user)):
     if current_user.get("user_type") != "jobseeker":
         raise HTTPException(status_code=403, detail="Jobseeker access only")
     require_plan(current_user, "job_alerts")
-    from api.job_alerts_scheduler import calculate_match_score, effective_alert_min_score
+    from api.job_alerts_scheduler import effective_alert_min_score
 
     profile = db_get_user_profile(current_user["id"])
     skills = (profile or {}).get("skills") or []
     if not skills:
         raise HTTPException(status_code=400, detail="Add skills to your profile first")
-    jobs = db_get_recent_jobs(10)
-    if not jobs:
-        raise HTTPException(status_code=400, detail="No jobs in the database yet")
     settings = db_get_alert_settings(current_user["id"])
     min_score = effective_alert_min_score(settings.get("min_match_score", 70))
-    scored = []
-    for job in jobs:
-        score = calculate_match_score(skills, job)
-        if score >= min_score:
-            scored.append({**job, "match_score": score})
-    scored.sort(key=lambda x: x["match_score"], reverse=True)
-    top = scored[:5]
+
+    # Keep test alerts consistent with what users see on /match:
+    # use the same hybrid matcher + normalized display score.
+    matched = _match_jobs_from_skills(skills)
+    top = []
+    for j in matched:
+        score = float(j.match_score or 0)
+        if score < min_score:
+            continue
+        top.append(
+            {
+                "job_title": j.title,
+                "company": j.company,
+                "location": j.location,
+                "description": j.description,
+                "job_url": j.url,
+                "match_score": score,
+            }
+        )
+        if len(top) >= 5:
+            break
+
     if not top:
         raise HTTPException(
             status_code=400,
