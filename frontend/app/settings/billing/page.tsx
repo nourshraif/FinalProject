@@ -144,7 +144,6 @@ function BillingContent() {
     "Skills Gap Analyzer",
     "Application tracker",
     "Daily job alerts",
-    "Priority matching",
     "Profile boost",
   ];
   const businessFeatures = [

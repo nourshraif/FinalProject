@@ -149,7 +149,6 @@ export default function PricingPage() {
     "Everything in Free",
     "See all job matches (unlimited)",
     "Skills Gap Analyzer",
-    "Priority matching algorithm",
     "Profile boost in searches",
     "Application tracker",
     "Daily job alerts",
@@ -561,12 +560,6 @@ export default function PricingPage() {
                   <td className="p-3 text-center text-white">Unlimited</td>
                   <td className="p-3 text-center text-white">Unlimited</td>
                 </tr>
-                <tr style={{ background: "rgba(255,255,255,0.02)" }}>
-                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Match Algorithm</td>
-                  <td className="p-3 text-center text-white">Basic</td>
-                  <td className="p-3 text-center text-white">Priority</td>
-                  <td className="p-3 text-center text-white">Priority</td>
-                </tr>
                 <tr>
                   <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Job Alerts</td>
                   <td className="p-3 text-center">
@@ -615,16 +608,6 @@ export default function PricingPage() {
                 </tr>
                 <tr style={{ background: "rgba(255,255,255,0.02)" }}>
                   <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Skills Gap Analyzer</td>
-                  <td className="p-3 text-center">
-                    <X className="inline h-4 w-4" style={{ color: "#ef4444" }} />
-                  </td>
-                  <td className="p-3 text-center">
-                    <Check className="inline h-4 w-4" style={{ color: "#22c55e" }} />
-                  </td>
-                  <td className="p-3 text-center text-white">—</td>
-                </tr>
-                <tr>
-                  <td className="p-3 font-medium" style={{ color: "var(--text-secondary)" }}>Priority Matching</td>
                   <td className="p-3 text-center">
                     <X className="inline h-4 w-4" style={{ color: "#ef4444" }} />
                   </td>
